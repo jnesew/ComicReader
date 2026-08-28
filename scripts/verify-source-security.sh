@@ -40,13 +40,10 @@ if git grep -I -n -E \
 fi
 
 password_matches="$(git grep -I -n -E -- \
-    '(storePassword|keyPassword)[[:space:]]*=[[:space:]]*[^[:space:]]+' \
-    -- . ':!signing/keystore.properties.example' || true)"
-unsafe_passwords="$(printf '%s\n' "$password_matches" | \
-    grep -Ev '=(replace-me|change-me)$' || true)"
-if [[ -n "$unsafe_passwords" ]]; then
-    printf '%s\n' "$unsafe_passwords" >&2
-    fail "a signing password appears outside an inert placeholder"
+    '(storePassword|keyPassword)[[:space:]]*=[[:space:]]*[^[:space:]]+' -- . || true)"
+if [[ -n "$password_matches" ]]; then
+    printf '%s\n' "$password_matches" >&2
+    fail "a signing password assignment is present in tracked source"
 fi
 
 if grep -R -n '<uses-permission' app/src/main; then

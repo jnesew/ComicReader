@@ -19,8 +19,9 @@ cp local.properties.example local.properties
 ./gradlew --dependency-verification strict testDebugUnitTest lintRelease assembleRelease
 ```
 
-Without a local signing configuration, `assembleRelease` produces an unsigned APK suitable for
-source verification or external-distributor signing.
+Without external signing configuration, `assembleRelease` produces an unsigned APK suitable for
+source verification or distributor signing. Signing credentials must never be committed to source
+control or exposed in CI logs or public build artifacts.
 
 Run the full local gate with:
 
@@ -56,9 +57,3 @@ component and checksum.
 `scripts/verify-reproducible-build.sh` creates two isolated source trees, performs strict offline
 release builds, and requires the unsigned APKs to match byte for byte. A signed APK may differ
 because signing metadata is intentionally outside the source-build comparison.
-
-## Signing
-
-Signing is optional for source verification and required for direct public distribution. Keep the
-production keystore and populated properties file outside the checkout. See
-[RELEASING.md](RELEASING.md) and [../signing/README.md](../signing/README.md).

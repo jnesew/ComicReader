@@ -46,9 +46,9 @@ before page-sized arrays are allocated.
 - CI has read-only repository permission, creates no signed artifact, and checks the final APK has
   no requested Android permission and no runtime dependency.
 
-Production signing keys and passwords remain on the maintainer's computer or trusted signing
-system. They are never copied into source, CI, issues, messages, or release assets. The first public
-APK establishes the long-lived direct/Obtainium certificate.
+Official release signing occurs outside CI. Signing credentials are never stored in this repository
+or included in issues, messages, build logs, or release assets. Public release records may include
+the non-secret signing certificate fingerprint and APK checksums.
 
 ## Backup caveat
 
@@ -66,6 +66,4 @@ scripts/verify-database-roundtrip.sh
 scripts/verify-reproducible-build.sh
 ```
 
-The release-specific package, version, permission, alignment, signature, certificate, and checksum
-gate is `scripts/prepare-obtainium-release.sh`. Vulnerability reports follow the root
-[security policy](../SECURITY.md).
+Vulnerability reports follow the root [security policy](../SECURITY.md).
