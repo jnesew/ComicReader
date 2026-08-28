@@ -2,13 +2,12 @@
 
 ## Supported versions
 
-Until a later maintenance policy is announced, security fixes are provided for the newest public
-ComicViewer release.
+Security fixes are provided for the newest public ComicViewer release.
 
 | Version | Supported |
 |---|---|
-| 1.0.x | Yes |
-| Development builds and older versions | No |
+| Latest release | Yes |
+| All other versions | No |
 
 ## Reporting a vulnerability
 

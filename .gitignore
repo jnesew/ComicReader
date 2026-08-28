@@ -38,9 +38,4 @@ out/
 *.key
 keystore.properties
 secrets.properties
-
-# Release-signing material is local-only. Keep the documentation and template,
-# but never commit a keystore or populated properties file.
-signing/*
-!signing/README.md
-!signing/keystore.properties.example
+signing/

@@ -36,9 +36,9 @@ Download `ComicViewer-Android-vX.Y.Z.apk` from the
 [latest GitHub Release](../../releases/latest). Android may ask you to allow installation from the
 app used to open the APK.
 
-For an existing ComicViewer installation, Android accepts an update only when the application ID
-and signing certificate match. Development-signed builds must be uninstalled before installing the
-first public release, which establishes the production signing identity.
+Android accepts an update only when the application ID and signing certificate match. Builds from a
+different distribution channel may use a different certificate and therefore require uninstalling
+the existing app first.
 
 ### Obtainium
 
@@ -79,13 +79,11 @@ direct-SDK, and reproducibility instructions are in [docs/BUILDING.md](docs/BUIL
 
 CBR/RAR and CB7/7z are intentionally unsupported. EPUB support is limited to fixed-layout or
 consistently single-image spine pages; ComicViewer is not a general reflowable ebook reader.
-The Android and Linux ComicViewer projects maintain separate local databases.
 
-## Contributing and releases
+## Contributing and security
 
 Contributions should preserve the app's narrow offline purpose and zero-permission runtime. See
-[CONTRIBUTING.md](CONTRIBUTING.md), the [release process](docs/RELEASING.md), and the
-[vulnerability-reporting policy](SECURITY.md).
+[CONTRIBUTING.md](CONTRIBUTING.md) and the [vulnerability-reporting policy](SECURITY.md).
 
 ComicViewer is free and open-source software under the [MIT License](LICENSE). Build-time and
 test-only components are documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
