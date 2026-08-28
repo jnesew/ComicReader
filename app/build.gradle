@@ -1,0 +1,89 @@
+plugins {
+    id 'com.android.application'
+}
+
+def comicViewerVersionCode = providers.gradleProperty('comicViewerVersionCode').get().toInteger()
+def comicViewerVersionName = providers.gradleProperty('comicViewerVersionName').get()
+
+def signingProperties = new Properties()
+def configuredSigningProperties = System.getenv('COMICVIEWER_SIGNING_PROPERTIES')
+def signingPropertiesFile = configuredSigningProperties
+        ? rootProject.file(configuredSigningProperties)
+        : rootProject.file('signing/keystore.properties')
+if (configuredSigningProperties && !signingPropertiesFile.exists()) {
+    throw new GradleException(
+            "COMICVIEWER_SIGNING_PROPERTIES does not exist: ${signingPropertiesFile}")
+}
+if (signingPropertiesFile.exists()) {
+    signingPropertiesFile.withInputStream { signingProperties.load(it) }
+}
+
+def signingValue = { String environmentName, String propertyName ->
+    def environmentValue = System.getenv(environmentName)
+    environmentValue != null ? environmentValue : signingProperties.getProperty(propertyName, '')
+}
+def signingStoreFile = signingValue('COMICVIEWER_KEYSTORE_PATH', 'storeFile')
+def signingStorePassword = signingValue('COMICVIEWER_STORE_PASSWORD', 'storePassword')
+def signingKeyAlias = signingValue('COMICVIEWER_KEY_ALIAS', 'keyAlias')
+def signingKeyPassword = signingValue('COMICVIEWER_KEY_PASSWORD', 'keyPassword')
+def signingValues = [
+        signingStoreFile, signingStorePassword, signingKeyAlias, signingKeyPassword
+]
+def signingRequested = signingPropertiesFile.exists() || signingValues.any { !it.isEmpty() }
+def releaseSigningConfigured = signingValues.every { !it.isEmpty() }
+if (signingRequested && !releaseSigningConfigured) {
+    throw new GradleException('Release signing is only partially configured. ' +
+            'Provide storeFile, storePassword, keyAlias, and keyPassword together.')
+}
+
+android {
+    namespace 'com.localtools.comicviewer'
+    compileSdk 36
+    buildToolsVersion '35.0.1'
+
+    defaultConfig {
+        applicationId 'com.localtools.comicviewer'
+        minSdk 26
+        targetSdk 36
+        versionCode comicViewerVersionCode
+        versionName comicViewerVersionName
+    }
+
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            localRelease {
+                storeFile rootProject.file(signingStoreFile)
+                storePassword signingStorePassword
+                keyAlias signingKeyAlias
+                keyPassword signingKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            pseudoLocalesEnabled true
+        }
+        release {
+            if (releaseSigningConfigured) {
+                signingConfig signingConfigs.localRelease
+            }
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}

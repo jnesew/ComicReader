@@ -1,0 +1,168 @@
+pluginManagement {
+    repositories {
+        exclusiveContent {
+            forRepository {
+                google()
+            }
+            filter {
+                includeGroupByRegex 'androidx\\.databinding(\\..*)?'
+                includeGroupByRegex 'com\\.android(\\..*)?'
+                includeGroupByRegex 'com\\.google\\.testing\\.platform(\\..*)?'
+            }
+        }
+        mavenCentral {
+            content {
+                [
+                        'com.google.android',
+                        'com.google.api.grpc',
+                        'com.google.auto',
+                        'com.google.auto.value',
+                        'com.google.code.findbugs',
+                        'com.google.code.gson',
+                        'com.google.crypto.tink',
+                        'com.google.dagger',
+                        'com.google.errorprone',
+                        'com.google.flatbuffers',
+                        'com.google.guava',
+                        'com.google.j2objc',
+                        'com.google.jimfs',
+                        'com.google.protobuf',
+                        'com.googlecode.juniversalchardet',
+                        'com.squareup',
+                        'com.sun.activation',
+                        'com.sun.istack',
+                        'com.sun.xml.bind',
+                        'com.sun.xml.bind.mvn',
+                        'com.sun.xml.fastinfoset',
+                        'commons-codec',
+                        'commons-io',
+                        'commons-logging',
+                        'io.grpc',
+                        'io.netty',
+                        'io.perfmark',
+                        'jakarta.activation',
+                        'jakarta.xml.bind',
+                        'javax.annotation',
+                        'javax.inject',
+                        'junit',
+                        'net.java',
+                        'net.java.dev.jna',
+                        'net.sf.jopt-simple',
+                        'net.sf.kxml',
+                        'org.apache',
+                        'org.apache.commons',
+                        'org.apache.httpcomponents',
+                        'org.bitbucket.b_c',
+                        'org.bouncycastle',
+                        'org.checkerframework',
+                        'org.codehaus.groovy',
+                        'org.codehaus.mojo',
+                        'org.eclipse.ee4j',
+                        'org.glassfish.jaxb',
+                        'org.hamcrest',
+                        'org.jdom',
+                        'org.jetbrains',
+                        'org.jetbrains.kotlin',
+                        'org.jetbrains.kotlinx',
+                        'org.junit',
+                        'org.jvnet.staxex',
+                        'org.ow2',
+                        'org.ow2.asm',
+                        'org.slf4j',
+                        'org.sonatype.oss',
+                        'org.tensorflow'
+                ].each { groupName -> includeGroup groupName }
+            }
+        }
+    }
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == 'com.android.application') {
+                useModule("com.android.tools.build:gradle:${requested.version}")
+            }
+        }
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        exclusiveContent {
+            forRepository {
+                google()
+            }
+            filter {
+                includeGroupByRegex 'androidx\\.databinding(\\..*)?'
+                includeGroupByRegex 'com\\.android(\\..*)?'
+                includeGroupByRegex 'com\\.google\\.testing\\.platform(\\..*)?'
+            }
+        }
+        mavenCentral {
+            content {
+                [
+                        'com.google.android',
+                        'com.google.api.grpc',
+                        'com.google.auto',
+                        'com.google.auto.value',
+                        'com.google.code.findbugs',
+                        'com.google.code.gson',
+                        'com.google.crypto.tink',
+                        'com.google.dagger',
+                        'com.google.errorprone',
+                        'com.google.flatbuffers',
+                        'com.google.guava',
+                        'com.google.j2objc',
+                        'com.google.jimfs',
+                        'com.google.protobuf',
+                        'com.googlecode.juniversalchardet',
+                        'com.squareup',
+                        'com.sun.activation',
+                        'com.sun.istack',
+                        'com.sun.xml.bind',
+                        'com.sun.xml.bind.mvn',
+                        'com.sun.xml.fastinfoset',
+                        'commons-codec',
+                        'commons-io',
+                        'commons-logging',
+                        'io.grpc',
+                        'io.netty',
+                        'io.perfmark',
+                        'jakarta.activation',
+                        'jakarta.xml.bind',
+                        'javax.annotation',
+                        'javax.inject',
+                        'junit',
+                        'net.java',
+                        'net.java.dev.jna',
+                        'net.sf.jopt-simple',
+                        'net.sf.kxml',
+                        'org.apache',
+                        'org.apache.commons',
+                        'org.apache.httpcomponents',
+                        'org.bitbucket.b_c',
+                        'org.bouncycastle',
+                        'org.checkerframework',
+                        'org.codehaus.groovy',
+                        'org.codehaus.mojo',
+                        'org.eclipse.ee4j',
+                        'org.glassfish.jaxb',
+                        'org.hamcrest',
+                        'org.jdom',
+                        'org.jetbrains',
+                        'org.jetbrains.kotlin',
+                        'org.jetbrains.kotlinx',
+                        'org.junit',
+                        'org.jvnet.staxex',
+                        'org.ow2',
+                        'org.ow2.asm',
+                        'org.slf4j',
+                        'org.sonatype.oss',
+                        'org.tensorflow'
+                ].each { groupName -> includeGroup groupName }
+            }
+        }
+    }
+}
+
+rootProject.name = "ComicViewer"
+include ':app'

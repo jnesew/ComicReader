@@ -1,0 +1,46 @@
+.gradle/
+**/build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+.kotlin/
+
+# IDE, editor, and operating-system files
+.idea/
+.vscode/
+.fleet/
+*.iml
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Build and release outputs
+dist/
+out/
+*.apk
+*.aab
+*.apks
+*.idsig
+*.log
+
+# Environment and signing material
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+keystore.properties
+secrets.properties
+
+# Release-signing material is local-only. Keep the documentation and template,
+# but never commit a keystore or populated properties file.
+signing/*
+!signing/README.md
+!signing/keystore.properties.example
