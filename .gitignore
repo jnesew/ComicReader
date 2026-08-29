@@ -39,3 +39,4 @@ out/
 keystore.properties
 secrets.properties
 signing/
+scripts/prepare-obtainium-release.sh
