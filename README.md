@@ -32,6 +32,7 @@ Browse grouped libraries, read traditional pages or long strips, and tune the re
   </tr>
   <tr>
     <td align="center"><img src="docs/screenshots/continuous-scroll.jpg" alt="Long-strip webtoon in continuous-scroll mode with zoom controls" width="260"><br><sub>Continuous scrolling</sub></td>
+    <td align="center"><img src="docs/screenshots/immersive-continuous-reading.jpg" alt="Distraction-free immersive view of a long-strip webtoon" width="260"><br><sub>Immersive continuous reading</sub></td>
     <td align="center"><img src="docs/screenshots/reader-options.jpg" alt="Reader options for tap zones, volume keys, zoom, and display behavior" width="260"><br><sub>Reader options</sub></td>
   </tr>
 </table>
