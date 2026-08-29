@@ -20,6 +20,24 @@ accounts, ads, analytics, subscriptions, network access, or broad storage permis
 - English and Finnish interface resources
 - Android 8.0 (API 26) through Android 16 (API 36)
 
+## Screenshots
+
+Browse grouped libraries, read traditional pages or long strips, and tune the reader to match your device.
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/series-library.jpg" alt="Series library with grouped comic collections" width="260"><br><sub>Series grouping</sub></td>
+    <td align="center"><img src="docs/screenshots/title-library.jpg" alt="Searchable title library with cover artwork" width="260"><br><sub>Title library</sub></td>
+    <td align="center"><img src="docs/screenshots/paged-reading.jpg" alt="Full-color comic in paged reading mode" width="260"><br><sub>Paged reading</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/continuous-scroll.jpg" alt="Long-strip webtoon in continuous-scroll mode with zoom controls" width="260"><br><sub>Continuous scrolling</sub></td>
+    <td align="center"><img src="docs/screenshots/reader-options.jpg" alt="Reader options for tap zones, volume keys, zoom, and display behavior" width="260"><br><sub>Reader options</sub></td>
+  </tr>
+</table>
+
+<sub>Sample artwork includes [Pepper & Carrot — Episode 10: Summer Special](https://www.peppercarrot.com/en/webcomic-sources/ep10_Summer-Special.html): art and scenario by David Revoy, English translation by Alex Gryson, and the Hereva universe by David Revoy; licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). “Signal in the Rain” is an original [CC0](https://creativecommons.org/publicdomain/zero/1.0/) test sample.</sub>
+
 ## Privacy by design
 
 ComicViewer requests no Android permissions, including no `INTERNET`, storage, or media permission.
