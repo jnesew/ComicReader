@@ -12,7 +12,7 @@ import unicodedata
 from pathlib import Path
 
 limits_source = Path(
-    "app/src/main/java/com/localtools/comicviewer/util/InputLimits.java"
+    "app/src/main/java/io/github/jnesew/comicviewer/util/InputLimits.java"
 ).read_text(encoding="utf-8")
 
 
