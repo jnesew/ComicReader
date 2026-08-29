@@ -17,6 +17,26 @@ The Gradle Wrapper's Apache 2.0 license is reproduced in
 Hamcrest are resolved at build/test time with pinned SHA-256 checksums and are not redistributed in
 ComicViewer's source tree or APK.
 
-The launcher icon and its Android derivatives are original artwork created for ComicViewer. They are
-included under the repository's MIT License. No stock, trademarked, or externally licensed visual
-asset is included.
+## Visual assets
+
+The launcher icon and its Android derivatives are original artwork created for ComicViewer and are
+included under the repository's MIT License.
+
+The README's Obtainium badge is copied from the
+[Obtainium project](https://github.com/ImranR98/Obtainium/tree/main/assets/graphics) as directed by
+its [official badging guide](https://github.com/ImranR98/apps.obtainium.imranr.dev/blob/main/BADGING.md).
+Obtainium is distributed under the GNU General Public License version 3; the upstream license is
+reproduced in
+[`third_party/obtainium-badge-LICENSE.txt`](third_party/obtainium-badge-LICENSE.txt). The badge is
+used only in repository documentation and is not included in the ComicViewer APK.
+
+Promotional screenshots include:
+
+- *Pepper & Carrot — Episode 10: Summer Special*: art and scenario by David Revoy, English
+  translation by Alex Gryson, and the Hereva universe by David Revoy, licensed under
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/);
+- “Signal in the Rain,” an original test sample dedicated under
+  [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/); and
+- historical comic thumbnails selected from public-domain source material.
+
+These sample images appear only inside documentation screenshots and are not included in the APK.

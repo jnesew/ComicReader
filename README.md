@@ -61,9 +61,15 @@ the existing app first.
 
 ### Obtainium
 
-Add this repository's public URL to Obtainium. Stable releases use matching `vX.Y.Z` tags and
-Android version names, an increasing version code, and one APK named
-`ComicViewer-Android-vX.Y.Z.apk`.
+<p>
+  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.localtools.comicviewer%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2Fjnesew%2FComicReader%22%2C%22author%22%3A%22jnesew%22%2C%22name%22%3A%22ComicViewer%22%7D">
+    <img src="artwork/badge-obtainium.png" alt="Get ComicViewer on Obtainium" width="200">
+  </a>
+</p>
+
+Tap the badge on an Android device to add ComicViewer to Obtainium, or add this repository's public
+URL manually. Stable releases use matching `vX.Y.Z` tags and Android version names, an increasing
+version code, and one APK named `ComicViewer-Android-vX.Y.Z.apk`.
 
 ## Basic controls
 
