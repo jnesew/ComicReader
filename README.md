@@ -55,6 +55,12 @@ Download `ComicViewer-Android-vX.Y.Z.apk` from the
 [latest GitHub Release](../../releases/latest). Android may ask you to allow installation from the
 app used to open the APK.
 
+> [!IMPORTANT]
+> Version 1.0.0 used the retired application ID `com.localtools.comicviewer`. Starting with
+> version 1.0.1, ComicViewer uses `io.github.jnesew.comicviewer`. Android cannot update across application
+> IDs: uninstall 1.0.0 before installing 1.0.1 or later. App settings, reading state, and folder
+> access from 1.0.0 do not transfer automatically.
+
 Android accepts an update only when the application ID and signing certificate match. Builds from a
 different distribution channel may use a different certificate and therefore require uninstalling
 the existing app first.
@@ -62,7 +68,7 @@ the existing app first.
 ### Obtainium
 
 <p>
-  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.localtools.comicviewer%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2Fjnesew%2FComicReader%22%2C%22author%22%3A%22jnesew%22%2C%22name%22%3A%22ComicViewer%22%7D">
+  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22io.github.jnesew.comicviewer%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2Fjnesew%2FComicReader%22%2C%22author%22%3A%22jnesew%22%2C%22name%22%3A%22ComicViewer%22%7D">
     <img src="artwork/badge-obtainium.png" alt="Get ComicViewer on Obtainium" width="200">
   </a>
 </p>

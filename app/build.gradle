@@ -37,12 +37,12 @@ if (signingRequested && !releaseSigningConfigured) {
 }
 
 android {
-    namespace 'com.localtools.comicviewer'
+    namespace 'io.github.jnesew.comicviewer'
     compileSdk 36
     buildToolsVersion '35.0.1'
 
     defaultConfig {
-        applicationId 'com.localtools.comicviewer'
+        applicationId 'io.github.jnesew.comicviewer'
         minSdk 26
         targetSdk 36
         versionCode comicViewerVersionCode

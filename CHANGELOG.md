@@ -2,7 +2,16 @@
 
 All notable public changes to ComicViewer for Android are recorded here.
 
-## 1.0.0 - Unreleased
+## 1.0.1 - Unreleased
+
+### Compatibility
+
+- Changed the Android application ID from `com.localtools.comicviewer` to
+  `io.github.jnesew.comicviewer` before F-Droid submission, giving the app a project-owned namespace.
+- Android treats 1.0.1 as a separate app from 1.0.0. The retired 1.0.0 build must be uninstalled
+  first; its settings, reading state, and folder grants do not migrate automatically.
+
+## 1.0.0 - 2026-08-29
 
 Initial public release.
 
