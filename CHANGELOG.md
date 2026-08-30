@@ -2,6 +2,12 @@
 
 All notable public changes to ComicViewer for Android are recorded here.
 
+## Unreleased
+
+### Reader
+
+- Fixed flashing dark tile placeholders when zooming PDF pages in paged or continuous mode.
+
 ## 1.0.2 - 2026-08-30
 
 ### Reader

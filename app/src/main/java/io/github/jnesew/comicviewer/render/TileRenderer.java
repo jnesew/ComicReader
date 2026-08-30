@@ -17,6 +17,7 @@ import io.github.jnesew.comicviewer.R;
 import io.github.jnesew.comicviewer.document.ComicDocument;
 import io.github.jnesew.comicviewer.model.PageInfo;
 import io.github.jnesew.comicviewer.util.InputLimits;
+import io.github.jnesew.comicviewer.util.RenderedTilePolicy;
 
 import java.io.File;
 import java.io.IOException;
@@ -30,15 +31,16 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
- * Decodes only visible image regions into a bounded LRU. A typical tile is ~2.25 MiB and
- * neither a normal comic page nor a very tall strip is ever required to exist as one bitmap.
+ * Decodes only visible image regions into a bounded LRU. Raster tiles are normally ~2.25 MiB;
+ * directly rendered PDF tiles target ~1 MiB. Neither a normal comic page nor a very tall strip
+ * is ever required to exist as one bitmap.
  */
 public final class TileRenderer implements AutoCloseable {
     public interface ErrorListener {
         void onRenderError(String message);
     }
 
-    private static final int DECODED_TILE_SIZE = 768;
+    private static final int RASTER_TILE_SIZE = 768;
     private static final int MAX_OPEN_DECODERS = 4;
 
     private final Context context;
@@ -106,10 +108,12 @@ public final class TileRenderer implements AutoCloseable {
         float scale = destination.width() / page.width;
         boolean rendered = archive.supportsRenderedTiles();
         int sample = rendered ? 1 : chooseSample(scale);
-        float renderScale = rendered ? chooseRenderScale(scale) : 1f / sample;
+        float renderScale = rendered
+                ? RenderedTilePolicy.chooseRenderScale(scale)
+                : 1f / sample;
         int sourceTile = rendered
-                ? Math.max(1, Math.round(DECODED_TILE_SIZE / renderScale))
-                : DECODED_TILE_SIZE * sample;
+                ? RenderedTilePolicy.sourceTileSize(renderScale)
+                : RASTER_TILE_SIZE * sample;
 
         int visibleLeft = clamp((int) Math.floor((visible.left - destination.left) / scale), 0, page.width - 1);
         int visibleTop = clamp((int) Math.floor((visible.top - destination.top) / scale), 0, page.height - 1);
@@ -140,10 +144,18 @@ public final class TileRenderer implements AutoCloseable {
                 if (bitmap != null && !bitmap.isRecycled()) {
                     canvas.drawBitmap(bitmap, null, tileDestination, imagePaint);
                 } else {
+                    if (rendered) {
+                        drawRenderedFallback(
+                                canvas, pageIndex, page, source, tileDestination, renderScale);
+                    }
                     requestTile(key, pageIndex, sample, renderScale, source);
                 }
             }
         }
+    }
+
+    public boolean usesRenderedTiles() {
+        return archive.supportsRenderedTiles();
     }
 
     @Override
@@ -269,11 +281,58 @@ public final class TileRenderer implements AutoCloseable {
         return sample;
     }
 
-    private static float chooseRenderScale(float displayScale) {
-        float target = Math.max(0.25f, Math.min(16f, displayScale));
-        float level = 0.25f;
-        while (level < 16f && level < target) level *= 2f;
-        return level;
+    private void drawRenderedFallback(
+            Canvas canvas,
+            int pageIndex,
+            PageInfo page,
+            Rect requestedSource,
+            RectF destination,
+            float renderScale) {
+        float fallbackScale = RenderedTilePolicy.nextCoarserScale(renderScale);
+        while (fallbackScale > 0f) {
+            int fallbackSourceTile = RenderedTilePolicy.sourceTileSize(fallbackScale);
+            int tileX = requestedSource.left / fallbackSourceTile;
+            int tileY = requestedSource.top / fallbackSourceTile;
+            int sourceLeft = tileX * fallbackSourceTile;
+            int sourceTop = tileY * fallbackSourceTile;
+            Rect fallbackSource = new Rect(
+                    sourceLeft,
+                    sourceTop,
+                    Math.min(page.width, sourceLeft + fallbackSourceTile),
+                    Math.min(page.height, sourceTop + fallbackSourceTile));
+            Bitmap fallback = tiles.get(key(pageIndex, 1, fallbackScale, tileX, tileY));
+            if (fallback != null && !fallback.isRecycled()) {
+                canvas.drawBitmap(
+                        fallback,
+                        bitmapSourceRect(requestedSource, fallbackSource, fallback),
+                        destination,
+                        imagePaint);
+                return;
+            }
+            fallbackScale = RenderedTilePolicy.nextCoarserScale(fallbackScale);
+        }
+    }
+
+    private static Rect bitmapSourceRect(Rect requested, Rect cachedSource, Bitmap bitmap) {
+        float scaleX = bitmap.getWidth() / (float) cachedSource.width();
+        float scaleY = bitmap.getHeight() / (float) cachedSource.height();
+        int left = clamp(
+                (int) Math.floor((requested.left - cachedSource.left) * scaleX),
+                0,
+                bitmap.getWidth() - 1);
+        int top = clamp(
+                (int) Math.floor((requested.top - cachedSource.top) * scaleY),
+                0,
+                bitmap.getHeight() - 1);
+        int right = clamp(
+                (int) Math.ceil((requested.right - cachedSource.left) * scaleX),
+                left + 1,
+                bitmap.getWidth());
+        int bottom = clamp(
+                (int) Math.ceil((requested.bottom - cachedSource.top) * scaleY),
+                top + 1,
+                bitmap.getHeight());
+        return new Rect(left, top, right, bottom);
     }
 
     private static String key(int page, int sample, float renderScale, int x, int y) {
