@@ -143,6 +143,9 @@
     <string name="option_tap_zones">Reunojen napautus vaihtaa sivua</string>
     <string name="option_volume_navigation">Äänenvoimakkuusnäppäimet vaihtavat sivua</string>
     <string name="option_remember_zoom">Muista zoomaus sarjakuvittain</string>
+    <string name="option_default_zoom">Oletuszoomaus</string>
+    <string name="option_default_zoom_description">Käytetään, kun sarjakuvalla ei ole muistettua zoomausta tai sarjakuvakohtainen zoomausmuisti on pois käytöstä. Jatkuva vieritys sovitetaan leveyteen.</string>
+    <string name="option_default_zoom_app">Sovelluksen oletus (sovita leveyteen)</string>
     <string name="option_keep_screen_awake">Pidä näyttö päällä lukemisen aikana</string>
     <string name="option_auto_hide_controls">Piilota lukijan säätimet automaattisesti</string>
     <string name="shortcuts_instruction">Napauta toimintoa ja paina sitten ulkoisen näppäimistön näppäintä.</string>

@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.view.KeyEvent;
 
 import io.github.jnesew.comicviewer.R;
+import io.github.jnesew.comicviewer.model.OpeningZoomPolicy;
 
 import java.util.LinkedHashMap;
 
@@ -39,6 +40,22 @@ public final class ReaderPreferences {
 
     public void setRememberZoom(boolean value) {
         values.edit().putBoolean("remember_zoom", value).apply();
+    }
+
+    public String defaultZoomMode() {
+        return OpeningZoomPolicy.normalizeGlobalDefault(
+                values.getString("default_zoom_mode", OpeningZoomPolicy.APP_DEFAULT));
+    }
+
+    public void setDefaultZoomMode(String value) {
+        String normalized = OpeningZoomPolicy.normalizeGlobalDefault(value);
+        SharedPreferences.Editor editor = values.edit();
+        if (OpeningZoomPolicy.APP_DEFAULT.equals(normalized)) {
+            editor.remove("default_zoom_mode");
+        } else {
+            editor.putString("default_zoom_mode", normalized);
+        }
+        editor.apply();
     }
 
     public boolean keepScreenOn() {

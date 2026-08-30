@@ -45,6 +45,7 @@ import io.github.jnesew.comicviewer.data.ReaderPreferences;
 import io.github.jnesew.comicviewer.document.ComicDocument;
 import io.github.jnesew.comicviewer.document.ComicDocumentFactory;
 import io.github.jnesew.comicviewer.document.DocumentInfo;
+import io.github.jnesew.comicviewer.model.OpeningZoomPolicy;
 import io.github.jnesew.comicviewer.model.PageInfo;
 import io.github.jnesew.comicviewer.model.ReadingDirection;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
@@ -700,10 +701,14 @@ public final class MainActivity extends Activity implements
         progress.documentSize = opened.documentSize();
         progress.documentModified = opened.documentModified();
         progress.page = clamp(progress.page, 0, opened.count() - 1);
-        if (!preferences.rememberZoom()) {
-            progress.zoomMode = ComicCanvasView.FIT_WIDTH;
-            progress.zoom = 1f;
-        }
+        OpeningZoomPolicy.OpeningZoom openingZoom = OpeningZoomPolicy.resolve(
+                preferences.rememberZoom(),
+                !progress.isNew(),
+                progress.zoomMode,
+                progress.zoom,
+                preferences.defaultZoomMode());
+        progress.zoomMode = openingZoom.mode();
+        progress.zoom = openingZoom.zoom();
 
         tileRenderer = new TileRenderer(
                 this,
@@ -1628,6 +1633,45 @@ public final class MainActivity extends Activity implements
         options.addView(tapZones);
         options.addView(volume);
         options.addView(remember);
+
+        TextView defaultZoomTitle = Ui.text(
+                this, getString(R.string.option_default_zoom), 15, Ui.TEXT);
+        defaultZoomTitle.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 2));
+        options.addView(defaultZoomTitle);
+        TextView defaultZoomExplanation = Ui.text(
+                this, getString(R.string.option_default_zoom_description), 13, Ui.TEXT_MUTED);
+        defaultZoomExplanation.setPadding(0, 0, 0, Ui.dp(this, 4));
+        options.addView(defaultZoomExplanation);
+
+        String[] defaultZoomValues = {
+                OpeningZoomPolicy.APP_DEFAULT,
+                OpeningZoomPolicy.FIT_WIDTH,
+                OpeningZoomPolicy.FIT_PAGE
+        };
+        int[] defaultZoomLabels = {
+                R.string.option_default_zoom_app,
+                R.string.reader_fit_width,
+                R.string.reader_fit_page
+        };
+        int[] defaultZoomIds = new int[defaultZoomValues.length];
+        RadioGroup defaultZoomChoices = new RadioGroup(this);
+        String selectedDefaultZoom = preferences.defaultZoomMode();
+        for (int index = 0; index < defaultZoomValues.length; index++) {
+            RadioButton choice = new RadioButton(this);
+            defaultZoomIds[index] = View.generateViewId();
+            choice.setId(defaultZoomIds[index]);
+            choice.setText(defaultZoomLabels[index]);
+            choice.setTextColor(Ui.TEXT);
+            choice.setTextSize(15);
+            choice.setMinHeight(Ui.dp(this, 44));
+            choice.setButtonTintList(new ColorStateList(
+                    new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
+                    new int[]{Ui.ACCENT, Ui.TEXT_MUTED}));
+            defaultZoomChoices.addView(choice, new RadioGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 44)));
+            if (defaultZoomValues[index].equals(selectedDefaultZoom)) choice.setChecked(true);
+        }
+        options.addView(defaultZoomChoices);
         options.addView(screen);
         options.addView(autoHide);
 
@@ -1641,6 +1685,12 @@ public final class MainActivity extends Activity implements
                     preferences.setTapZones(tapZones.isChecked());
                     preferences.setVolumeNavigation(volume.isChecked());
                     preferences.setRememberZoom(remember.isChecked());
+                    for (int index = 0; index < defaultZoomIds.length; index++) {
+                        if (defaultZoomChoices.getCheckedRadioButtonId() == defaultZoomIds[index]) {
+                            preferences.setDefaultZoomMode(defaultZoomValues[index]);
+                            break;
+                        }
+                    }
                     preferences.setKeepScreenOn(screen.isChecked());
                     preferences.setAutoHideControls(autoHide.isChecked());
                     reader.canvas.setTapZones(tapZones.isChecked());

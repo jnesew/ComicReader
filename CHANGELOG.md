@@ -2,7 +2,14 @@
 
 All notable public changes to ComicViewer for Android are recorded here.
 
-## 1.0.1 - Unreleased
+## Unreleased
+
+### Reader
+
+- Added a configurable global default zoom with per-title remembered zoom taking precedence and
+  Fit width as the built-in fallback.
+
+## 1.0.1 - 2026-08-29
 
 ### Compatibility
 

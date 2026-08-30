@@ -31,6 +31,11 @@ the page retains its full scrollable height.
 Each title remembers its page, page-relative scroll position, zoom, zoom-gesture lock, reading mode,
 reading direction, favorite state, and page bookmarks.
 
+Reader Options provides a global default zoom for titles without remembered view state, and for all
+titles when per-title zoom memory is disabled. Opening precedence is remembered per-title zoom,
+then the configured global default, then the built-in Fit width fallback. Continuous scroll starts
+fitted to width when no per-title zoom is restored.
+
 ## Controls
 
 | Gesture or control | Result |
