@@ -29,6 +29,11 @@ public final class SeriesNavigatorTest {
     }
 
     @Test
+    public void singleIssueSeriesHasNoContinuation() {
+        assertNull(SeriesNavigator.nextIssue(List.of(issue("one", "1")), "one"));
+    }
+
+    @Test
     public void returnsNullForInvalidInputs() {
         assertNull(SeriesNavigator.nextIssue(null, "one"));
         assertNull(SeriesNavigator.nextIssue(List.of(), "one"));
