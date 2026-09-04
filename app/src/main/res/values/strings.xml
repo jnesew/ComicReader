@@ -98,12 +98,14 @@
     <string name="reader_end_of_series">End of series</string>
     <string name="reader_next_issue_unavailable">Next issue is unavailable</string>
     <string name="reader_page_label">Page %1$d / %2$d</string>
+    <string name="reader_page_range_label">Pages %1$d–%2$d / %3$d</string>
     <string name="reader_page_slider">Page slider</string>
     <string name="reader_preview_unavailable">Preview unavailable</string>
     <string name="reader_page_fit_zoom_menu">Page fit and zoom menu</string>
-    <string name="reader_layout_paged">Paged</string>
+    <string name="reader_layout_single">Single page</string>
+    <string name="reader_layout_spread">Two-page spread</string>
     <string name="reader_layout_continuous">Continuous scroll</string>
-    <string name="reader_toggle_layout">Toggle paged and continuous-scroll reading</string>
+    <string name="reader_choose_layout">Choose reading layout</string>
     <string name="reader_fit_width">Fit width</string>
     <string name="reader_fit_page">Fit page</string>
     <string name="reader_actual_size">Actual size (100%%)</string>

@@ -17,6 +17,7 @@ import io.github.jnesew.comicviewer.R;
 import io.github.jnesew.comicviewer.model.PageInfo;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
 import io.github.jnesew.comicviewer.util.PageLayoutEngine;
+import io.github.jnesew.comicviewer.util.SpreadPageLayout;
 import io.github.jnesew.comicviewer.util.Ui;
 import io.github.jnesew.comicviewer.util.ZoomGestureGate;
 
@@ -35,6 +36,8 @@ public final class ComicCanvasView extends View {
     public static final String FIT_WIDTH = "fit_width";
     public static final String FIT_PAGE = "fit_page";
     public static final String MANUAL = "manual";
+    public static final String SINGLE = "single";
+    public static final String SPREAD = "spread";
     public static final String CONTINUOUS = "continuous";
 
     private final GestureDetector gestureDetector;
@@ -42,6 +45,7 @@ public final class ComicCanvasView extends View {
     private final OverScroller scroller;
     private final ZoomGestureGate zoomGestureGate = new ZoomGestureGate();
     private final PageLayoutEngine continuousLayout = new PageLayoutEngine();
+    private final SpreadPageLayout spreadLayout = new SpreadPageLayout();
     private final RectF destination = new RectF();
     private final RectF clip = new RectF();
 
@@ -51,11 +55,12 @@ public final class ComicCanvasView extends View {
     private int page;
     private float pageRatio;
     private boolean continuous;
+    private boolean spread;
     private boolean tapZones = true;
     private boolean rightToLeft;
     private int canvasColor = Color.BLACK;
 
-    // Single-page transform. zoom is a multiplier relative to fit-width.
+    // Paged transform. zoom is a multiplier relative to fit-width.
     private String zoomMode = FIT_WIDTH;
     private float zoom = 1f;
     private float singleScale = 1f;
@@ -97,7 +102,10 @@ public final class ComicCanvasView extends View {
         this.pages = pages;
         this.page = clamp(progress.page, 0, Math.max(0, pages.size() - 1));
         this.pageRatio = clamp(progress.scrollRatio, 0f, 1f);
-        this.continuous = "continuous".equals(progress.readingMode);
+        this.continuous = CONTINUOUS.equals(progress.readingMode);
+        this.spread = SPREAD.equals(progress.readingMode);
+        spreadLayout.calculate(pages);
+        if (spread) this.page = spreadLayout.anchorFor(this.page);
         zoomGestureGate.setLocked(progress.zoomGesturesLocked);
         if (continuous) {
             continuousZoom = clamp(progress.zoom, 0.6f, 5f);
@@ -120,6 +128,7 @@ public final class ComicCanvasView extends View {
     public void clearDocument() {
         renderer = null;
         pages = Collections.emptyList();
+        spreadLayout.calculate(pages);
         scroller.forceFinished(true);
         invalidate();
     }
@@ -129,8 +138,13 @@ public final class ComicCanvasView extends View {
         if (pages.isEmpty() || getWidth() <= 0 || getHeight() <= 0) return;
         int anchorPage = page;
         float anchorRatio = pageRatio;
+        spreadLayout.calculate(pages);
+        if (spread) {
+            anchorPage = spreadLayout.anchorFor(anchorPage);
+            page = anchorPage;
+        }
         if (continuous) relayoutContinuousAround(anchorPage, anchorRatio);
-        else configureSingle(anchorRatio);
+        else configurePaged(anchorRatio);
         invalidate();
     }
 
@@ -146,9 +160,30 @@ public final class ComicCanvasView extends View {
         return continuous;
     }
 
+    public boolean isSpread() {
+        return spread;
+    }
+
+    public String readingMode() {
+        if (continuous) return CONTINUOUS;
+        return spread ? SPREAD : SINGLE;
+    }
+
+    public int pageEnd() {
+        return spread ? spreadLayout.endFor(page) : page;
+    }
+
+    public int navigationTarget(int delta) {
+        if (pages.isEmpty()) return 0;
+        if (!spread || continuous) {
+            return clamp(page + delta, 0, pages.size() - 1);
+        }
+        return spreadLayout.adjacentAnchor(page, delta);
+    }
+
     public boolean isAtDocumentEnd() {
         if (pages.isEmpty()) return false;
-        if (!continuous) return page >= pages.size() - 1;
+        if (!continuous) return pageEnd() >= pages.size() - 1;
         float maximum = Math.max(
                 0f, continuousLayout.documentHeight() - Math.max(1, getHeight()));
         return documentScroll >= maximum - 1f;
@@ -176,6 +211,7 @@ public final class ComicCanvasView extends View {
 
     public void setRightToLeft(boolean enabled) {
         rightToLeft = enabled;
+        invalidate();
     }
 
     public void setCanvasColor(int color) {
@@ -183,11 +219,18 @@ public final class ComicCanvasView extends View {
         invalidate();
     }
 
-    public void setReadingMode(boolean useContinuous) {
-        if (continuous == useContinuous || pages.isEmpty()) return;
+    public void setReadingMode(String requestedMode) {
+        String normalized = switch (requestedMode) {
+            case CONTINUOUS -> CONTINUOUS;
+            case SPREAD -> SPREAD;
+            default -> SINGLE;
+        };
+        if (readingMode().equals(normalized) || pages.isEmpty()) return;
         int anchorPage = page;
         float anchorRatio = pageRatio;
-        continuous = useContinuous;
+        continuous = CONTINUOUS.equals(normalized);
+        spread = SPREAD.equals(normalized);
+        if (spread) anchorPage = spreadLayout.anchorFor(anchorPage);
         scroller.forceFinished(true);
         if (continuous) {
             continuousZoom = 1f;
@@ -209,12 +252,13 @@ public final class ComicCanvasView extends View {
     public void showPage(int targetPage, float restoreRatio) {
         if (pages.isEmpty()) return;
         page = clamp(targetPage, 0, pages.size() - 1);
+        if (spread) page = spreadLayout.anchorFor(page);
         pageRatio = clamp(restoreRatio, 0f, 1f);
         scroller.forceFinished(true);
         if (continuous) {
             documentScroll = clampScroll(continuousLayout.positionFor(page, pageRatio));
         } else {
-            configureSingle(pageRatio);
+            configurePaged(pageRatio);
         }
         notifyPosition();
         invalidate();
@@ -230,7 +274,7 @@ public final class ComicCanvasView extends View {
             pageRatio = currentSingleRatio();
             zoomMode = FIT_WIDTH;
             zoom = 1f;
-            configureSingle(pageRatio);
+            configurePaged(pageRatio);
         }
         notifyZoom();
         notifyPosition();
@@ -245,7 +289,7 @@ public final class ComicCanvasView extends View {
         }
         zoomMode = FIT_PAGE;
         zoom = 1f;
-        configureSingle(0f);
+        configurePaged(0f);
         notifyZoom();
         notifyPosition();
         invalidate();
@@ -264,7 +308,7 @@ public final class ComicCanvasView extends View {
         zoomMode = MANUAL;
         zoom = clamp(1f / Math.max(0.0001f, fit), 0.1f, 12f);
         singleScale = 1f;
-        centerSingleOnRatio(pageRatio);
+        centerPagedOnRatio(pageRatio);
         notifyZoom();
         notifyPosition();
         invalidate();
@@ -275,7 +319,7 @@ public final class ComicCanvasView extends View {
         if (continuous) {
             applyContinuousZoom(continuousZoom * factor, getWidth() / 2f, getHeight() / 2f);
         } else {
-            applySingleZoom(zoom * factor, getWidth() / 2f, getHeight() / 2f);
+            applyPagedZoom(zoom * factor, getWidth() / 2f, getHeight() / 2f);
         }
     }
 
@@ -287,7 +331,7 @@ public final class ComicCanvasView extends View {
         float anchorRatio = pageRatio;
         relayoutDocument();
         if (continuous) relayoutContinuousAround(anchorPage, anchorRatio);
-        else configureSingle(anchorRatio);
+        else configurePaged(anchorRatio);
     }
 
     @Override
@@ -297,18 +341,31 @@ public final class ComicCanvasView extends View {
         if (renderer == null || pages.isEmpty() || getWidth() <= 0 || getHeight() <= 0) return;
 
         if (continuous) drawContinuous(canvas);
-        else drawSingle(canvas);
+        else drawPaged(canvas);
     }
 
-    private void drawSingle(Canvas canvas) {
-        PageInfo info = pages.get(page);
-        destination.set(
-                singleX,
-                singleY,
-                singleX + info.width * singleScale,
-                singleY + info.height * singleScale);
+    private void drawPaged(Canvas canvas) {
         clip.set(0f, 0f, getWidth(), getHeight());
-        renderer.drawPage(canvas, page, destination, clip);
+        if (!spread || spreadLayout.endFor(page) == page) {
+            PageInfo info = pages.get(page);
+            destination.set(singleX, singleY,
+                    singleX + info.width * singleScale,
+                    singleY + info.height * singleScale);
+            renderer.drawPage(canvas, page, destination, clip);
+            return;
+        }
+
+        int leftPage = spreadLayout.leftPage(page, rightToLeft);
+        int rightPage = spreadLayout.rightPage(page, rightToLeft);
+        float sourceHeight = pagedSourceHeight();
+        float leftWidth = normalizedPageWidth(leftPage, sourceHeight) * singleScale;
+        float rightWidth = normalizedPageWidth(rightPage, sourceHeight) * singleScale;
+        float height = sourceHeight * singleScale;
+        destination.set(singleX, singleY, singleX + leftWidth, singleY + height);
+        renderer.drawPage(canvas, leftPage, destination, clip);
+        float rightX = singleX + leftWidth + pageGap;
+        destination.set(rightX, singleY, rightX + rightWidth, singleY + height);
+        renderer.drawPage(canvas, rightPage, destination, clip);
     }
 
     private void drawContinuous(Canvas canvas) {
@@ -403,28 +460,27 @@ public final class ComicCanvasView extends View {
             clampContinuousPan();
             updateContinuousPosition();
         } else {
-            configureSingle(pendingRestore ? pendingRestoreRatio : pageRatio);
+            configurePaged(pendingRestore ? pendingRestoreRatio : pageRatio);
             pendingRestore = false;
         }
     }
 
-    private void configureSingle(float restoreRatio) {
+    private void configurePaged(float restoreRatio) {
         if (pages.isEmpty() || getWidth() <= 0 || getHeight() <= 0) return;
-        PageInfo info = pages.get(page);
         if (FIT_PAGE.equals(zoomMode)) {
-            singleScale = Math.min((float) getWidth() / info.width, (float) getHeight() / info.height);
+            singleScale = Math.min(fitWidthScale(),
+                    (float) getHeight() / pagedSourceHeight());
         } else if (MANUAL.equals(zoomMode)) {
             singleScale = fitWidthScale() * clamp(zoom, 0.1f, 12f);
         } else {
             singleScale = fitWidthScale();
         }
-        centerSingleOnRatio(restoreRatio);
+        centerPagedOnRatio(restoreRatio);
     }
 
-    private void centerSingleOnRatio(float restoreRatio) {
-        PageInfo info = pages.get(page);
-        float width = info.width * singleScale;
-        float height = info.height * singleScale;
+    private void centerPagedOnRatio(float restoreRatio) {
+        float width = pagedDisplayWidth(singleScale);
+        float height = pagedDisplayHeight(singleScale);
         singleX = (getWidth() - width) / 2f;
         if (height > getHeight()) {
             singleY = -clamp(restoreRatio, 0f, 1f) * (height - getHeight());
@@ -437,16 +493,17 @@ public final class ComicCanvasView extends View {
         pageRatio = currentSingleRatio();
     }
 
-    private void applySingleZoom(float requestedZoom, float focusX, float focusY) {
+    private void applyPagedZoom(float requestedZoom, float focusX, float focusY) {
         if (pages.isEmpty()) return;
-        float oldScale = singleScale;
-        float sourceX = (focusX - singleX) / Math.max(0.0001f, oldScale);
-        float sourceY = (focusY - singleY) / Math.max(0.0001f, oldScale);
+        float horizontalAnchor = (focusX - singleX) /
+                Math.max(1f, pagedDisplayWidth(singleScale));
+        float verticalAnchor = (focusY - singleY) /
+                Math.max(1f, pagedDisplayHeight(singleScale));
         zoomMode = MANUAL;
         zoom = clamp(requestedZoom, 0.1f, 12f);
         singleScale = fitWidthScale() * zoom;
-        singleX = focusX - sourceX * singleScale;
-        singleY = focusY - sourceY * singleScale;
+        singleX = focusX - horizontalAnchor * pagedDisplayWidth(singleScale);
+        singleY = focusY - verticalAnchor * pagedDisplayHeight(singleScale);
         clampSingleOffsets();
         pageRatio = currentSingleRatio();
         notifyZoom();
@@ -485,9 +542,8 @@ public final class ComicCanvasView extends View {
 
     private void clampSingleOffsets() {
         if (pages.isEmpty()) return;
-        PageInfo info = pages.get(page);
-        float width = info.width * singleScale;
-        float height = info.height * singleScale;
+        float width = pagedDisplayWidth(singleScale);
+        float height = pagedDisplayHeight(singleScale);
         if (width <= getWidth()) singleX = (getWidth() - width) / 2f;
         else singleX = clamp(singleX, getWidth() - width, 0f);
 
@@ -510,7 +566,7 @@ public final class ComicCanvasView extends View {
 
     private float currentSingleRatio() {
         if (pages.isEmpty()) return 0f;
-        float height = pages.get(page).height * singleScale;
+        float height = pagedDisplayHeight(singleScale);
         float range = height - getHeight();
         return range <= 0f ? 0f : clamp(-singleY / range, 0f, 1f);
     }
@@ -526,7 +582,38 @@ public final class ComicCanvasView extends View {
 
     private float fitWidthScale() {
         if (pages.isEmpty()) return 1f;
-        return (float) Math.max(1, getWidth()) / pages.get(page).width;
+        float available = Math.max(1f, getWidth() - pagedScreenGap());
+        return available / pagedSourceWidth();
+    }
+
+    private float pagedSourceWidth() {
+        if (!spread || spreadLayout.endFor(page) == page) return pages.get(page).width;
+        float height = pagedSourceHeight();
+        return normalizedPageWidth(spreadLayout.leftPage(page, rightToLeft), height) +
+                normalizedPageWidth(spreadLayout.rightPage(page, rightToLeft), height);
+    }
+
+    private float pagedSourceHeight() {
+        if (!spread || spreadLayout.endFor(page) == page) return pages.get(page).height;
+        return Math.max(pages.get(spreadLayout.leftPage(page, rightToLeft)).height,
+                pages.get(spreadLayout.rightPage(page, rightToLeft)).height);
+    }
+
+    private float pagedDisplayWidth(float scale) {
+        return pagedSourceWidth() * scale + pagedScreenGap();
+    }
+
+    private float pagedDisplayHeight(float scale) {
+        return pagedSourceHeight() * scale;
+    }
+
+    private float pagedScreenGap() {
+        return spread && spreadLayout.endFor(page) > page ? pageGap : 0f;
+    }
+
+    private float normalizedPageWidth(int pageIndex, float commonHeight) {
+        PageInfo info = pages.get(pageIndex);
+        return commonHeight * info.width / info.height;
     }
 
     private float contentWidth() {
@@ -585,9 +672,10 @@ public final class ComicCanvasView extends View {
                 scroller.fling(0, Math.round(documentScroll), 0, Math.round(-velocityY),
                         0, 0, 0, maximum);
             } else {
-                PageInfo info = pages.get(page);
-                int maximumX = Math.round(Math.max(0f, info.width * singleScale - getWidth()));
-                int maximumY = Math.round(Math.max(0f, info.height * singleScale - getHeight()));
+                int maximumX = Math.round(Math.max(
+                        0f, pagedDisplayWidth(singleScale) - getWidth()));
+                int maximumY = Math.round(Math.max(
+                        0f, pagedDisplayHeight(singleScale) - getHeight()));
                 scroller.fling(Math.round(-singleX), Math.round(-singleY),
                         Math.round(-velocityX), Math.round(-velocityY),
                         0, maximumX, 0, maximumY);
@@ -621,7 +709,7 @@ public final class ComicCanvasView extends View {
             } else if (MANUAL.equals(zoomMode) && zoom > 1.08f) {
                 fitWidth();
             } else {
-                applySingleZoom(2.25f, event.getX(), event.getY());
+                applyPagedZoom(2.25f, event.getX(), event.getY());
             }
             return true;
         }
@@ -647,7 +735,7 @@ public final class ComicCanvasView extends View {
                 applyContinuousZoom(
                         pinchStartZoom * gestureScale, detector.getFocusX(), detector.getFocusY());
             } else {
-                applySingleZoom(
+                applyPagedZoom(
                         pinchStartZoom * gestureScale, detector.getFocusX(), detector.getFocusY());
             }
             return true;

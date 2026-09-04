@@ -29,7 +29,7 @@ public final class ReaderScreen extends FrameLayout {
         void onPagePreviewRequested(int page);
         void onPagePreviewCancelled();
         void onBookmark();
-        void onToggleMode();
+        void onLayoutMenu(View anchor);
         void onFitMenu(View anchor);
         void onMoreMenu(View anchor);
         void onChromeVisibilityChanged(boolean visible);
@@ -168,16 +168,16 @@ public final class ReaderScreen extends FrameLayout {
             listener.onPrevious();
         });
         controls.addView(previous, new LinearLayout.LayoutParams(0, Ui.dp(context, 52), 1f));
-        modeLabel = Ui.text(context, context.getString(R.string.reader_layout_paged), 12, Ui.TEXT);
+        modeLabel = Ui.text(context, context.getString(R.string.reader_layout_single), 12, Ui.TEXT);
         modeLabel.setGravity(Gravity.CENTER);
         modeLabel.setClickable(true);
         modeLabel.setFocusable(true);
         modeLabel.setBackground(Ui.rounded(Ui.SURFACE_HIGH, Ui.dp(context, 18), 0, 0));
-        modeLabel.setContentDescription(context.getString(R.string.reader_toggle_layout));
+        modeLabel.setContentDescription(context.getString(R.string.reader_choose_layout));
         modeLabel.setMaxLines(2);
         modeLabel.setOnClickListener(view -> {
             keepChromeAwake();
-            listener.onToggleMode();
+            listener.onLayoutMenu(view);
         });
         LinearLayout.LayoutParams modeParams = new LinearLayout.LayoutParams(
                 Ui.dp(context, 148), Ui.dp(context, 44));
@@ -258,10 +258,12 @@ public final class ReaderScreen extends FrameLayout {
         title.setText(value);
     }
 
-    public void updatePosition(int page, int count) {
+    public void updatePosition(int page, int pageEnd, int count) {
         pageCount = Math.max(1, count);
-        pageLabel.setText(getResources().getString(
-                R.string.reader_page_label, page + 1, pageCount));
+        pageLabel.setText(pageEnd > page
+                ? getResources().getString(
+                        R.string.reader_page_range_label, page + 1, pageEnd + 1, pageCount)
+                : getResources().getString(R.string.reader_page_label, page + 1, pageCount));
         updatingSeek = true;
         seekBar.setMax(Math.max(0, pageCount - 1));
         seekBar.setProgress(Math.max(0, Math.min(page, pageCount - 1)));
@@ -288,8 +290,13 @@ public final class ReaderScreen extends FrameLayout {
                 : R.string.reader_page_fit_zoom_menu));
     }
 
-    public void updateMode(boolean continuous) {
-        modeLabel.setText(continuous ? R.string.reader_layout_continuous : R.string.reader_layout_paged);
+    public void updateMode(String readingMode) {
+        int label = switch (readingMode) {
+            case ComicCanvasView.CONTINUOUS -> R.string.reader_layout_continuous;
+            case ComicCanvasView.SPREAD -> R.string.reader_layout_spread;
+            default -> R.string.reader_layout_single;
+        };
+        modeLabel.setText(label);
     }
 
     public void updateBookmark(boolean bookmarked) {

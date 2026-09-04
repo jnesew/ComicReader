@@ -2,6 +2,16 @@
 
 All notable public changes to ComicViewer for Android are recorded here.
 
+## Unreleased
+
+### Reader
+
+- Added cover-aware two-page spreads with natural LTR and RTL placement, standalone landscape
+  pages, spread navigation, and shared zoom and pan controls.
+- Added forward navigation from the end of an issue into the next available issue in its series.
+
+## 1.0.3 - 2026-08-31
+
 ### Reader
 
 - Fixed flashing dark tile placeholders when zooming PDF pages in paged or continuous mode.

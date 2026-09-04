@@ -503,10 +503,27 @@ public final class MainActivity extends Activity implements
     }
 
     @Override
-    public void onToggleMode() {
-        reader.canvas.setReadingMode(!reader.canvas.isContinuous());
-        reader.updateMode(reader.canvas.isContinuous());
-        scheduleSave();
+    public void onLayoutMenu(View anchor) {
+        PopupMenu menu = new PopupMenu(this, anchor);
+        addLayoutChoice(menu, 1, R.string.reader_layout_single, ComicCanvasView.SINGLE);
+        addLayoutChoice(menu, 2, R.string.reader_layout_spread, ComicCanvasView.SPREAD);
+        addLayoutChoice(menu, 3, R.string.reader_layout_continuous, ComicCanvasView.CONTINUOUS);
+        menu.getMenu().setGroupCheckable(0, true, true);
+        menu.show();
+    }
+
+    private void addLayoutChoice(
+            PopupMenu menu, int itemId, int label, String readingMode) {
+        menu.getMenu().add(0, itemId, itemId, label)
+                .setCheckable(true)
+                .setChecked(readingMode.equals(reader.canvas.readingMode()))
+                .setOnMenuItemClickListener(item -> {
+                    reader.canvas.setReadingMode(readingMode);
+                    reader.updateMode(reader.canvas.readingMode());
+                    scheduleSave();
+                    reader.keepChromeAwake();
+                    return true;
+                });
     }
 
     @Override
@@ -607,9 +624,9 @@ public final class MainActivity extends Activity implements
     @Override
     public void onReaderPositionChanged(int page, float pageRatio) {
         if (archive == null || progress == null) return;
-        progress.page = page;
+        progress.page = reader.canvas.pageEnd();
         progress.scrollRatio = pageRatio;
-        reader.updatePosition(page, archive.count());
+        reader.updatePosition(page, reader.canvas.pageEnd(), archive.count());
         reader.updateBookmark(database.isBookmarked(archive.key(), page));
         scheduleSave();
     }
@@ -753,11 +770,11 @@ public final class MainActivity extends Activity implements
         reader.canvas.setCanvasColor(preferences.canvasColor());
         reader.canvas.setDocument(tileRenderer, opened.pages(), progress);
         reader.setTitle(opened.title());
-        reader.updatePosition(progress.page, opened.count());
-        reader.updateMode(reader.canvas.isContinuous());
+        reader.updatePosition(reader.canvas.page(), reader.canvas.pageEnd(), opened.count());
+        reader.updateMode(reader.canvas.readingMode());
         reader.updateZoom(reader.canvas.zoomMode(), reader.canvas.zoom(),
                 reader.canvas.zoomGesturesLocked());
-        reader.updateBookmark(database.isBookmarked(opened.key(), progress.page));
+        reader.updateBookmark(database.isBookmarked(opened.key(), reader.canvas.page()));
 
         readerActive = true;
         comicOpening = false;
@@ -1382,7 +1399,7 @@ public final class MainActivity extends Activity implements
 
     private void navigate(int delta) {
         if (archive == null || comicOpening) return;
-        int target = clamp(reader.canvas.page() + delta, 0, archive.count() - 1);
+        int target = reader.canvas.navigationTarget(delta);
         if (target == reader.canvas.page()) {
             if (delta > 0 && reader.canvas.isAtDocumentEnd() && openNextSeriesIssue()) return;
             Toast.makeText(this,
@@ -1422,13 +1439,13 @@ public final class MainActivity extends Activity implements
         if (archive == null || progress == null) return;
         progress.uri = archive.key();
         progress.title = archive.title();
-        progress.page = reader.canvas.page();
+        progress.page = reader.canvas.pageEnd();
         progress.pageCount = archive.count();
         progress.scrollRatio = reader.canvas.pageRatio();
         progress.zoomMode = reader.canvas.zoomMode();
         progress.zoom = reader.canvas.zoom();
         progress.zoomGesturesLocked = reader.canvas.zoomGesturesLocked();
-        progress.readingMode = reader.canvas.isContinuous() ? "continuous" : "single";
+        progress.readingMode = reader.canvas.readingMode();
         progress.lastOpened = System.currentTimeMillis();
         database.saveReadingProgress(progress);
     }

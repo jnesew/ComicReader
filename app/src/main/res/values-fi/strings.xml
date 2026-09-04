@@ -98,12 +98,14 @@
     <string name="reader_end_of_series">Sarjan loppu</string>
     <string name="reader_next_issue_unavailable">Seuraava numero ei ole saatavilla</string>
     <string name="reader_page_label">Sivu %1$d / %2$d</string>
+    <string name="reader_page_range_label">Sivut %1$d–%2$d / %3$d</string>
     <string name="reader_page_slider">Sivun liukusäädin</string>
     <string name="reader_preview_unavailable">Esikatselu ei ole saatavilla</string>
     <string name="reader_page_fit_zoom_menu">Sovituksen ja zoomauksen valikko</string>
-    <string name="reader_layout_paged">Sivutettu</string>
+    <string name="reader_layout_single">Yksi sivu</string>
+    <string name="reader_layout_spread">Kahden sivun aukeama</string>
     <string name="reader_layout_continuous">Jatkuva vieritys</string>
-    <string name="reader_toggle_layout">Vaihda sivutetun ja jatkuvan vierityksen välillä</string>
+    <string name="reader_choose_layout">Valitse lukutila</string>
     <string name="reader_fit_width">Sovita leveyteen</string>
     <string name="reader_fit_page">Sovita sivu</string>
     <string name="reader_actual_size">Todellinen koko (100%%)</string>
