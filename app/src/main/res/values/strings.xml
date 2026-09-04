@@ -95,6 +95,8 @@
     <string name="reader_next_page">Next page</string>
     <string name="reader_first_page">First page</string>
     <string name="reader_last_page">Last page</string>
+    <string name="reader_end_of_series">End of series</string>
+    <string name="reader_next_issue_unavailable">Next issue is unavailable</string>
     <string name="reader_page_label">Page %1$d / %2$d</string>
     <string name="reader_page_slider">Page slider</string>
     <string name="reader_preview_unavailable">Preview unavailable</string>

@@ -95,6 +95,8 @@
     <string name="reader_next_page">Seuraava sivu</string>
     <string name="reader_first_page">Ensimmäinen sivu</string>
     <string name="reader_last_page">Viimeinen sivu</string>
+    <string name="reader_end_of_series">Sarjan loppu</string>
+    <string name="reader_next_issue_unavailable">Seuraava numero ei ole saatavilla</string>
     <string name="reader_page_label">Sivu %1$d / %2$d</string>
     <string name="reader_page_slider">Sivun liukusäädin</string>
     <string name="reader_preview_unavailable">Esikatselu ei ole saatavilla</string>

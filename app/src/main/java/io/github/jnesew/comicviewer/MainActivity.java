@@ -57,6 +57,7 @@ import io.github.jnesew.comicviewer.ui.HomeView;
 import io.github.jnesew.comicviewer.ui.ReaderScreen;
 import io.github.jnesew.comicviewer.util.LibraryFolderLabel;
 import io.github.jnesew.comicviewer.util.LibraryScanResult;
+import io.github.jnesew.comicviewer.util.SeriesNavigator;
 import io.github.jnesew.comicviewer.util.Ui;
 
 import java.io.IOException;
@@ -82,6 +83,11 @@ public final class MainActivity extends Activity implements
     private static final String[] SHORTCUT_ACTIONS = {
             "next", "previous", "next_alt", "previous_alt"
     };
+
+    private enum OpenPosition {
+        REMEMBERED,
+        BEGINNING
+    }
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService archiveLoader = Executors.newSingleThreadExecutor(runnable -> {
@@ -628,6 +634,10 @@ public final class MainActivity extends Activity implements
     }
 
     private void openComic(Uri uri, boolean manualImport) {
+        openComic(uri, manualImport, OpenPosition.REMEMBERED);
+    }
+
+    private void openComic(Uri uri, boolean manualImport, OpenPosition openPosition) {
         if (uri == null) return;
         comicOpening = true;
         int generation = ++openGeneration;
@@ -652,21 +662,23 @@ public final class MainActivity extends Activity implements
                 }
                 List<PageInfo> cachedPages = saved.indexComplete
                         ? database.pageIndex(saved.uri) : Collections.emptyList();
+                int openingPage = openPosition == OpenPosition.BEGINNING ? 0 : saved.page;
                 ComicDocument opened = ComicDocumentFactory.open(
-                        this, uri, document, saved.page, cachedPages,
+                        this, uri, document, openingPage, cachedPages,
                         saved.documentSize, saved.documentModified, message ->
                         mainHandler.post(() -> {
                             if (generation == openGeneration) loadingLabel.setText(message);
                         }));
                 database.updateTitle(opened.key(), opened.title());
                 applySeriesMetadata(opened, null);
-                saved.title = opened.title();
+                ReadingProgress activated = database.get(opened.key());
+                activated.title = opened.title();
                 mainHandler.post(() -> {
                     if (generation != openGeneration || isFinishing()) {
                         opened.close();
                         return;
                     }
-                    activateArchive(opened, saved);
+                    activateArchive(opened, activated, openPosition);
                     hideLoading();
                     startBackgroundIndex(opened, generation);
                 });
@@ -685,7 +697,8 @@ public final class MainActivity extends Activity implements
         });
     }
 
-    private void activateArchive(ComicDocument opened, ReadingProgress saved) {
+    private void activateArchive(
+            ComicDocument opened, ReadingProgress saved, OpenPosition openPosition) {
         saveNow();
         closeCurrentArchive();
         archive = opened;
@@ -700,6 +713,10 @@ public final class MainActivity extends Activity implements
         progress.indexComplete = opened.isIndexComplete();
         progress.documentSize = opened.documentSize();
         progress.documentModified = opened.documentModified();
+        if (openPosition == OpenPosition.BEGINNING) {
+            progress.page = 0;
+            progress.scrollRatio = 0f;
+        }
         progress.page = clamp(progress.page, 0, opened.count() - 1);
         OpeningZoomPolicy.OpeningZoom openingZoom = OpeningZoomPolicy.resolve(
                 preferences.rememberZoom(),
@@ -1364,9 +1381,10 @@ public final class MainActivity extends Activity implements
     }
 
     private void navigate(int delta) {
-        if (archive == null) return;
+        if (archive == null || comicOpening) return;
         int target = clamp(reader.canvas.page() + delta, 0, archive.count() - 1);
         if (target == reader.canvas.page()) {
+            if (delta > 0 && reader.canvas.isAtDocumentEnd() && openNextSeriesIssue()) return;
             Toast.makeText(this,
                     target == 0 ? R.string.reader_first_page : R.string.reader_last_page,
                     Toast.LENGTH_SHORT).show();
@@ -1374,6 +1392,24 @@ public final class MainActivity extends Activity implements
         }
         saveNow();
         reader.canvas.showPage(target, 0f);
+    }
+
+    private boolean openNextSeriesIssue() {
+        if (progress == null || progress.seriesId <= 0L) return false;
+        List<ReadingProgress> issues = database.seriesIssues(progress.seriesId);
+        if (issues.size() <= 1) return false;
+        ReadingProgress next = SeriesNavigator.nextIssue(issues, progress.uri);
+        if (next == null) {
+            Toast.makeText(this, R.string.reader_end_of_series, Toast.LENGTH_SHORT).show();
+            return true;
+        }
+        if (!next.available) {
+            Toast.makeText(this, R.string.reader_next_issue_unavailable, Toast.LENGTH_SHORT).show();
+            return true;
+        }
+        saveNow();
+        openComic(Uri.parse(next.uri), false, OpenPosition.BEGINNING);
+        return true;
     }
 
     private void scheduleSave() {

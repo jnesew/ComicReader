@@ -255,6 +255,17 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         return result;
     }
 
+    public List<ReadingProgress> seriesIssues(long seriesId) {
+        ArrayList<ReadingProgress> result = new ArrayList<>();
+        if (seriesId <= 0L) return result;
+        try (Cursor cursor = getReadableDatabase().rawQuery(
+                PROGRESS_WITH_SERIES + " WHERE p.series_id=?",
+                new String[]{Long.toString(seriesId)})) {
+            while (cursor.moveToNext()) result.add(fromCursor(cursor));
+        }
+        return result;
+    }
+
     public List<ReadingProgress> coversNeedingBackfill(int limit) {
         ArrayList<ReadingProgress> result = new ArrayList<>();
         try (Cursor cursor = getReadableDatabase().rawQuery(
