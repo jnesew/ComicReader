@@ -10,9 +10,10 @@ accounts, ads, analytics, subscriptions, network access, or broad storage permis
 ## Highlights
 
 - CBZ, ZIP, image-based EPUB, and PDF support
-- Paged and memory-conscious continuous-scroll reading
+- Single-page, cover-aware two-page spread, and memory-conscious continuous-scroll reading
 - Fit width, fit page, actual size, pinch zoom, double-tap zoom, and tiled rendering
 - Per-title progress, zoom, scroll position, reading direction, bookmarks, and favorites
+- End-of-issue forward navigation into the next available issue in a series
 - Searchable cover library with filters, sorting, configurable density, and cached covers
 - Optional recursive scanning of one user-selected library folder
 - Series grouping from conservative metadata or folder structure, with manual correction
@@ -87,7 +88,7 @@ version code, and one APK named `ComicViewer-Android-vX.Y.Z.apk`.
 | Pinch | Zoom around the gesture focus |
 | Double tap | Zoom in or return to Fit width |
 | Center tap | Show or hide reader controls |
-| `Paged` / `Continuous` control | Change reading mode |
+| Reading-layout control | Choose single-page, two-page spread, or continuous mode |
 | Page slider | Preview and open another page |
 
 The [user guide](docs/USER_GUIDE.md) covers importing, library folders, series grouping, reading

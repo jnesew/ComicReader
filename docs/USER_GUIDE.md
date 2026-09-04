@@ -24,9 +24,16 @@ Removing a title deletes ComicViewer's local metadata and caches but not the ori
 
 ## Reading modes
 
-**Paged** mode displays one page at a time. **Continuous** mode stacks pages vertically and decodes
-only visible and nearby regions. Fit width is intended for tall strips: width is constrained while
-the page retains its full scrollable height.
+**Single page** mode displays one page at a time. **Two-page spread** keeps the cover and landscape
+pages alone, pairs subsequent portrait pages, and reverses their visible sides for RTL reading.
+**Continuous** mode stacks pages vertically and decodes only visible and nearby regions. Fit width
+is intended for tall strips: width is constrained while the page retains its full scrollable
+height.
+
+In paged modes, advancing beyond the final page or spread opens the next available issue when the
+current title belongs to a multi-issue series. Continuous mode requires reaching the actual bottom
+before an additional forward command can open the next issue. Series navigation never wraps or
+silently skips an unavailable issue.
 
 Each title remembers its page, page-relative scroll position, zoom, zoom-gesture lock, reading mode,
 reading direction, favorite state, and page bookmarks.
@@ -40,13 +47,13 @@ fitted to width when no per-title zoom is restored.
 
 | Gesture or control | Result |
 |---|---|
-| Tap the left or right edge | Previous or next page, adjusted for reading direction |
-| Horizontal swipe while fitted | Previous or next page |
+| Tap the left or right edge | Previous or next page or spread, adjusted for reading direction |
+| Horizontal swipe while fitted | Previous or next page or spread |
 | Drag | Pan a zoomed page or scroll vertically |
 | Pinch | Zoom around the gesture focus |
 | Double tap | Zoom in or return to Fit width |
 | Center tap | Show or hide reader controls |
-| Bottom reading-mode control | Switch between paged and continuous modes |
+| Bottom reading-layout control | Choose single-page, two-page spread, or continuous mode |
 | Fit/zoom control | Select fit or zoom and lock or unlock touch zoom |
 | Page slider | Preview pages while dragging and open on release |
 
