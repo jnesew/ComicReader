@@ -79,4 +79,74 @@ with tempfile.TemporaryDirectory(prefix="comicviewer-db-roundtrip-") as director
 assert row == (stable_key, title, series, issue, stable_key)
 assert integrity == ("ok",)
 print("Unicode metadata SQLite round-trip passed")
+
+with tempfile.TemporaryDirectory(prefix="comicviewer-missing-policy-") as directory:
+    database_path = Path(directory) / "library.db"
+    connection = sqlite3.connect(database_path)
+    connection.executescript(
+        """
+        CREATE TABLE series (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+        CREATE TABLE progress (
+            uri TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            available INTEGER NOT NULL,
+            manual_source INTEGER NOT NULL,
+            series_id INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE scanned_files (
+            source_identity TEXT PRIMARY KEY,
+            tree_uri TEXT NOT NULL,
+            canonical_uri TEXT NOT NULL,
+            missing_confirmed INTEGER NOT NULL DEFAULT 0
+        );
+        """
+    )
+    connection.executemany(
+        "INSERT INTO progress(uri, title, available, manual_source) VALUES (?, ?, ?, ?)",
+        [
+            ("confirmed", "Confirmed", 0, 0),
+            ("lost-access", "Lost access", 0, 0),
+            ("old-folder", "Old folder", 0, 0),
+            ("uncertain-copy", "Uncertain copy", 0, 0),
+            ("available", "Available", 1, 0),
+            ("manual", "Manual", 0, 1),
+        ],
+    )
+    connection.executemany(
+        """
+        INSERT INTO scanned_files(
+            source_identity, tree_uri, canonical_uri, missing_confirmed
+        ) VALUES (?, ?, ?, ?)
+        """,
+        [
+            ("confirmed-current", "tree:active", "confirmed", 1),
+            ("lost-current", "tree:active", "lost-access", 0),
+            ("old-confirmed", "tree:old", "old-folder", 1),
+            ("copy-current", "tree:active", "uncertain-copy", 1),
+            ("copy-old", "tree:old", "uncertain-copy", 0),
+            ("available-current", "tree:active", "available", 1),
+            ("manual-current", "tree:active", "manual", 1),
+        ],
+    )
+    selected = connection.execute(
+        """
+        SELECT p.uri
+        FROM progress p
+        WHERE p.available=0 AND p.manual_source=0
+          AND EXISTS (
+              SELECT 1 FROM scanned_files known
+              WHERE known.canonical_uri=p.uri AND known.tree_uri=?
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM scanned_files uncertain
+              WHERE uncertain.canonical_uri=p.uri AND uncertain.missing_confirmed=0
+          )
+        ORDER BY p.uri
+        """,
+        ("tree:active",),
+    ).fetchall()
+    connection.close()
+
+assert selected == [("confirmed",)]
+print("Confirmed-missing cleanup policy passed")
 PY

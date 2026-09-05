@@ -34,6 +34,17 @@
     <string name="library_scan_duplicates">Duplicates %1$d</string>
     <string name="library_scan_skipped">Skipped %1$d</string>
     <string name="library_scan_incomplete_short">Scan incomplete</string>
+    <plurals name="library_review_unavailable">
+        <item quantity="one">Review %1$d unavailable comic…</item>
+        <item quantity="other">Review %1$d unavailable comics…</item>
+    </plurals>
+    <plurals name="library_unavailable_count">
+        <item quantity="one">%1$d unavailable comic</item>
+        <item quantity="other">%1$d unavailable comics</item>
+    </plurals>
+    <string name="library_no_confirmed_missing">No confirmed missing comics</string>
+    <string name="library_missing_series_item">%1$s — %2$s</string>
+    <string name="library_missing_numbered_series_item">%1$s #%2$s — %3$s</string>
     <string name="sort_recently_read">Recently read</string>
     <string name="sort_recently_added">Recently added</string>
     <string name="sort_title_ascending">Title A–Z</string>
@@ -67,6 +78,11 @@
         <item quantity="one">%1$s, %2$d issue</item>
         <item quantity="other">%1$s, %2$d issues</item>
     </plurals>
+    <plurals name="series_unavailable_issue_count">
+        <item quantity="one">%1$d unavailable</item>
+        <item quantity="other">%1$d unavailable</item>
+    </plurals>
+    <string name="series_options">Series options</string>
     <string name="series_edit_assignment">Edit series…</string>
     <string name="series_use_automatic">Use automatic grouping</string>
     <string name="series_assignment_title">Series for “%1$s”</string>
@@ -74,9 +90,25 @@
     <string name="series_name_hint">Series name</string>
     <string name="series_issue_number_hint">Issue number (optional)</string>
     <string name="forget_title">Forget “%1$s”?</string>
-    <string name="forget_message">Reading progress, bookmarks, and the cached cover will be removed. The comic file is not deleted.</string>
+    <string name="forget_message">Reading progress, favorites, bookmarks, per-title settings, and the cached cover will be removed. The comic file is not deleted.</string>
+    <string name="forget_unavailable_message">The source is unavailable. Reconnect or rescan its library folder to keep the saved state, or forget it now. Reading progress, favorites, bookmarks, per-title settings, and the cached cover will be removed. The comic file is not deleted.</string>
     <string name="forget">Forget</string>
+    <string name="forget_series">Forget series</string>
+    <string name="forget_series_title">Forget “%1$s”?</string>
+    <plurals name="forget_series_message">
+        <item quantity="one">Reading progress, favorites, bookmarks, per-title settings, and the cached cover for this issue will be removed. The comic file is not deleted.</item>
+        <item quantity="other">Reading progress, favorites, bookmarks, per-title settings, and cached covers for all %1$d issues will be removed. Comic files are not deleted.</item>
+    </plurals>
+    <plurals name="forget_missing_title">
+        <item quantity="one">Forget %1$d missing comic?</item>
+        <item quantity="other">Forget %1$d missing comics?</item>
+    </plurals>
+    <plurals name="forget_missing_message">
+        <item quantity="one">A complete folder scan confirmed that this comic is no longer present. Its reading state and cached cover will be removed. No comic file will be deleted.</item>
+        <item quantity="other">A complete folder scan confirmed that these %1$d comics are no longer present. Their reading state and cached covers will be removed. No comic files will be deleted.</item>
+    </plurals>
     <string name="cancel">Cancel</string>
+    <string name="continue_action">Continue</string>
     <string name="close">Close</string>
     <string name="done">Done</string>
     <string name="save">Save</string>

@@ -49,6 +49,7 @@ import io.github.jnesew.comicviewer.model.OpeningZoomPolicy;
 import io.github.jnesew.comicviewer.model.PageInfo;
 import io.github.jnesew.comicviewer.model.ReadingDirection;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
+import io.github.jnesew.comicviewer.model.SeriesGroup;
 import io.github.jnesew.comicviewer.model.SeriesMetadata;
 import io.github.jnesew.comicviewer.render.ComicCanvasView;
 import io.github.jnesew.comicviewer.render.PagePreviewLoader;
@@ -378,8 +379,7 @@ public final class MainActivity extends Activity implements
     @Override
     public void onRecentRequested(ReadingProgress recent) {
         if (!recent.available) {
-            showError(getString(R.string.error_open_recent_title),
-                    getString(R.string.error_library_source_unavailable));
+            confirmForgetTitle(recent, R.string.forget_unavailable_message);
             return;
         }
         try {
@@ -392,20 +392,30 @@ public final class MainActivity extends Activity implements
 
     @Override
     public void onForgetRequested(ReadingProgress recent) {
+        confirmForgetTitle(recent, R.string.forget_message);
+    }
+
+    private void confirmForgetTitle(ReadingProgress recent, int message) {
         new AlertDialog.Builder(this)
                 .setTitle(getString(R.string.forget_title, recent.title))
-                .setMessage(R.string.forget_message)
+                .setMessage(message)
                 .setNegativeButton(R.string.cancel, null)
                 .setPositiveButton(R.string.forget, (dialog, which) -> {
-                    String cover = database.forget(recent.uri);
-                    CoverStore.delete(this, cover);
-                    try {
-                        getContentResolver().releasePersistableUriPermission(
-                                Uri.parse(recent.uri), Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                    } catch (RuntimeException ignored) {
-                    }
-                    home.refresh();
+                    forgetEntries(Collections.singletonList(recent));
                 })
+                .show();
+    }
+
+    @Override
+    public void onSeriesForgetRequested(SeriesGroup series) {
+        int count = series.issues.size();
+        new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.forget_series_title, series.title))
+                .setMessage(getResources().getQuantityString(
+                        R.plurals.forget_series_message, count, count))
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.forget_series, (dialog, which) ->
+                        forgetEntries(series.issues))
                 .show();
     }
 
@@ -438,6 +448,19 @@ public final class MainActivity extends Activity implements
                         return true;
                     });
         }
+        List<ReadingProgress> confirmedMissing = configured
+                ? database.confirmedMissingItems(preferences.libraryFolderUri())
+                : Collections.emptyList();
+        if (!confirmedMissing.isEmpty()) {
+            int count = confirmedMissing.size();
+            menu.getMenu().add(getResources().getQuantityString(
+                            R.plurals.library_review_unavailable, count, count))
+                    .setEnabled(!folderScanRunning.get())
+                    .setOnMenuItemClickListener(item -> {
+                        showConfirmedMissingReview();
+                        return true;
+                    });
+        }
         menu.getMenu().add(home.coverSizeMenuLabel()).setOnMenuItemClickListener(item -> {
             home.showCoverSizeDialog();
             return true;
@@ -447,6 +470,76 @@ public final class MainActivity extends Activity implements
             return true;
         });
         menu.show();
+    }
+
+    private void showConfirmedMissingReview() {
+        if (folderScanRunning.get()) return;
+        List<ReadingProgress> missing = database.confirmedMissingItems(
+                preferences.libraryFolderUri());
+        if (missing.isEmpty()) {
+            Toast.makeText(this, R.string.library_no_confirmed_missing,
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        CharSequence[] labels = new CharSequence[missing.size()];
+        boolean[] selected = new boolean[missing.size()];
+        for (int index = 0; index < missing.size(); index++) {
+            ReadingProgress item = missing.get(index);
+            labels[index] = missingItemLabel(item);
+            selected[index] = true;
+        }
+        int count = missing.size();
+        new AlertDialog.Builder(this)
+                .setTitle(getResources().getQuantityString(
+                        R.plurals.library_unavailable_count, count, count))
+                .setMultiChoiceItems(labels, selected,
+                        (dialog, which, checked) -> selected[which] = checked)
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.continue_action, (dialog, which) -> {
+                    ArrayList<ReadingProgress> chosen = new ArrayList<>();
+                    for (int index = 0; index < missing.size(); index++) {
+                        if (selected[index]) chosen.add(missing.get(index));
+                    }
+                    if (!chosen.isEmpty()) confirmForgetMissing(chosen);
+                })
+                .show();
+    }
+
+    private void confirmForgetMissing(List<ReadingProgress> missing) {
+        int count = missing.size();
+        new AlertDialog.Builder(this)
+                .setTitle(getResources().getQuantityString(
+                        R.plurals.forget_missing_title, count, count))
+                .setMessage(getResources().getQuantityString(
+                        R.plurals.forget_missing_message, count, count))
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.forget, (dialog, which) -> forgetEntries(missing))
+                .show();
+    }
+
+    private String missingItemLabel(ReadingProgress item) {
+        if (item.seriesTitle.trim().isEmpty()) return item.title;
+        if (item.seriesNumber.trim().isEmpty()) {
+            return getString(R.string.library_missing_series_item,
+                    item.seriesTitle, item.title);
+        }
+        return getString(R.string.library_missing_numbered_series_item,
+                item.seriesTitle, item.seriesNumber, item.title);
+    }
+
+    private void forgetEntries(List<ReadingProgress> entries) {
+        ArrayList<String> uris = new ArrayList<>();
+        for (ReadingProgress entry : entries) {
+            if (entry != null && !entry.uri.trim().isEmpty()) uris.add(entry.uri);
+        }
+        for (String cover : database.forgetAll(uris)) CoverStore.delete(this, cover);
+        for (String uri : uris) {
+            try {
+                releaseReadAccess(Uri.parse(uri));
+            } catch (RuntimeException ignored) {
+            }
+        }
+        home.refresh();
     }
 
     @Override

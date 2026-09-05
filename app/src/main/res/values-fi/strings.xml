@@ -34,6 +34,17 @@
     <string name="library_scan_duplicates">Kaksoiskappaleita %1$d</string>
     <string name="library_scan_skipped">Ohitettiin %1$d</string>
     <string name="library_scan_incomplete_short">Tarkistus jäi vajaaksi</string>
+    <plurals name="library_review_unavailable">
+        <item quantity="one">Tarkista %1$d ei-saatavilla oleva sarjakuva…</item>
+        <item quantity="other">Tarkista %1$d ei-saatavilla olevaa sarjakuvaa…</item>
+    </plurals>
+    <plurals name="library_unavailable_count">
+        <item quantity="one">%1$d ei-saatavilla oleva sarjakuva</item>
+        <item quantity="other">%1$d ei-saatavilla olevaa sarjakuvaa</item>
+    </plurals>
+    <string name="library_no_confirmed_missing">Ei vahvistetusti puuttuvia sarjakuvia</string>
+    <string name="library_missing_series_item">%1$s — %2$s</string>
+    <string name="library_missing_numbered_series_item">%1$s #%2$s — %3$s</string>
     <string name="sort_recently_read">Viimeksi luetut</string>
     <string name="sort_recently_added">Viimeksi lisätyt</string>
     <string name="sort_title_ascending">Nimi A–Ö</string>
@@ -67,6 +78,11 @@
         <item quantity="one">%1$s, %2$d numero</item>
         <item quantity="other">%1$s, %2$d numeroa</item>
     </plurals>
+    <plurals name="series_unavailable_issue_count">
+        <item quantity="one">%1$d ei saatavilla</item>
+        <item quantity="other">%1$d ei saatavilla</item>
+    </plurals>
+    <string name="series_options">Sarjan valinnat</string>
     <string name="series_edit_assignment">Muokkaa sarjaa…</string>
     <string name="series_use_automatic">Käytä automaattista ryhmittelyä</string>
     <string name="series_assignment_title">Nimikkeen ”%1$s” sarja</string>
@@ -74,9 +90,25 @@
     <string name="series_name_hint">Sarjan nimi</string>
     <string name="series_issue_number_hint">Numeron tunnus (valinnainen)</string>
     <string name="forget_title">Unohdetaanko ”%1$s”?</string>
-    <string name="forget_message">Lukukohta, kirjanmerkit ja välimuistissa oleva kansi poistetaan. Sarjakuvatiedostoa ei poisteta.</string>
+    <string name="forget_message">Lukukohta, suosikki, kirjanmerkit, nimikekohtaiset asetukset ja välimuistissa oleva kansi poistetaan. Sarjakuvatiedostoa ei poisteta.</string>
+    <string name="forget_unavailable_message">Lähde ei ole saatavilla. Yhdistä tai tarkista kirjastokansio uudelleen säilyttääksesi tallennetut tiedot tai unohda nimike nyt. Lukukohta, suosikki, kirjanmerkit, nimikekohtaiset asetukset ja välimuistissa oleva kansi poistetaan. Sarjakuvatiedostoa ei poisteta.</string>
     <string name="forget">Unohda</string>
+    <string name="forget_series">Unohda sarja</string>
+    <string name="forget_series_title">Unohdetaanko ”%1$s”?</string>
+    <plurals name="forget_series_message">
+        <item quantity="one">Tämän numeron lukukohta, suosikki, kirjanmerkit, nimikekohtaiset asetukset ja välimuistissa oleva kansi poistetaan. Sarjakuvatiedostoa ei poisteta.</item>
+        <item quantity="other">Kaikkien %1$d numeron lukukohdat, suosikit, kirjanmerkit, nimikekohtaiset asetukset ja välimuistissa olevat kannet poistetaan. Sarjakuvatiedostoja ei poisteta.</item>
+    </plurals>
+    <plurals name="forget_missing_title">
+        <item quantity="one">Unohdetaanko %1$d puuttuva sarjakuva?</item>
+        <item quantity="other">Unohdetaanko %1$d puuttuvaa sarjakuvaa?</item>
+    </plurals>
+    <plurals name="forget_missing_message">
+        <item quantity="one">Täydellinen kansiotarkistus vahvisti, ettei tätä sarjakuvaa enää ole kansiossa. Sen lukutiedot ja välimuistissa oleva kansi poistetaan. Sarjakuvatiedostoa ei poisteta.</item>
+        <item quantity="other">Täydellinen kansiotarkistus vahvisti, ettei näitä %1$d sarjakuvaa enää ole kansiossa. Niiden lukutiedot ja välimuistissa olevat kannet poistetaan. Sarjakuvatiedostoja ei poisteta.</item>
+    </plurals>
     <string name="cancel">Peruuta</string>
+    <string name="continue_action">Jatka</string>
     <string name="close">Sulje</string>
     <string name="done">Valmis</string>
     <string name="save">Tallenna</string>

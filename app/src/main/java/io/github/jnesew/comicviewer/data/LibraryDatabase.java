@@ -12,6 +12,7 @@ import io.github.jnesew.comicviewer.model.ReadingProgress;
 import io.github.jnesew.comicviewer.util.InputLimits;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.text.Normalizer;
@@ -43,7 +44,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
     public static final int METADATA_FAILED = -1;
 
     private static final String NAME = "comicviewer.sqlite3";
-    private static final int VERSION = 6;
+    private static final int VERSION = 7;
     private static final String PROGRESS_WITH_SERIES =
             "SELECT p.*, COALESCE(s.name, '') AS series_title FROM progress p " +
                     "LEFT JOIN series s ON s.id = p.series_id";
@@ -138,6 +139,10 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         }
         if (oldVersion < 6) {
             db.execSQL("ALTER TABLE progress ADD COLUMN zoom_gestures_locked " +
+                    "INTEGER NOT NULL DEFAULT 0");
+        }
+        if (oldVersion >= 4 && oldVersion < 7) {
+            db.execSQL("ALTER TABLE scanned_files ADD COLUMN missing_confirmed " +
                     "INTEGER NOT NULL DEFAULT 0");
         }
         createIndexes(db);
@@ -261,6 +266,28 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         try (Cursor cursor = getReadableDatabase().rawQuery(
                 PROGRESS_WITH_SERIES + " WHERE p.series_id=?",
                 new String[]{Long.toString(seriesId)})) {
+            while (cursor.moveToNext()) result.add(fromCursor(cursor));
+        }
+        return result;
+    }
+
+    /**
+     * Titles that every known source-folder copy was proven absent from by a complete scan.
+     * Entries made unavailable because folder access was stopped or lost are deliberately excluded.
+     */
+    public List<ReadingProgress> confirmedMissingItems(String activeTreeUri) {
+        ArrayList<ReadingProgress> result = new ArrayList<>();
+        String treeUri = clean(activeTreeUri);
+        if (treeUri.isEmpty()) return result;
+        String selection = " WHERE p.available=0 AND p.manual_source=0 " +
+                "AND EXISTS (SELECT 1 FROM scanned_files known " +
+                "WHERE known.canonical_uri=p.uri AND known.tree_uri=?) " +
+                "AND NOT EXISTS (SELECT 1 FROM scanned_files uncertain " +
+                "WHERE uncertain.canonical_uri=p.uri AND uncertain.missing_confirmed=0)";
+        try (Cursor cursor = getReadableDatabase().rawQuery(
+                PROGRESS_WITH_SERIES + selection +
+                        " ORDER BY p.title COLLATE NOCASE ASC, p.uri ASC",
+                new String[]{treeUri})) {
             while (cursor.moveToNext()) result.add(fromCursor(cursor));
         }
         return result;
@@ -664,6 +691,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         values.put("content_fingerprint", source.contentFingerprint);
         values.put("last_seen", source.lastSeen);
         values.put("available", source.available ? 1 : 0);
+        values.put("missing_confirmed", source.missingConfirmed ? 1 : 0);
         getWritableDatabase().insertWithOnConflict(
                 "scanned_files", null, values, SQLiteDatabase.CONFLICT_REPLACE);
     }
@@ -689,6 +717,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         values.put("document_modified", documentModified);
         values.put("last_seen", seenAt);
         values.put("available", 1);
+        values.put("missing_confirmed", 0);
         getWritableDatabase().update(
                 "scanned_files", values, "source_identity=?", new String[]{sourceIdentity});
     }
@@ -809,10 +838,12 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         try {
             ContentValues missing = new ContentValues();
             missing.put("available", 0);
+            missing.put("missing_confirmed", 1);
             db.update("scanned_files", missing, "tree_uri=? AND last_seen<?",
                     new String[]{treeUri, Long.toString(scanStarted)});
             ContentValues present = new ContentValues();
             present.put("available", 1);
+            present.put("missing_confirmed", 0);
             db.update("scanned_files", present, "tree_uri=? AND last_seen>=?",
                     new String[]{treeUri, Long.toString(scanStarted)});
 
@@ -854,6 +885,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         try {
             ContentValues missing = new ContentValues();
             missing.put("available", 0);
+            missing.put("missing_confirmed", 0);
             db.update("scanned_files", missing, "tree_uri=?", new String[]{treeUri});
             db.execSQL("UPDATE progress SET available=0 WHERE manual_source=0 AND uri IN (" +
                     "SELECT DISTINCT canonical_uri FROM scanned_files WHERE tree_uri=?) " +
@@ -866,20 +898,42 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
     }
 
     public String forget(String uri) {
+        ReadingProgress current = get(uri);
+        forgetAll(Collections.singletonList(uri));
+        return current.coverPath;
+    }
+
+    /** Atomically forget multiple library entries and return their cached cover paths. */
+    public List<String> forgetAll(List<String> uris) {
+        ArrayList<String> keys = new ArrayList<>();
+        ArrayList<String> covers = new ArrayList<>();
+        if (uris == null) return covers;
+        for (String candidate : uris) {
+            String key = clean(candidate);
+            if (key.isEmpty() || keys.contains(key)) continue;
+            ReadingProgress current = get(key);
+            if (current.uri.isEmpty()) continue;
+            keys.add(key);
+            if (!clean(current.coverPath).isEmpty()) covers.add(current.coverPath);
+        }
+
         SQLiteDatabase db = getWritableDatabase();
-        String cover = get(uri).coverPath;
         db.beginTransaction();
         try {
-            db.delete("bookmarks", "uri=?", new String[]{uri});
-            db.delete("archive_pages", "uri=?", new String[]{uri});
-            db.delete("scanned_files", "canonical_uri=? OR document_uri=?",
-                    new String[]{uri, uri});
-            db.delete("progress", "uri=?", new String[]{uri});
+            for (String uri : keys) {
+                db.delete("bookmarks", "uri=?", new String[]{uri});
+                db.delete("archive_pages", "uri=?", new String[]{uri});
+                db.delete("scanned_files", "canonical_uri=? OR document_uri=?",
+                        new String[]{uri, uri});
+                db.delete("progress", "uri=?", new String[]{uri});
+            }
+            db.execSQL("DELETE FROM series WHERE NOT EXISTS (" +
+                    "SELECT 1 FROM progress p WHERE p.series_id=series.id)");
             db.setTransactionSuccessful();
         } finally {
             db.endTransaction();
         }
-        return cover;
+        return covers;
     }
 
     public static final class ScannedFile {
@@ -895,6 +949,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         public String contentFingerprint = "";
         public long lastSeen = 0L;
         public boolean available = true;
+        public boolean missingConfirmed = false;
     }
 
     public static final class DuplicateMergeResult {
@@ -939,6 +994,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                 "content_fingerprint TEXT NOT NULL DEFAULT ''," +
                 "last_seen INTEGER NOT NULL DEFAULT 0," +
                 "available INTEGER NOT NULL DEFAULT 1," +
+                "missing_confirmed INTEGER NOT NULL DEFAULT 0," +
                 "UNIQUE(tree_uri, document_id))");
     }
 
@@ -965,6 +1021,8 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                 "ON scanned_files(document_size, sample_signature)");
         db.execSQL("CREATE INDEX IF NOT EXISTS scanned_files_canonical " +
                 "ON scanned_files(canonical_uri, available)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS scanned_files_confirmed_missing " +
+                "ON scanned_files(canonical_uri, missing_confirmed)");
     }
 
     private static long ensureSeries(
@@ -1044,6 +1102,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         result.contentFingerprint = string(cursor, "content_fingerprint");
         result.lastSeen = longValue(cursor, "last_seen");
         result.available = integer(cursor, "available") != 0;
+        result.missingConfirmed = integer(cursor, "missing_confirmed") != 0;
         return result;
     }
 

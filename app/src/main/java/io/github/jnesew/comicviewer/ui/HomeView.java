@@ -54,6 +54,7 @@ public final class HomeView extends FrameLayout {
         void onOpenRequested();
         void onRecentRequested(ReadingProgress progress);
         void onForgetRequested(ReadingProgress progress);
+        void onSeriesForgetRequested(SeriesGroup series);
         void onSeriesEditRequested(ReadingProgress progress);
         void onLibraryMenuRequested(View anchor);
     }
@@ -678,7 +679,7 @@ public final class HomeView extends FrameLayout {
 
     private void bindSeriesCard(CardHolder holder, SeriesGroup group) {
         ReadingProgress standalone = group.isStandalone() ? group.issues.get(0) : null;
-        holder.root.setAlpha(standalone == null || standalone.available ? 1f : 0.62f);
+        holder.root.setAlpha(group.isUnavailable() ? 0.62f : 1f);
         if (standalone != null) {
             holder.root.setContentDescription(getResources().getString(
                     R.string.comic_accessibility_progress,
@@ -689,9 +690,18 @@ public final class HomeView extends FrameLayout {
                     group.title, group.issues.size()));
         }
         holder.root.setOnClickListener(view -> openSeries(group));
-        holder.root.setOnLongClickListener(null);
-        holder.options.setVisibility(GONE);
-        holder.options.setOnClickListener(null);
+        holder.root.setOnLongClickListener(view -> {
+            if (standalone != null) listener.onForgetRequested(standalone);
+            else listener.onSeriesForgetRequested(group);
+            return true;
+        });
+        holder.options.setContentDescription(getResources().getString(
+                standalone == null ? R.string.series_options : R.string.comic_options));
+        holder.options.setVisibility(VISIBLE);
+        holder.options.setOnClickListener(view -> {
+            if (standalone != null) showComicMenu(view, standalone);
+            else showSeriesMenu(view, group);
+        });
         holder.favorite.setVisibility(GONE);
         holder.favorite.setOnClickListener(null);
         holder.cover.setContentDescription(getResources().getString(
@@ -701,6 +711,15 @@ public final class HomeView extends FrameLayout {
         holder.progress.setProgress(group.percent);
         if (standalone != null) {
             bindTitleDetails(holder.details, standalone);
+        } else if (group.isUnavailable()) {
+            holder.details.setText(R.string.comic_status_unavailable);
+        } else if (group.unavailableIssueCount() > 0) {
+            String total = getResources().getQuantityString(
+                    R.plurals.series_issue_count, group.issues.size(), group.issues.size());
+            String unavailable = getResources().getQuantityString(
+                    R.plurals.series_unavailable_issue_count, group.unavailableIssueCount(),
+                    group.unavailableIssueCount());
+            holder.details.setText(total + " · " + unavailable);
         } else {
             holder.details.setText(getResources().getQuantityString(
                     R.plurals.series_issue_count, group.issues.size(), group.issues.size()));
@@ -743,6 +762,15 @@ public final class HomeView extends FrameLayout {
         }
         menu.getMenu().add(R.string.forget).setOnMenuItemClickListener(selected -> {
             listener.onForgetRequested(item);
+            return true;
+        });
+        menu.show();
+    }
+
+    private void showSeriesMenu(View anchor, SeriesGroup group) {
+        PopupMenu menu = new PopupMenu(getContext(), anchor);
+        menu.getMenu().add(R.string.forget_series).setOnMenuItemClickListener(selected -> {
+            listener.onSeriesForgetRequested(group);
             return true;
         });
         menu.show();

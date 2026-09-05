@@ -4,6 +4,13 @@ All notable public changes to ComicViewer for Android are recorded here.
 
 ## Unreleased
 
+### Library
+
+- Added consistent forget actions for unavailable titles and complete series, including explicit
+  confirmation that comic files are never deleted.
+- Added a review-and-remove flow for entries proven missing by a complete folder scan. Titles made
+  unavailable by lost or released folder access are excluded from bulk removal.
+
 ### Reader
 
 - Added cover-aware two-page spreads with natural LTR and RTL placement, standalone landscape

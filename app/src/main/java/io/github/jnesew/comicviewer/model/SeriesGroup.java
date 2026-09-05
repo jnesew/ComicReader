@@ -36,4 +36,20 @@ public final class SeriesGroup {
     public boolean isStandalone() {
         return id <= 0L;
     }
+
+    public int availableIssueCount() {
+        int available = 0;
+        for (ReadingProgress issue : issues) {
+            if (issue.available) available++;
+        }
+        return available;
+    }
+
+    public int unavailableIssueCount() {
+        return issues.size() - availableIssueCount();
+    }
+
+    public boolean isUnavailable() {
+        return availableIssueCount() == 0;
+    }
 }

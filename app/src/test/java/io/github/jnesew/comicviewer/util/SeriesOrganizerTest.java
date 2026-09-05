@@ -9,6 +9,7 @@ import org.junit.Test;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public final class SeriesOrganizerTest {
@@ -45,6 +46,29 @@ public final class SeriesOrganizerTest {
         assertEquals(1, groups.size());
         assertEquals(2, groups.get(0).issues.size());
         assertEquals(50, groups.get(0).percent);
+    }
+
+    @Test
+    public void groupAvailabilityReflectsAllAndPartiallyMissingSeries() {
+        ReadingProgress one = issue("one", 9L, "Drift", "1", 0);
+        ReadingProgress two = issue("two", 9L, "Drift", "2", 0);
+        one.available = false;
+        two.available = false;
+
+        SeriesGroup missing = SeriesOrganizer.group(
+                List.of(one, two), List.of(one, two), LibraryDatabase.SORT_TITLE_ASC).get(0);
+
+        assertTrue(missing.isUnavailable());
+        assertEquals(0, missing.availableIssueCount());
+        assertEquals(2, missing.unavailableIssueCount());
+
+        two.available = true;
+        SeriesGroup partial = SeriesOrganizer.group(
+                List.of(one, two), List.of(one, two), LibraryDatabase.SORT_TITLE_ASC).get(0);
+
+        assertFalse(partial.isUnavailable());
+        assertEquals(1, partial.availableIssueCount());
+        assertEquals(1, partial.unavailableIssueCount());
     }
 
     private static ReadingProgress issue(

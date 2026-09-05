@@ -20,7 +20,15 @@ Series view groups titles conservatively using supported embedded metadata or fo
 Standalone titles remain separate. Series name and issue order can be corrected from the title
 menu.
 
-Removing a title deletes ComicViewer's local metadata and caches but not the original comic file.
+Long-press a title or series, or use its options menu, to forget it. Forgetting deletes
+ComicViewer's local reading state and caches but never the original comic files. Tapping an
+unavailable title also offers the same choice while retaining the option to reconnect or rescan
+its source folder instead.
+
+After a complete folder scan proves that files are no longer present, **Review unavailable
+comics** appears in the library menu. It allows selecting and forgetting those stale entries in
+one operation. ComicViewer excludes titles made unavailable merely because folder access was
+stopped, revoked, or could not be verified by a complete scan.
 
 ## Reading modes
 
