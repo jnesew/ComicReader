@@ -274,7 +274,12 @@ public final class ComicCanvasView extends View {
                 !isAtDocumentEnd()) return false;
         int target = page + (delta > 0 ? 1 : -1);
         if (target < 0 || target >= pages.size()) return false;
-        showGlobalPage(target, delta < 0 ? 1f : 0f);
+        int targetIssue = issueFor(target);
+        if (delta < 0 && targetIssue != issue) {
+            showContinuousIssueEnd(targetIssue);
+        } else {
+            showGlobalPage(target, 0f);
+        }
         return true;
     }
 
@@ -907,6 +912,16 @@ public final class ComicCanvasView extends View {
         pageRatio = clamp(restoreRatio, 0f, 1f);
         scroller.forceFinished(true);
         documentScroll = clampScroll(continuousLayout.positionFor(page, pageRatio));
+        updateContinuousPosition();
+        invalidate();
+    }
+
+    private void showContinuousIssueEnd(int issue) {
+        if (issue < 0 || issue >= continuousIssueEnds.length) return;
+        int end = continuousIssueEnds[issue];
+        float bottom = continuousLayout.top(end) + continuousLayout.height(end) + pageGap;
+        scroller.forceFinished(true);
+        documentScroll = clampScroll(bottom - Math.max(1, getHeight()));
         updateContinuousPosition();
         invalidate();
     }

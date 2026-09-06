@@ -10,12 +10,18 @@ All notable public changes to ComicViewer for Android are recorded here.
   confirmation that comic files are never deleted.
 - Added a review-and-remove flow for entries proven missing by a complete folder scan. Titles made
   unavailable by lost or released folder access are excluded from bulk removal.
+- Added a per-comic metadata editor for custom display titles, automatic/manual/standalone series
+  grouping, existing-series suggestions, issue numbers, and restoring the detected title.
 
 ### Reader
 
 - Added cover-aware two-page spreads with natural LTR and RTL placement, standalone landscape
   pages, spread navigation, and shared zoom and pan controls.
 - Added forward navigation from the end of an issue into the next available issue in its series.
+- Added backward navigation from the first page into the final page or spread of the previous issue.
+- Continuous mode now buffers adjacent issues and crosses issue boundaries through ordinary
+  scrolling, with inline separators and loading, unavailable, and retry states.
+- Simplified the reader menu and moved Background color and Hardware shortcuts into Reader options.
 
 ## 1.0.3 - 2026-08-31
 

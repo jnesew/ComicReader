@@ -100,6 +100,11 @@ public final class MainActivity extends Activity implements
         thread.setPriority(Thread.NORM_PRIORITY - 1);
         return thread;
     });
+    private final ExecutorService adjacentLoader = Executors.newFixedThreadPool(2, runnable -> {
+        Thread thread = new Thread(runnable, "comic-adjacent-loader");
+        thread.setPriority(Thread.NORM_PRIORITY - 1);
+        return thread;
+    });
     private final ExecutorService indexWorker = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "comic-index-worker");
         thread.setPriority(Thread.NORM_PRIORITY - 1);
@@ -134,6 +139,8 @@ public final class MainActivity extends Activity implements
             new java.util.concurrent.ConcurrentHashMap<>();
     private final Set<String> continuousLoading = new java.util.HashSet<>();
     private final Map<String, String> continuousErrors = new java.util.HashMap<>();
+    private final Map<String, Future<?>> continuousPrefetchTasks =
+            new java.util.concurrent.ConcurrentHashMap<>();
     private volatile boolean readerActive;
     private volatile boolean comicOpening;
     private volatile int openGeneration;
@@ -279,6 +286,7 @@ public final class MainActivity extends Activity implements
         saveNow();
         closeCurrentArchive();
         archiveLoader.shutdownNow();
+        adjacentLoader.shutdownNow();
         indexWorker.shutdownNow();
         libraryWorker.shutdownNow();
         scanWorker.shutdownNow();
@@ -789,6 +797,7 @@ public final class MainActivity extends Activity implements
             OpenPosition openPosition,
             String readingModeOverride) {
         if (uri == null) return;
+        cancelContinuousPrefetch();
         comicOpening = true;
         int generation = ++openGeneration;
         showLoading(getString(R.string.reader_opening));
@@ -874,7 +883,8 @@ public final class MainActivity extends Activity implements
             progress.scrollRatio = 0f;
         } else if (openPosition == OpenPosition.END) {
             progress.page = opened.count() - 1;
-            progress.scrollRatio = 1f;
+            progress.scrollRatio = ComicCanvasView.CONTINUOUS.equals(progress.readingMode)
+                    ? 1f : 0f;
         }
         progress.page = clamp(progress.page, 0, opened.count() - 1);
         OpeningZoomPolicy.OpeningZoom openingZoom = OpeningZoomPolicy.resolve(
@@ -1582,11 +1592,11 @@ public final class MainActivity extends Activity implements
         progress.scrollRatio = ratio;
         progress.lastOpened = System.currentTimeMillis();
         database.saveReadingProgress(progress);
+        cancelContinuousPrefetch();
         for (ContinuousIssueResource resource : new ArrayList<>(continuousResources.values())) {
             if (resource.document != archive) resource.close();
         }
         continuousResources.clear();
-        continuousLoading.clear();
         continuousErrors.clear();
         progress.readingMode = readingMode;
         progress.zoomMode = ComicCanvasView.FIT_WIDTH;
@@ -1720,13 +1730,18 @@ public final class MainActivity extends Activity implements
         updateContinuousBoundaries();
         int generation = openGeneration;
         String uriKey = adjacent.uri;
-        archiveLoader.execute(() -> openContinuousAdjacent(uriKey, direction, generation));
+        long seriesId = progress.seriesId;
+        Future<?> task = adjacentLoader.submit(() ->
+                openContinuousAdjacent(uriKey, direction, generation, seriesId));
+        continuousPrefetchTasks.put(uriKey, task);
     }
 
-    private void openContinuousAdjacent(String uriKey, int direction, int generation) {
+    private void openContinuousAdjacent(
+            String uriKey, int direction, int generation, long seriesId) {
         ComicDocument opened = null;
         TileRenderer openedRenderer = null;
         try {
+            if (Thread.currentThread().isInterrupted() || generation != openGeneration) return;
             Uri uri = Uri.parse(uriKey);
             ReadingProgress saved = database.get(uriKey);
             if (saved.uri.isEmpty()) throw new IOException("Library item is no longer available.");
@@ -1752,8 +1767,10 @@ public final class MainActivity extends Activity implements
                     message -> Toast.makeText(this, message, Toast.LENGTH_LONG).show());
             TileRenderer readyRenderer = openedRenderer;
             mainHandler.post(() -> {
+                continuousPrefetchTasks.remove(uriKey);
                 continuousLoading.remove(uriKey);
-                if (generation != openGeneration || destroyed || !reader.canvas.isContinuous()) {
+                if (generation != openGeneration || destroyed || !reader.canvas.isContinuous() ||
+                        progress == null || progress.seriesId != seriesId) {
                     readyRenderer.close();
                     readyDocument.close();
                     return;
@@ -1771,12 +1788,21 @@ public final class MainActivity extends Activity implements
             else if (opened != null) opened.close();
             String message = safeMessage(error);
             mainHandler.post(() -> {
+                continuousPrefetchTasks.remove(uriKey);
                 continuousLoading.remove(uriKey);
                 if (generation != openGeneration || destroyed) return;
                 continuousErrors.put(uriKey, message);
                 updateContinuousBoundaries();
             });
         }
+    }
+
+    private void cancelContinuousPrefetch() {
+        for (Future<?> task : new ArrayList<>(continuousPrefetchTasks.values())) {
+            task.cancel(true);
+        }
+        continuousPrefetchTasks.clear();
+        continuousLoading.clear();
     }
 
     private void startContinuousBackgroundIndex(
@@ -1947,6 +1973,7 @@ public final class MainActivity extends Activity implements
     }
 
     private void closeCurrentArchive() {
+        cancelContinuousPrefetch();
         reader.dismissPagePreview();
         reader.canvas.clearDocument();
         if (pagePreviewLoader != null) {
@@ -2197,6 +2224,8 @@ public final class MainActivity extends Activity implements
             progress = updated;
             reader.setTitle(updated.title);
             if (reader.canvas.isContinuous()) {
+                cancelContinuousPrefetch();
+                continuousErrors.clear();
                 for (Map.Entry<String, ContinuousIssueResource> entry :
                         new ArrayList<>(continuousResources.entrySet())) {
                     if (uri.equals(entry.getKey())) continue;

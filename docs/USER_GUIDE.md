@@ -17,8 +17,10 @@ by recent reading, import time, title, or progress. Opening a title marks it as 
 its saved page and view state.
 
 Series view groups titles conservatively using supported embedded metadata or folder structure.
-Standalone titles remain separate. Series name and issue order can be corrected from the title
-menu.
+Standalone titles remain separate. **Edit comic** changes the displayed comic title, chooses an
+existing or new series and issue number, restores automatic grouping, or explicitly keeps the
+comic standalone. **Use original title** restores the detected title. These edits change only
+ComicViewer metadata and never rename or modify the comic file.
 
 Long-press a title or series, or use its options menu, to forget it. Forgetting deletes
 ComicViewer's local reading state and caches but never the original comic files. Tapping an
@@ -38,10 +40,11 @@ pages alone, pairs subsequent portrait pages, and reverses their visible sides f
 is intended for tall strips: width is constrained while the page retains its full scrollable
 height.
 
-In paged modes, advancing beyond the final page or spread opens the next available issue when the
-current title belongs to a multi-issue series. Continuous mode requires reaching the actual bottom
-before an additional forward command can open the next issue. Series navigation never wraps or
-silently skips an unavailable issue.
+In paged modes, advancing beyond the final page or spread opens the next issue, while moving back
+from the first page opens the final page or spread of the previous issue. Android's system Back
+action still returns to the library. Continuous mode buffers the adjacent issues and ordinary
+vertical scrolling crosses an issue separator in either direction. Loading and retry states appear
+at the boundary when needed. Series navigation never wraps or silently skips an unavailable issue.
 
 Each title remembers its page, page-relative scroll position, zoom, zoom-gesture lock, reading mode,
 reading direction, favorite state, and page bookmarks.
@@ -65,9 +68,9 @@ fitted to width when no per-title zoom is restored.
 | Fit/zoom control | Select fit or zoom and lock or unlock touch zoom |
 | Page slider | Preview pages while dragging and open on release |
 
-The reader menu also provides bookmarks, title favorites, series assignment, Auto/LTR/RTL reading
-direction, jump to page, canvas colors, volume-key navigation, tap zones, screen-awake behavior, and
-external-keyboard shortcut capture.
+The reader menu provides jump to page, bookmarks, title favorites, **Edit comic**, Auto/LTR/RTL
+reading direction, and Reader options. Reader options contains background colors, volume-key
+navigation, tap zones, screen-awake behavior, and external-keyboard shortcut capture.
 
 ## Formats and limitations
 
