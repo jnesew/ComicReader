@@ -189,6 +189,12 @@ public final class ComicCanvasView extends View {
         return documentScroll >= maximum - 1f;
     }
 
+    public boolean isAtDocumentStart() {
+        if (pages.isEmpty()) return false;
+        if (!continuous) return page == 0;
+        return documentScroll <= 1f;
+    }
+
     public String zoomMode() {
         return continuous ? CONTINUOUS : zoomMode;
     }

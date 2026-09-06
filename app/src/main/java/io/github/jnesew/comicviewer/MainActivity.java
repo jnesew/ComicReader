@@ -87,7 +87,8 @@ public final class MainActivity extends Activity implements
 
     private enum OpenPosition {
         REMEMBERED,
-        BEGINNING
+        BEGINNING,
+        END
     }
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -748,6 +749,14 @@ public final class MainActivity extends Activity implements
     }
 
     private void openComic(Uri uri, boolean manualImport, OpenPosition openPosition) {
+        openComic(uri, manualImport, openPosition, null);
+    }
+
+    private void openComic(
+            Uri uri,
+            boolean manualImport,
+            OpenPosition openPosition,
+            String readingModeOverride) {
         if (uri == null) return;
         comicOpening = true;
         int generation = ++openGeneration;
@@ -772,7 +781,11 @@ public final class MainActivity extends Activity implements
                 }
                 List<PageInfo> cachedPages = saved.indexComplete
                         ? database.pageIndex(saved.uri) : Collections.emptyList();
-                int openingPage = openPosition == OpenPosition.BEGINNING ? 0 : saved.page;
+                int openingPage = switch (openPosition) {
+                    case BEGINNING -> 0;
+                    case END -> Integer.MAX_VALUE;
+                    default -> saved.page;
+                };
                 ComicDocument opened = ComicDocumentFactory.open(
                         this, uri, document, openingPage, cachedPages,
                         saved.documentSize, saved.documentModified, message ->
@@ -783,6 +796,9 @@ public final class MainActivity extends Activity implements
                 applySeriesMetadata(opened, null);
                 ReadingProgress activated = database.get(opened.key());
                 activated.title = opened.title();
+                if (readingModeOverride != null) {
+                    activated.readingMode = readingModeOverride;
+                }
                 mainHandler.post(() -> {
                     if (generation != openGeneration || isFinishing()) {
                         opened.close();
@@ -826,6 +842,9 @@ public final class MainActivity extends Activity implements
         if (openPosition == OpenPosition.BEGINNING) {
             progress.page = 0;
             progress.scrollRatio = 0f;
+        } else if (openPosition == OpenPosition.END) {
+            progress.page = opened.count() - 1;
+            progress.scrollRatio = 1f;
         }
         progress.page = clamp(progress.page, 0, opened.count() - 1);
         OpeningZoomPolicy.OpeningZoom openingZoom = OpeningZoomPolicy.resolve(
@@ -1494,7 +1513,8 @@ public final class MainActivity extends Activity implements
         if (archive == null || comicOpening) return;
         int target = reader.canvas.navigationTarget(delta);
         if (target == reader.canvas.page()) {
-            if (delta > 0 && reader.canvas.isAtDocumentEnd() && openNextSeriesIssue()) return;
+            if (delta > 0 && reader.canvas.isAtDocumentEnd() && openAdjacentSeriesIssue(1)) return;
+            if (delta < 0 && reader.canvas.isAtDocumentStart() && openAdjacentSeriesIssue(-1)) return;
             Toast.makeText(this,
                     target == 0 ? R.string.reader_first_page : R.string.reader_last_page,
                     Toast.LENGTH_SHORT).show();
@@ -1504,21 +1524,30 @@ public final class MainActivity extends Activity implements
         reader.canvas.showPage(target, 0f);
     }
 
-    private boolean openNextSeriesIssue() {
+    private boolean openAdjacentSeriesIssue(int direction) {
         if (progress == null || progress.seriesId <= 0L) return false;
         List<ReadingProgress> issues = database.seriesIssues(progress.seriesId);
         if (issues.size() <= 1) return false;
-        ReadingProgress next = SeriesNavigator.nextIssue(issues, progress.uri);
-        if (next == null) {
-            Toast.makeText(this, R.string.reader_end_of_series, Toast.LENGTH_SHORT).show();
+        ReadingProgress adjacent = direction > 0
+                ? SeriesNavigator.nextIssue(issues, progress.uri)
+                : SeriesNavigator.previousIssue(issues, progress.uri);
+        if (adjacent == null) {
+            Toast.makeText(this, direction > 0
+                            ? R.string.reader_end_of_series : R.string.reader_start_of_series,
+                    Toast.LENGTH_SHORT).show();
             return true;
         }
-        if (!next.available) {
-            Toast.makeText(this, R.string.reader_next_issue_unavailable, Toast.LENGTH_SHORT).show();
+        if (!adjacent.available) {
+            Toast.makeText(this, direction > 0
+                            ? R.string.reader_next_issue_unavailable
+                            : R.string.reader_previous_issue_unavailable,
+                    Toast.LENGTH_SHORT).show();
             return true;
         }
         saveNow();
-        openComic(Uri.parse(next.uri), false, OpenPosition.BEGINNING);
+        String readingMode = reader.canvas.readingMode();
+        OpenPosition position = direction > 0 ? OpenPosition.BEGINNING : OpenPosition.END;
+        openComic(Uri.parse(adjacent.uri), false, position, readingMode);
         return true;
     }
 

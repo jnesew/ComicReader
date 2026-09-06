@@ -21,16 +21,21 @@ public final class SeriesNavigatorTest {
         assertEquals("ten", SeriesNavigator.nextIssue(issues, "two").uri);
         assertEquals("special", SeriesNavigator.nextIssue(issues, "ten").uri);
         assertNull(SeriesNavigator.nextIssue(issues, "special"));
+        assertNull(SeriesNavigator.previousIssue(issues, "two"));
+        assertEquals("two", SeriesNavigator.previousIssue(issues, "ten").uri);
+        assertEquals("ten", SeriesNavigator.previousIssue(issues, "special").uri);
     }
 
     @Test
     public void returnsNullWhenCurrentIssueIsAbsent() {
         assertNull(SeriesNavigator.nextIssue(List.of(issue("one", "1")), "missing"));
+        assertNull(SeriesNavigator.previousIssue(List.of(issue("one", "1")), "missing"));
     }
 
     @Test
     public void singleIssueSeriesHasNoContinuation() {
         assertNull(SeriesNavigator.nextIssue(List.of(issue("one", "1")), "one"));
+        assertNull(SeriesNavigator.previousIssue(List.of(issue("one", "1")), "one"));
     }
 
     @Test
@@ -38,6 +43,9 @@ public final class SeriesNavigatorTest {
         assertNull(SeriesNavigator.nextIssue(null, "one"));
         assertNull(SeriesNavigator.nextIssue(List.of(), "one"));
         assertNull(SeriesNavigator.nextIssue(List.of(issue("one", "1")), ""));
+        assertNull(SeriesNavigator.previousIssue(null, "one"));
+        assertNull(SeriesNavigator.previousIssue(List.of(), "one"));
+        assertNull(SeriesNavigator.previousIssue(List.of(issue("one", "1")), ""));
     }
 
     private static ReadingProgress issue(String uri, String number) {
