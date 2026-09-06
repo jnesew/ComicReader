@@ -131,6 +131,10 @@
     <string name="reader_start_of_series">Sarjan alku</string>
     <string name="reader_next_issue_unavailable">Seuraava numero ei ole saatavilla</string>
     <string name="reader_previous_issue_unavailable">Edellinen numero ei ole saatavilla</string>
+    <string name="reader_loading_next_issue">Ladataan seuraavaa numeroa…</string>
+    <string name="reader_loading_previous_issue">Ladataan edellistä numeroa…</string>
+    <string name="reader_next_issue_retry">Seuraavaa numeroa ei voitu avata · Yritä uudelleen napauttamalla</string>
+    <string name="reader_previous_issue_retry">Edellistä numeroa ei voitu avata · Yritä uudelleen napauttamalla</string>
     <string name="reader_page_label">Sivu %1$d / %2$d</string>
     <string name="reader_page_range_label">Sivut %1$d–%2$d / %3$d</string>
     <string name="reader_page_slider">Sivun liukusäädin</string>

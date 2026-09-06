@@ -22,4 +22,19 @@ public class PageLayoutEngineTest {
         assertEquals(0.5f, layout.pageRatio(1, 270f), 0.001f);
         assertEquals(270f, layout.positionFor(1, 0.5f), 0.001f);
     }
+
+    @Test
+    public void includesIssueSeparatorsAndBoundarySpace() {
+        PageLayoutEngine layout = new PageLayoutEngine();
+        layout.calculate(List.of(
+                new PageInfo("1.jpg", 100, 100),
+                new PageInfo("2.jpg", 100, 100)),
+                100, 1, 10, new float[]{40, 60}, 30);
+
+        assertEquals(50f, layout.top(0), 0.001f);
+        assertEquals(220f, layout.top(1), 0.001f);
+        assertEquals(360f, layout.documentHeight(), 0.001f);
+        assertEquals(0, layout.pageAt(219f));
+        assertEquals(1, layout.pageAt(220f));
+    }
 }

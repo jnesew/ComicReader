@@ -67,6 +67,7 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -127,6 +128,10 @@ public final class MainActivity extends Activity implements
     private TileRenderer tileRenderer;
     private PagePreviewLoader pagePreviewLoader;
     private ReadingProgress progress;
+    private final Map<String, ContinuousIssueResource> continuousResources =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private final Set<String> continuousLoading = new java.util.HashSet<>();
+    private final Map<String, String> continuousErrors = new java.util.HashMap<>();
     private volatile boolean readerActive;
     private volatile boolean comicOpening;
     private volatile int openGeneration;
@@ -138,6 +143,24 @@ public final class MainActivity extends Activity implements
     private Object platformBackCallback;
 
     private final Runnable deferredSave = this::saveNow;
+
+    private static final class ContinuousIssueResource {
+        private final ComicDocument document;
+        private final TileRenderer renderer;
+        private final ReadingProgress progress;
+
+        private ContinuousIssueResource(
+                ComicDocument document, TileRenderer renderer, ReadingProgress progress) {
+            this.document = document;
+            this.renderer = renderer;
+            this.progress = progress;
+        }
+
+        private void close() {
+            renderer.close();
+            document.close();
+        }
+    }
 
     @Override
     protected void onCreate(Bundle state) {
@@ -612,7 +635,15 @@ public final class MainActivity extends Activity implements
                 .setCheckable(true)
                 .setChecked(readingMode.equals(reader.canvas.readingMode()))
                 .setOnMenuItemClickListener(item -> {
-                    reader.canvas.setReadingMode(readingMode);
+                    if (!ComicCanvasView.CONTINUOUS.equals(readingMode) &&
+                            reader.canvas.isContinuous()) {
+                        leaveContinuousSession(readingMode);
+                    } else {
+                        reader.canvas.setReadingMode(readingMode);
+                        if (ComicCanvasView.CONTINUOUS.equals(readingMode)) {
+                            beginContinuousSession();
+                        }
+                    }
                     reader.updateMode(reader.canvas.readingMode());
                     scheduleSave();
                     reader.keepChromeAwake();
@@ -716,8 +747,12 @@ public final class MainActivity extends Activity implements
     }
 
     @Override
-    public void onReaderPositionChanged(int page, float pageRatio) {
+    public void onReaderPositionChanged(String documentKey, int page, float pageRatio) {
         if (archive == null || progress == null) return;
+        if (reader.canvas.isContinuous() && !documentKey.isEmpty() &&
+                !documentKey.equals(archive.key())) {
+            if (!switchContinuousIssue(documentKey)) return;
+        }
         progress.page = reader.canvas.pageEnd();
         progress.scrollRatio = pageRatio;
         reader.updatePosition(page, reader.canvas.pageEnd(), archive.count());
@@ -742,6 +777,16 @@ public final class MainActivity extends Activity implements
     @Override
     public void onChromeToggleRequested() {
         reader.toggleChrome();
+    }
+
+    @Override
+    public void onContinuousBoundaryApproached(int direction) {
+        requestContinuousAdjacent(direction, false);
+    }
+
+    @Override
+    public void onContinuousBoundaryRetry(int direction) {
+        requestContinuousAdjacent(direction, true);
     }
 
     private void openComic(Uri uri, boolean manualImport) {
@@ -861,6 +906,10 @@ public final class MainActivity extends Activity implements
                 opened,
                 reader.canvas::postInvalidateOnAnimation,
                 message -> Toast.makeText(this, message, Toast.LENGTH_LONG).show());
+        if (ComicCanvasView.CONTINUOUS.equals(progress.readingMode)) {
+            continuousResources.put(opened.key(),
+                    new ContinuousIssueResource(opened, tileRenderer, progress));
+        }
         pagePreviewLoader = new PagePreviewLoader(
                 opened,
                 Ui.dp(this, 112),
@@ -895,6 +944,7 @@ public final class MainActivity extends Activity implements
         reader.showChrome();
         applyKeepScreenOn();
         saveNow();
+        if (reader.canvas.isContinuous()) beginContinuousSession();
     }
 
     private void startBackgroundIndex(ComicDocument opened, int generation) {
@@ -926,7 +976,9 @@ public final class MainActivity extends Activity implements
                 opened.buildPageIndex(this, null, new ComicDocument.IndexCallback() {
                     @Override
                     public boolean isCancelled() {
-                        return destroyed || generation != openGeneration || archive != opened;
+                        return destroyed || generation != openGeneration ||
+                                (archive != opened &&
+                                        !continuousResources.containsKey(opened.key()));
                     }
 
                     @Override
@@ -939,8 +991,15 @@ public final class MainActivity extends Activity implements
                     @Override
                     public void onPagesUpdated() {
                         mainHandler.post(() -> {
-                            if (generation == openGeneration && archive == opened && readerActive) {
-                                reader.canvas.onPageInfoChanged();
+                            if (generation == openGeneration && readerActive) {
+                                if (reader.canvas.isContinuous() &&
+                                        continuousResources.containsKey(opened.key())) {
+                                    refreshContinuousDocuments(
+                                            archive.key(), reader.canvas.page(),
+                                            reader.canvas.pageRatio());
+                                } else if (archive == opened) {
+                                    reader.canvas.onPageInfoChanged();
+                                }
                             }
                         });
                     }
@@ -950,10 +1009,20 @@ public final class MainActivity extends Activity implements
                         if (generation != openGeneration) return;
                         database.replacePageIndex(opened.key(), pages);
                         mainHandler.post(() -> {
-                            if (generation == openGeneration && archive == opened && progress != null) {
-                                progress.indexedPages = pages.size();
-                                progress.indexComplete = true;
-                                reader.canvas.onPageInfoChanged();
+                            if (generation == openGeneration && progress != null) {
+                                ContinuousIssueResource resource =
+                                        continuousResources.get(opened.key());
+                                if (resource != null) {
+                                    resource.progress.indexedPages = pages.size();
+                                    resource.progress.indexComplete = true;
+                                    refreshContinuousDocuments(
+                                            archive.key(), reader.canvas.page(),
+                                            reader.canvas.pageRatio());
+                                } else if (archive == opened) {
+                                    progress.indexedPages = pages.size();
+                                    progress.indexComplete = true;
+                                    reader.canvas.onPageInfoChanged();
+                                }
                                 home.refresh();
                             }
                         });
@@ -1509,8 +1578,326 @@ public final class MainActivity extends Activity implements
         private String fullFingerprint = "";
     }
 
+    private void beginContinuousSession() {
+        if (archive == null || tileRenderer == null || progress == null ||
+                !reader.canvas.isContinuous()) return;
+        progress.readingMode = ComicCanvasView.CONTINUOUS;
+        continuousResources.putIfAbsent(archive.key(),
+                new ContinuousIssueResource(archive, tileRenderer, progress));
+        refreshContinuousDocuments(archive.key(), reader.canvas.page(), reader.canvas.pageRatio());
+        requestContinuousAdjacent(-1, false);
+        requestContinuousAdjacent(1, false);
+    }
+
+    private void leaveContinuousSession(String readingMode) {
+        if (archive == null || tileRenderer == null || progress == null) return;
+        int page = reader.canvas.page();
+        float ratio = reader.canvas.pageRatio();
+        progress.page = page;
+        progress.scrollRatio = ratio;
+        progress.lastOpened = System.currentTimeMillis();
+        database.saveReadingProgress(progress);
+        for (ContinuousIssueResource resource : new ArrayList<>(continuousResources.values())) {
+            if (resource.document != archive) resource.close();
+        }
+        continuousResources.clear();
+        continuousLoading.clear();
+        continuousErrors.clear();
+        progress.readingMode = readingMode;
+        progress.zoomMode = ComicCanvasView.FIT_WIDTH;
+        progress.zoom = 1f;
+        reader.canvas.setDocument(tileRenderer, archive.pages(), progress);
+        reader.updatePosition(reader.canvas.page(), reader.canvas.pageEnd(), archive.count());
+        reader.updateZoom(reader.canvas.zoomMode(), reader.canvas.zoom(),
+                reader.canvas.zoomGesturesLocked());
+    }
+
+    private boolean switchContinuousIssue(String key) {
+        ContinuousIssueResource next = continuousResources.get(key);
+        if (next == null) return false;
+        if (progress != null) {
+            progress.lastOpened = System.currentTimeMillis();
+            database.saveReadingProgress(progress);
+        }
+        archive = next.document;
+        tileRenderer = next.renderer;
+        progress = next.progress;
+        progress.readingMode = ComicCanvasView.CONTINUOUS;
+        progress.lastOpened = System.currentTimeMillis();
+        replacePagePreview(archive);
+        reader.setTitle(progress.title);
+        reader.updatePosition(reader.canvas.page(), reader.canvas.pageEnd(), archive.count());
+        reader.updateBookmark(database.isBookmarked(archive.key(), reader.canvas.page()));
+        reader.canvas.setRightToLeft(ReadingDirection.isRightToLeft(
+                progress.readingDirection, archive.suggestedRightToLeft()));
+        trimContinuousResources();
+        refreshContinuousDocuments(key, reader.canvas.page(), reader.canvas.pageRatio());
+        requestContinuousAdjacent(-1, false);
+        requestContinuousAdjacent(1, false);
+        return true;
+    }
+
+    private void replacePagePreview(ComicDocument document) {
+        reader.dismissPagePreview();
+        if (pagePreviewLoader != null) pagePreviewLoader.close();
+        pagePreviewLoader = new PagePreviewLoader(
+                document,
+                Ui.dp(this, 112),
+                Ui.dp(this, 144),
+                new PagePreviewLoader.Callback() {
+                    @Override
+                    public void onPreviewReady(int page, android.graphics.Bitmap bitmap) {
+                        reader.showPagePreview(page, bitmap);
+                    }
+
+                    @Override
+                    public void onPreviewUnavailable(int page) {
+                        reader.showPagePreviewUnavailable(page);
+                    }
+                });
+    }
+
+    private void refreshContinuousDocuments(
+            String anchorKey, int anchorPage, float anchorRatio) {
+        if (!reader.canvas.isContinuous() || progress == null) return;
+        List<ReadingProgress> issues = database.seriesIssues(progress.seriesId);
+        ArrayList<ComicCanvasView.ContinuousDocument> documents = new ArrayList<>();
+        if (issues.isEmpty()) {
+            ContinuousIssueResource only = continuousResources.get(anchorKey);
+            if (only != null) documents.add(asContinuousDocument(only));
+        } else {
+            for (ReadingProgress issue : issues) {
+                ContinuousIssueResource resource = continuousResources.get(issue.uri);
+                if (resource != null) documents.add(asContinuousDocument(resource));
+            }
+        }
+        if (!documents.isEmpty()) {
+            reader.canvas.setContinuousDocuments(documents, anchorKey, anchorPage, anchorRatio);
+        }
+        updateContinuousBoundaries();
+    }
+
+    private static ComicCanvasView.ContinuousDocument asContinuousDocument(
+            ContinuousIssueResource resource) {
+        return new ComicCanvasView.ContinuousDocument(
+                resource.document.key(), resource.progress.title,
+                resource.renderer, resource.document.pages());
+    }
+
+    private void trimContinuousResources() {
+        if (progress == null || progress.seriesId <= 0L) return;
+        List<ReadingProgress> issues = database.seriesIssues(progress.seriesId);
+        int active = indexOfIssue(issues, progress.uri);
+        if (active < 0) return;
+        Set<String> keep = new java.util.HashSet<>();
+        for (int index = Math.max(0, active - 1);
+                index <= Math.min(issues.size() - 1, active + 1); index++) {
+            keep.add(issues.get(index).uri);
+        }
+        for (Map.Entry<String, ContinuousIssueResource> entry :
+                new ArrayList<>(continuousResources.entrySet())) {
+            if (keep.contains(entry.getKey())) continue;
+            if (continuousResources.remove(entry.getKey(), entry.getValue())) {
+                entry.getValue().close();
+            }
+        }
+    }
+
+    private void requestContinuousAdjacent(int direction, boolean retry) {
+        if (!reader.canvas.isContinuous() || progress == null || progress.seriesId <= 0L ||
+                destroyed) return;
+        List<ReadingProgress> issues = database.seriesIssues(progress.seriesId);
+        if (issues.size() <= 1) {
+            updateContinuousBoundaries();
+            return;
+        }
+        ReadingProgress edge = loadedEdge(issues, direction);
+        ReadingProgress adjacent = edge == null ? null : direction > 0
+                ? SeriesNavigator.nextIssue(issues, edge.uri)
+                : SeriesNavigator.previousIssue(issues, edge.uri);
+        if (adjacent == null || !adjacent.available) {
+            updateContinuousBoundaries();
+            return;
+        }
+        int activeIndex = indexOfIssue(issues, progress.uri);
+        int adjacentIndex = indexOfIssue(issues, adjacent.uri);
+        if (activeIndex < 0 || adjacentIndex < 0 ||
+                Math.abs(adjacentIndex - activeIndex) > 1) return;
+        if (continuousResources.containsKey(adjacent.uri) ||
+                continuousLoading.contains(adjacent.uri)) return;
+        if (retry) continuousErrors.remove(adjacent.uri);
+        if (continuousErrors.containsKey(adjacent.uri)) {
+            updateContinuousBoundaries();
+            return;
+        }
+
+        continuousLoading.add(adjacent.uri);
+        updateContinuousBoundaries();
+        int generation = openGeneration;
+        String uriKey = adjacent.uri;
+        archiveLoader.execute(() -> openContinuousAdjacent(uriKey, direction, generation));
+    }
+
+    private void openContinuousAdjacent(String uriKey, int direction, int generation) {
+        ComicDocument opened = null;
+        TileRenderer openedRenderer = null;
+        try {
+            Uri uri = Uri.parse(uriKey);
+            ReadingProgress saved = database.get(uriKey);
+            if (saved.uri.isEmpty()) throw new IOException("Library item is no longer available.");
+            DocumentInfo document = ComicDocumentFactory.describe(this, uri);
+            List<PageInfo> cachedPages = saved.indexComplete
+                    ? database.pageIndex(saved.uri) : Collections.emptyList();
+            opened = ComicDocumentFactory.open(
+                    this, uri, document, direction > 0 ? 0 : Integer.MAX_VALUE,
+                    cachedPages, saved.documentSize, saved.documentModified, null);
+            database.updateTitle(opened.key(), opened.title());
+            ReadingProgress activated = database.get(opened.key());
+            activated.title = opened.title();
+            activated.pageCount = opened.count();
+            activated.indexedPages = opened.indexedPages();
+            activated.indexComplete = opened.isIndexComplete();
+            activated.documentSize = opened.documentSize();
+            activated.documentModified = opened.documentModified();
+            activated.readingMode = ComicCanvasView.CONTINUOUS;
+            ComicDocument readyDocument = opened;
+            openedRenderer = new TileRenderer(
+                    this,
+                    readyDocument,
+                    reader.canvas::postInvalidateOnAnimation,
+                    message -> Toast.makeText(this, message, Toast.LENGTH_LONG).show());
+            TileRenderer readyRenderer = openedRenderer;
+            mainHandler.post(() -> {
+                continuousLoading.remove(uriKey);
+                if (generation != openGeneration || destroyed || !reader.canvas.isContinuous()) {
+                    readyRenderer.close();
+                    readyDocument.close();
+                    return;
+                }
+                ContinuousIssueResource resource = new ContinuousIssueResource(
+                        readyDocument, readyRenderer, activated);
+                continuousResources.put(uriKey, resource);
+                continuousErrors.remove(uriKey);
+                refreshContinuousDocuments(
+                        archive.key(), reader.canvas.page(), reader.canvas.pageRatio());
+                startContinuousBackgroundIndex(resource, generation);
+            });
+        } catch (IOException | RuntimeException error) {
+            if (openedRenderer != null) openedRenderer.close();
+            else if (opened != null) opened.close();
+            String message = safeMessage(error);
+            mainHandler.post(() -> {
+                continuousLoading.remove(uriKey);
+                if (generation != openGeneration || destroyed) return;
+                continuousErrors.put(uriKey, message);
+                updateContinuousBoundaries();
+            });
+        }
+    }
+
+    private void startContinuousBackgroundIndex(
+            ContinuousIssueResource resource, int generation) {
+        if (resource.document.isIndexComplete()) return;
+        indexWorker.execute(() -> {
+            try {
+                resource.document.buildPageIndex(this, null, new ComicDocument.IndexCallback() {
+                    @Override
+                    public boolean isCancelled() {
+                        return destroyed || generation != openGeneration ||
+                                !continuousResources.containsKey(resource.document.key());
+                    }
+
+                    @Override
+                    public void onProgress(int indexedPages, int pageCount) {
+                        database.updateArchiveState(
+                                resource.document.key(), pageCount, indexedPages, false,
+                                resource.document.documentSize(), resource.document.documentModified());
+                    }
+
+                    @Override
+                    public void onPagesUpdated() {
+                        mainHandler.post(() -> {
+                            if (generation == openGeneration && reader.canvas.isContinuous() &&
+                                    continuousResources.containsKey(resource.document.key())) {
+                                refreshContinuousDocuments(
+                                        archive.key(), reader.canvas.page(), reader.canvas.pageRatio());
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void onComplete(List<PageInfo> pages) {
+                        database.replacePageIndex(resource.document.key(), pages);
+                        resource.progress.indexedPages = pages.size();
+                        resource.progress.indexComplete = true;
+                        onPagesUpdated();
+                    }
+                });
+            } catch (IOException | RuntimeException ignored) {
+                // Evicting a buffered issue closes it and cancels its remaining index work.
+            }
+        });
+    }
+
+    private void updateContinuousBoundaries() {
+        if (!reader.canvas.isContinuous() || progress == null) return;
+        List<ReadingProgress> issues = database.seriesIssues(progress.seriesId);
+        updateContinuousBoundary(issues, -1);
+        updateContinuousBoundary(issues, 1);
+    }
+
+    private void updateContinuousBoundary(List<ReadingProgress> issues, int direction) {
+        ReadingProgress edge = loadedEdge(issues, direction);
+        ReadingProgress adjacent = edge == null ? null : direction > 0
+                ? SeriesNavigator.nextIssue(issues, edge.uri)
+                : SeriesNavigator.previousIssue(issues, edge.uri);
+        String text;
+        boolean retry = false;
+        if (adjacent == null) {
+            text = getString(direction > 0
+                    ? R.string.reader_end_of_series : R.string.reader_start_of_series);
+        } else if (!adjacent.available) {
+            text = getString(direction > 0
+                    ? R.string.reader_next_issue_unavailable
+                    : R.string.reader_previous_issue_unavailable);
+        } else if (continuousLoading.contains(adjacent.uri)) {
+            text = getString(direction > 0
+                    ? R.string.reader_loading_next_issue
+                    : R.string.reader_loading_previous_issue);
+        } else if (continuousErrors.containsKey(adjacent.uri)) {
+            text = getString(direction > 0
+                    ? R.string.reader_next_issue_retry
+                    : R.string.reader_previous_issue_retry);
+            retry = true;
+        } else {
+            text = "";
+        }
+        reader.canvas.setContinuousBoundary(direction, text, retry);
+    }
+
+    private ReadingProgress loadedEdge(List<ReadingProgress> issues, int direction) {
+        ReadingProgress edge = null;
+        for (ReadingProgress issue : issues) {
+            if (!continuousResources.containsKey(issue.uri)) continue;
+            edge = issue;
+            if (direction < 0) break;
+        }
+        return edge;
+    }
+
+    private static int indexOfIssue(List<ReadingProgress> issues, String uri) {
+        for (int index = 0; index < issues.size(); index++) {
+            if (issues.get(index).uri.equals(uri)) return index;
+        }
+        return -1;
+    }
+
     private void navigate(int delta) {
         if (archive == null || comicOpening) return;
+        if (reader.canvas.isContinuous()) {
+            saveNow();
+            if (reader.canvas.moveContinuousPage(delta)) return;
+        }
         int target = reader.canvas.navigationTarget(delta);
         if (target == reader.canvas.page()) {
             if (delta > 0 && reader.canvas.isAtDocumentEnd() && openAdjacentSeriesIssue(1)) return;
@@ -1542,6 +1929,10 @@ public final class MainActivity extends Activity implements
                             ? R.string.reader_next_issue_unavailable
                             : R.string.reader_previous_issue_unavailable,
                     Toast.LENGTH_SHORT).show();
+            return true;
+        }
+        if (reader.canvas.isContinuous()) {
+            requestContinuousAdjacent(direction, false);
             return true;
         }
         saveNow();
@@ -1579,14 +1970,20 @@ public final class MainActivity extends Activity implements
             pagePreviewLoader.close();
             pagePreviewLoader = null;
         }
-        if (tileRenderer != null) {
-            tileRenderer.close();
-            tileRenderer = null;
+        if (!continuousResources.isEmpty()) {
+            for (ContinuousIssueResource resource :
+                    new ArrayList<>(continuousResources.values())) {
+                resource.close();
+            }
+            continuousResources.clear();
+        } else {
+            if (tileRenderer != null) tileRenderer.close();
+            if (archive != null) archive.close();
         }
-        if (archive != null) {
-            archive.close();
-            archive = null;
-        }
+        continuousLoading.clear();
+        continuousErrors.clear();
+        tileRenderer = null;
+        archive = null;
         progress = null;
     }
 

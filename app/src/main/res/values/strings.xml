@@ -131,6 +131,10 @@
     <string name="reader_start_of_series">Start of series</string>
     <string name="reader_next_issue_unavailable">Next issue is unavailable</string>
     <string name="reader_previous_issue_unavailable">Previous issue is unavailable</string>
+    <string name="reader_loading_next_issue">Loading next issue…</string>
+    <string name="reader_loading_previous_issue">Loading previous issue…</string>
+    <string name="reader_next_issue_retry">Could not open next issue · Tap to retry</string>
+    <string name="reader_previous_issue_retry">Could not open previous issue · Tap to retry</string>
     <string name="reader_page_label">Page %1$d / %2$d</string>
     <string name="reader_page_range_label">Pages %1$d–%2$d / %3$d</string>
     <string name="reader_page_slider">Page slider</string>

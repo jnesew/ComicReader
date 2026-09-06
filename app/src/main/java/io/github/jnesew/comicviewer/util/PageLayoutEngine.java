@@ -11,18 +11,31 @@ public final class PageLayoutEngine {
     private float documentHeight;
 
     public void calculate(List<PageInfo> pages, float contentWidth, float zoom, float gap) {
+        calculate(pages, contentWidth, zoom, gap, null, 0f);
+    }
+
+    public void calculate(
+            List<PageInfo> pages,
+            float contentWidth,
+            float zoom,
+            float gap,
+            float[] extraBefore,
+            float footer) {
         int count = pages.size();
         tops = new float[count];
         heights = new float[count];
         float cursor = gap;
         float targetWidth = Math.max(1f, contentWidth) * Math.max(0.1f, zoom);
         for (int i = 0; i < count; i++) {
+            if (extraBefore != null && i < extraBefore.length) {
+                cursor += Math.max(0f, extraBefore[i]);
+            }
             PageInfo page = pages.get(i);
             tops[i] = cursor;
             heights[i] = targetWidth * page.aspectHeight();
             cursor += heights[i] + gap;
         }
-        documentHeight = count == 0 ? 0f : cursor;
+        documentHeight = count == 0 ? 0f : cursor + Math.max(0f, footer);
     }
 
     public int size() {
