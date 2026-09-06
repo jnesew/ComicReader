@@ -149,4 +149,41 @@ with tempfile.TemporaryDirectory(prefix="comicviewer-missing-policy-") as direct
 
 assert selected == [("confirmed",)]
 print("Confirmed-missing cleanup policy passed")
+
+with tempfile.TemporaryDirectory(prefix="comicviewer-title-override-") as directory:
+    database_path = Path(directory) / "library.db"
+    connection = sqlite3.connect(database_path)
+    connection.execute(
+        """
+        CREATE TABLE progress (
+            uri TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            original_title TEXT NOT NULL DEFAULT '',
+            title_override INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    connection.executemany(
+        "INSERT INTO progress(uri, title, original_title, title_override) VALUES (?, ?, ?, ?)",
+        [
+            ("custom", "My display name", "Detected old", 1),
+            ("automatic", "Detected old", "Detected old", 0),
+        ],
+    )
+    detected = "Detected after rescan"
+    connection.execute(
+        "UPDATE progress SET original_title=?, "
+        "title=CASE WHEN title_override=0 THEN ? ELSE title END",
+        (detected, detected),
+    )
+    rows = connection.execute(
+        "SELECT uri, title, original_title, title_override FROM progress ORDER BY uri"
+    ).fetchall()
+    connection.close()
+
+assert rows == [
+    ("automatic", detected, detected, 0),
+    ("custom", "My display name", detected, 1),
+]
+print("Custom title override persistence passed")
 PY

@@ -55,7 +55,7 @@ public final class HomeView extends FrameLayout {
         void onRecentRequested(ReadingProgress progress);
         void onForgetRequested(ReadingProgress progress);
         void onSeriesForgetRequested(SeriesGroup series);
-        void onSeriesEditRequested(ReadingProgress progress);
+        void onComicEditRequested(ReadingProgress progress);
         void onLibraryMenuRequested(View anchor);
     }
 
@@ -749,17 +749,10 @@ public final class HomeView extends FrameLayout {
                     toggleFavorite(item);
                     return true;
                 });
-        menu.getMenu().add(R.string.series_edit_assignment).setOnMenuItemClickListener(selected -> {
-            listener.onSeriesEditRequested(item);
+        menu.getMenu().add(R.string.comic_edit).setOnMenuItemClickListener(selected -> {
+            listener.onComicEditRequested(item);
             return true;
         });
-        if (item.seriesOverride != LibraryDatabase.SERIES_AUTOMATIC) {
-            menu.getMenu().add(R.string.series_use_automatic).setOnMenuItemClickListener(selected -> {
-                database.useAutomaticSeries(item.uri);
-                refresh();
-                return true;
-            });
-        }
         menu.getMenu().add(R.string.forget).setOnMenuItemClickListener(selected -> {
             listener.onForgetRequested(item);
             return true;

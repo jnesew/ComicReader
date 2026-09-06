@@ -3,6 +3,8 @@ package io.github.jnesew.comicviewer.model;
 public final class ReadingProgress {
     public String uri = "";
     public String title = "";
+    public String originalTitle = "";
+    public boolean titleOverride = false;
     public int page = 0;
     public int pageCount = 0;
     public float scrollRatio = 0f;

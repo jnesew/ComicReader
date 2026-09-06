@@ -84,6 +84,18 @@
     </plurals>
     <string name="series_options">Sarjan valinnat</string>
     <string name="series_edit_assignment">Muokkaa sarjaa…</string>
+    <string name="comic_edit">Muokkaa sarjakuvaa…</string>
+    <string name="comic_edit_title">Muokkaa sarjakuvaa</string>
+    <string name="comic_title_label">Sarjakuvan nimi</string>
+    <string name="comic_use_original_title">Käytä alkuperäistä nimeä</string>
+    <string name="comic_grouping_label">Ryhmittely</string>
+    <string name="comic_grouping_automatic">Automaattinen ryhmittely</string>
+    <string name="comic_grouping_series">Sarja</string>
+    <string name="comic_grouping_standalone">Erillinen</string>
+    <string name="comic_series_label">Sarja</string>
+    <string name="comic_issue_number_label">Numeron tunnus (valinnainen)</string>
+    <string name="comic_title_required">Anna sarjakuvalle nimi</string>
+    <string name="comic_series_required">Anna sarjan nimi</string>
     <string name="series_use_automatic">Käytä automaattista ryhmittelyä</string>
     <string name="series_assignment_title">Nimikkeen ”%1$s” sarja</string>
     <string name="series_assignment_message">Aseta sarjan nimi ja halutessasi numeron tunnus. Jätä sarjan nimi tyhjäksi, jos haluat pitää nimikkeen itsenäisenä.</string>
@@ -158,6 +170,7 @@
     <string name="reader_jump_to_page">Siirry sivulle</string>
     <string name="reader_bookmarks">Kirjanmerkit</string>
     <string name="reader_canvas_color">Taustan väri</string>
+    <string name="reader_background_color">Taustan väri</string>
     <string name="reader_options">Lukijan asetukset</string>
     <string name="reader_hardware_shortcuts">Näppäinoikotiet</string>
     <string name="reader_hide_controls">Piilota säätimet</string>

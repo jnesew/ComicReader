@@ -26,6 +26,8 @@ import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 import android.text.InputType;
 import android.widget.CheckBox;
+import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -444,8 +446,8 @@ public final class MainActivity extends Activity implements
     }
 
     @Override
-    public void onSeriesEditRequested(ReadingProgress item) {
-        showSeriesAssignment(item);
+    public void onComicEditRequested(ReadingProgress item) {
+        showComicEditor(item);
     }
 
     @Override
@@ -693,10 +695,6 @@ public final class MainActivity extends Activity implements
     @Override
     public void onMoreMenu(View anchor) {
         PopupMenu menu = new PopupMenu(this, anchor);
-        menu.getMenu().add(R.string.reader_open_another).setOnMenuItemClickListener(item -> {
-            onOpenRequested();
-            return true;
-        });
         menu.getMenu().add(R.string.reader_jump_to_page).setOnMenuItemClickListener(item -> {
             showJumpDialog();
             return true;
@@ -712,9 +710,9 @@ public final class MainActivity extends Activity implements
                         toggleTitleFavorite();
                         return true;
                     });
-            menu.getMenu().add(R.string.series_edit_assignment)
+            menu.getMenu().add(R.string.comic_edit)
                     .setOnMenuItemClickListener(item -> {
-                        showSeriesAssignment(progress);
+                        showComicEditor(progress);
                         return true;
                     });
             menu.getMenu().add(R.string.reader_reading_direction).setOnMenuItemClickListener(item -> {
@@ -722,20 +720,8 @@ public final class MainActivity extends Activity implements
                 return true;
             });
         }
-        menu.getMenu().add(R.string.reader_canvas_color).setOnMenuItemClickListener(item -> {
-            showCanvasThemes();
-            return true;
-        });
         menu.getMenu().add(R.string.reader_options).setOnMenuItemClickListener(item -> {
             showReaderOptions();
-            return true;
-        });
-        menu.getMenu().add(R.string.reader_hardware_shortcuts).setOnMenuItemClickListener(item -> {
-            showKeyboardSettings();
-            return true;
-        });
-        menu.getMenu().add(R.string.reader_hide_controls).setOnMenuItemClickListener(item -> {
-            reader.toggleChrome();
             return true;
         });
         menu.show();
@@ -840,7 +826,6 @@ public final class MainActivity extends Activity implements
                 database.updateTitle(opened.key(), opened.title());
                 applySeriesMetadata(opened, null);
                 ReadingProgress activated = database.get(opened.key());
-                activated.title = opened.title();
                 if (readingModeOverride != null) {
                     activated.readingMode = readingModeOverride;
                 }
@@ -877,8 +862,8 @@ public final class MainActivity extends Activity implements
         if (progress.uri.isEmpty()) {
             progress.uri = opened.key();
             progress.title = opened.title();
+            progress.originalTitle = opened.title();
         }
-        progress.title = opened.title();
         progress.pageCount = opened.count();
         progress.indexedPages = opened.indexedPages();
         progress.indexComplete = opened.isIndexComplete();
@@ -930,7 +915,7 @@ public final class MainActivity extends Activity implements
                 progress.readingDirection, opened.suggestedRightToLeft()));
         reader.canvas.setCanvasColor(preferences.canvasColor());
         reader.canvas.setDocument(tileRenderer, opened.pages(), progress);
-        reader.setTitle(opened.title());
+        reader.setTitle(progress.title);
         reader.updatePosition(reader.canvas.page(), reader.canvas.pageEnd(), opened.count());
         reader.updateMode(reader.canvas.readingMode());
         reader.updateZoom(reader.canvas.zoomMode(), reader.canvas.zoom(),
@@ -1753,7 +1738,6 @@ public final class MainActivity extends Activity implements
                     cachedPages, saved.documentSize, saved.documentModified, null);
             database.updateTitle(opened.key(), opened.title());
             ReadingProgress activated = database.get(opened.key());
-            activated.title = opened.title();
             activated.pageCount = opened.count();
             activated.indexedPages = opened.indexedPages();
             activated.indexComplete = opened.isIndexComplete();
@@ -1951,7 +1935,6 @@ public final class MainActivity extends Activity implements
         mainHandler.removeCallbacks(deferredSave);
         if (archive == null || progress == null) return;
         progress.uri = archive.key();
-        progress.title = archive.title();
         progress.page = reader.canvas.pageEnd();
         progress.pageCount = archive.count();
         progress.scrollRatio = reader.canvas.pageRatio();
@@ -2052,54 +2035,179 @@ public final class MainActivity extends Activity implements
         progress.favorite = database.toggleFavorite(archive.key());
         Toast.makeText(this, getString(
                 progress.favorite ? R.string.title_added_favorite : R.string.title_removed_favorite,
-                archive.title()), Toast.LENGTH_SHORT).show();
+                progress.title), Toast.LENGTH_SHORT).show();
     }
 
-    private void showSeriesAssignment(ReadingProgress item) {
+    private void showComicEditor(ReadingProgress item) {
         ReadingProgress current = database.get(item.uri);
+        if (current.uri.isEmpty()) return;
+        ScrollView scroll = new ScrollView(this);
         LinearLayout fields = new LinearLayout(this);
         fields.setOrientation(LinearLayout.VERTICAL);
-        fields.setPadding(Ui.dp(this, 22), Ui.dp(this, 4), Ui.dp(this, 22), 0);
+        fields.setPadding(Ui.dp(this, 22), Ui.dp(this, 8), Ui.dp(this, 22), Ui.dp(this, 8));
+        scroll.addView(fields);
 
-        TextView explanation = Ui.text(
-                this, getString(R.string.series_assignment_message), 14, Ui.TEXT_MUTED);
-        explanation.setPadding(0, 0, 0, Ui.dp(this, 10));
-        fields.addView(explanation, new LinearLayout.LayoutParams(
+        TextView titleLabel = editorLabel(R.string.comic_title_label);
+        fields.addView(titleLabel, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        EditText title = new EditText(this);
+        title.setSingleLine(true);
+        title.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        title.setText(current.title);
+        fields.addView(title, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 54)));
+        TextView useOriginal = Ui.text(
+                this, getString(R.string.comic_use_original_title), 14, Ui.ACCENT);
+        useOriginal.setGravity(Gravity.CENTER_VERTICAL);
+        useOriginal.setPadding(0, 0, 0, Ui.dp(this, 8));
+        useOriginal.setClickable(true);
+        useOriginal.setOnClickListener(view -> {
+            String original = current.originalTitle.isEmpty()
+                    ? current.title : current.originalTitle;
+            title.setText(original);
+            title.setSelection(title.length());
+        });
+        fields.addView(useOriginal, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 42)));
 
-        EditText name = new EditText(this);
-        name.setHint(R.string.series_name_hint);
-        name.setSingleLine(true);
-        name.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        name.setText(current.seriesTitle);
-        fields.addView(name, new LinearLayout.LayoutParams(
+        TextView groupingLabel = editorLabel(R.string.comic_grouping_label);
+        fields.addView(groupingLabel, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        RadioGroup grouping = new RadioGroup(this);
+        int automaticId = View.generateViewId();
+        int manualId = View.generateViewId();
+        int standaloneId = View.generateViewId();
+        RadioButton automatic = editorRadio(
+                automaticId, R.string.comic_grouping_automatic);
+        RadioButton manual = editorRadio(manualId, R.string.comic_grouping_series);
+        RadioButton standalone = editorRadio(
+                standaloneId, R.string.comic_grouping_standalone);
+        grouping.addView(automatic);
+        grouping.addView(manual);
+        grouping.addView(standalone);
+        fields.addView(grouping);
+
+        TextView seriesLabel = editorLabel(R.string.comic_series_label);
+        fields.addView(seriesLabel, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        AutoCompleteTextView series = new AutoCompleteTextView(this);
+        series.setSingleLine(true);
+        series.setThreshold(0);
+        series.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        series.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_dropdown_item_1line, database.seriesNames()));
+        String initialSeries = current.seriesTitle.isEmpty()
+                ? current.detectedSeriesName : current.seriesTitle;
+        series.setText(initialSeries, false);
+        series.setOnClickListener(view -> series.showDropDown());
+        fields.addView(series, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 54)));
 
+        TextView numberLabel = editorLabel(R.string.comic_issue_number_label);
+        fields.addView(numberLabel, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         EditText number = new EditText(this);
-        number.setHint(R.string.series_issue_number_hint);
         number.setSingleLine(true);
         number.setInputType(InputType.TYPE_CLASS_TEXT);
-        number.setText(current.seriesNumber);
+        number.setText(current.seriesNumber.isEmpty()
+                ? current.detectedSeriesNumber : current.seriesNumber);
         fields.addView(number, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 54)));
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(this)
-                .setTitle(getString(R.string.series_assignment_title, current.title))
-                .setView(fields)
-                .setNegativeButton(R.string.cancel, null)
-                .setPositiveButton(R.string.save, (dialog, which) -> {
-                    database.setManualSeries(
-                            current.uri, name.getText().toString(), number.getText().toString());
-                    home.refresh();
-                });
-        if (current.seriesOverride != LibraryDatabase.SERIES_AUTOMATIC ||
-                !current.detectedSeriesKey.isEmpty()) {
-            builder.setNeutralButton(R.string.series_use_automatic, (dialog, which) -> {
-                database.useAutomaticSeries(current.uri);
-                home.refresh();
-            });
+        if (current.seriesOverride == LibraryDatabase.SERIES_AUTOMATIC) {
+            automatic.setChecked(true);
+        } else if (current.seriesOverride == LibraryDatabase.SERIES_STANDALONE) {
+            standalone.setChecked(true);
+        } else {
+            manual.setChecked(true);
         }
-        builder.show();
+        Runnable updateSeriesFields = () -> {
+            boolean enabled = grouping.getCheckedRadioButtonId() == manualId;
+            series.setEnabled(enabled);
+            number.setEnabled(enabled);
+            seriesLabel.setEnabled(enabled);
+            numberLabel.setEnabled(enabled);
+        };
+        grouping.setOnCheckedChangeListener((group, checkedId) -> updateSeriesFields.run());
+        updateSeriesFields.run();
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.comic_edit_title)
+                .setView(scroll)
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.save, null)
+                .create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(DialogInterface.BUTTON_POSITIVE)
+                .setOnClickListener(view -> {
+                    String editedTitle = title.getText().toString().trim();
+                    if (editedTitle.isEmpty()) {
+                        title.setError(getString(R.string.comic_title_required));
+                        return;
+                    }
+                    int seriesMode;
+                    if (grouping.getCheckedRadioButtonId() == automaticId) {
+                        seriesMode = LibraryDatabase.SERIES_AUTOMATIC;
+                    } else if (grouping.getCheckedRadioButtonId() == standaloneId) {
+                        seriesMode = LibraryDatabase.SERIES_STANDALONE;
+                    } else {
+                        seriesMode = LibraryDatabase.SERIES_MANUAL;
+                        if (series.getText().toString().trim().isEmpty()) {
+                            series.setError(getString(R.string.comic_series_required));
+                            return;
+                        }
+                    }
+                    if (progress != null && current.uri.equals(progress.uri)) saveNow();
+                    database.setComicMetadata(
+                            current.uri, editedTitle, seriesMode,
+                            series.getText().toString(), number.getText().toString());
+                    applyComicMetadataEdit(current.uri);
+                    dialog.dismiss();
+                }));
+        dialog.show();
+    }
+
+    private TextView editorLabel(int text) {
+        TextView label = Ui.text(this, getString(text), 13, Ui.TEXT_MUTED);
+        label.setPadding(0, Ui.dp(this, 8), 0, 0);
+        return label;
+    }
+
+    private RadioButton editorRadio(int id, int text) {
+        RadioButton choice = new RadioButton(this);
+        choice.setId(id);
+        choice.setText(text);
+        choice.setTextColor(Ui.TEXT);
+        choice.setTextSize(15);
+        choice.setMinHeight(Ui.dp(this, 44));
+        choice.setButtonTintList(new ColorStateList(
+                new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
+                new int[]{Ui.ACCENT, Ui.TEXT_MUTED}));
+        return choice;
+    }
+
+    private void applyComicMetadataEdit(String uri) {
+        ReadingProgress updated = database.get(uri);
+        if (updated.uri.isEmpty()) return;
+        ContinuousIssueResource resource = continuousResources.get(uri);
+        if (resource != null) {
+            continuousResources.put(uri, new ContinuousIssueResource(
+                    resource.document, resource.renderer, updated));
+        }
+        if (progress != null && uri.equals(progress.uri)) {
+            progress = updated;
+            reader.setTitle(updated.title);
+            if (reader.canvas.isContinuous()) {
+                for (Map.Entry<String, ContinuousIssueResource> entry :
+                        new ArrayList<>(continuousResources.entrySet())) {
+                    if (uri.equals(entry.getKey())) continue;
+                    if (continuousResources.remove(entry.getKey(), entry.getValue())) {
+                        entry.getValue().close();
+                    }
+                }
+                beginContinuousSession();
+            }
+        }
+        home.refresh();
     }
 
     private void showReadingDirection() {
@@ -2180,7 +2288,7 @@ public final class MainActivity extends Activity implements
             if (keys.get(i).equals(preferences.canvasTheme())) selected = i;
         }
         new AlertDialog.Builder(this)
-                .setTitle(R.string.reader_canvas_color)
+                .setTitle(R.string.reader_background_color)
                 .setSingleChoiceItems(labels, selected, (dialog, which) -> {
                     preferences.setCanvasTheme(keys.get(which));
                     reader.canvas.setCanvasColor(themes.get(keys.get(which)));
@@ -2244,14 +2352,19 @@ public final class MainActivity extends Activity implements
             if (defaultZoomValues[index].equals(selectedDefaultZoom)) choice.setChecked(true);
         }
         options.addView(defaultZoomChoices);
+
+        TextView backgroundColor = optionsButton(R.string.reader_background_color);
+        backgroundColor.setOnClickListener(view -> showCanvasThemes());
+        options.addView(backgroundColor);
+        TextView hardwareShortcuts = optionsButton(R.string.reader_hardware_shortcuts);
+        hardwareShortcuts.setOnClickListener(view -> showKeyboardSettings());
+        options.addView(hardwareShortcuts);
         options.addView(screen);
         options.addView(autoHide);
 
         new AlertDialog.Builder(this)
                 .setTitle(R.string.reader_options)
                 .setView(scroll)
-                .setNeutralButton(R.string.reader_hardware_shortcuts,
-                        (dialog, which) -> showKeyboardSettings())
                 .setNegativeButton(R.string.cancel, null)
                 .setPositiveButton(R.string.save, (dialog, which) -> {
                     preferences.setTapZones(tapZones.isChecked());
@@ -2270,6 +2383,18 @@ public final class MainActivity extends Activity implements
                     if (!autoHide.isChecked() && readerActive) reader.showChrome();
                 })
                 .show();
+    }
+
+    private TextView optionsButton(int text) {
+        TextView button = Ui.text(this, getString(text), 15, Ui.TEXT);
+        button.setGravity(Gravity.CENTER_VERTICAL);
+        button.setPadding(Ui.dp(this, 14), Ui.dp(this, 6), Ui.dp(this, 14), Ui.dp(this, 6));
+        button.setBackground(Ui.rounded(Ui.SURFACE_HIGH, Ui.dp(this, 12), 0, 0));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 48));
+        params.topMargin = Ui.dp(this, 8);
+        button.setLayoutParams(params);
+        return button;
     }
 
     private void migrateLegacyReadingDirection() {
