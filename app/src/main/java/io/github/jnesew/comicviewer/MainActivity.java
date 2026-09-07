@@ -301,6 +301,7 @@ public final class MainActivity extends Activity implements
         if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
             home.trimCoverCache();
             if (pagePreviewLoader != null) pagePreviewLoader.trimMemory();
+            trimReaderMemory();
         }
     }
 
@@ -309,6 +310,17 @@ public final class MainActivity extends Activity implements
         super.onLowMemory();
         home.trimCoverCache();
         if (pagePreviewLoader != null) pagePreviewLoader.trimMemory();
+        trimReaderMemory();
+    }
+
+    private void trimReaderMemory() {
+        if (continuousResources.isEmpty()) {
+            if (tileRenderer != null) tileRenderer.trimMemory();
+            return;
+        }
+        for (ContinuousIssueResource resource : continuousResources.values()) {
+            resource.renderer.trimMemory();
+        }
     }
 
     @Override

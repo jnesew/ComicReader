@@ -289,6 +289,7 @@ public final class ComicCanvasView extends View {
             int anchorPage,
             float anchorRatio) {
         if (!continuous || documents == null || documents.isEmpty()) return;
+        scroller.forceFinished(true);
         installContinuousDocuments(documents);
         page = globalPageFor(anchorKey, anchorPage);
         pageRatio = clamp(anchorRatio, 0f, 1f);
@@ -307,11 +308,6 @@ public final class ComicCanvasView extends View {
         } else {
             bottomBoundaryText = text == null ? "" : text;
             bottomBoundaryRetry = retry;
-        }
-        if (continuous && !pages.isEmpty() && getWidth() > 0) {
-            int anchorPage = page;
-            float anchorRatio = pageRatio;
-            relayoutContinuousAround(anchorPage, anchorRatio);
         }
         invalidate();
     }
@@ -343,6 +339,12 @@ public final class ComicCanvasView extends View {
 
     public void setCanvasColor(int color) {
         canvasColor = color;
+        int brightness = (Color.red(color) * 299 + Color.green(color) * 587 +
+                Color.blue(color) * 114) / 1000;
+        separatorPaint.setColor(brightness >= 150
+                ? Color.rgb(42, 45, 52) : Color.rgb(215, 221, 233));
+        separatorLinePaint.setColor(brightness >= 150
+                ? Color.rgb(130, 126, 118) : Color.rgb(85, 91, 104));
         invalidate();
     }
 
@@ -845,12 +847,12 @@ public final class ComicCanvasView extends View {
 
     private void calculateContinuousLayout() {
         if (continuousExtraBefore.length > 0) {
-            continuousExtraBefore[0] = topBoundaryText.isEmpty() ? 0f : boundaryHeight;
+            continuousExtraBefore[0] = boundaryHeight;
         }
         continuousLayout.calculate(
                 pages, contentWidth(), continuousZoom, pageGap,
                 continuousExtraBefore,
-                bottomBoundaryText.isEmpty() ? 0f : boundaryHeight);
+                boundaryHeight);
     }
 
     private void drawContinuousLabels(Canvas canvas, int first, int last) {

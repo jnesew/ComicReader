@@ -158,6 +158,13 @@ public final class TileRenderer implements AutoCloseable {
         return archive.supportsRenderedTiles();
     }
 
+    public synchronized void trimMemory() {
+        if (closed) return;
+        tiles.evictAll();
+        for (DecoderHolder holder : decoders.values()) holder.close();
+        decoders.clear();
+    }
+
     @Override
     public synchronized void close() {
         if (closed) return;
