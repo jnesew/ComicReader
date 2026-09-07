@@ -957,7 +957,7 @@ public final class MainActivity extends Activity implements
                     }
                 });
         reader.canvas.setTapZones(preferences.tapZones());
-        reader.canvas.setRightToLeft(ReadingDirection.isRightToLeft(
+        reader.setRightToLeft(ReadingDirection.isRightToLeft(
                 progress.readingDirection, opened.suggestedRightToLeft()));
         reader.canvas.setCanvasColor(preferences.canvasColor());
         reader.setUnavailable(opened.isUnavailable());
@@ -1664,7 +1664,7 @@ public final class MainActivity extends Activity implements
         reader.setTitle(progress.title);
         reader.updatePosition(reader.canvas.page(), reader.canvas.pageEnd(), archive.count());
         reader.updateBookmark(database.isBookmarked(archive.key(), reader.canvas.page()));
-        reader.canvas.setRightToLeft(ReadingDirection.isRightToLeft(
+        reader.setRightToLeft(ReadingDirection.isRightToLeft(
                 progress.readingDirection, archive.suggestedRightToLeft()));
         trimContinuousResources();
         refreshContinuousDocuments(key, reader.canvas.page(), reader.canvas.pageRatio());
@@ -2363,7 +2363,7 @@ public final class MainActivity extends Activity implements
         String normalized = ReadingDirection.normalize(direction);
         progress.readingDirection = normalized;
         database.setReadingDirection(archive.key(), normalized);
-        reader.canvas.setRightToLeft(ReadingDirection.isRightToLeft(
+        reader.setRightToLeft(ReadingDirection.isRightToLeft(
                 normalized, archive.suggestedRightToLeft()));
         reader.keepChromeAwake();
     }

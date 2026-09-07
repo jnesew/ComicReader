@@ -47,6 +47,10 @@ public final class ReaderScreen extends FrameLayout {
     private final TextView zoomLabel;
     private final TextView modeLabel;
     private final SeekBar seekBar;
+    private final LinearLayout navigationControls;
+    private final TextView previousButton;
+    private final TextView nextButton;
+    private boolean rightToLeft;
     private final TextView retry;
     private boolean unavailable;
     private final LinearLayout previewCard;
@@ -172,8 +176,10 @@ public final class ReaderScreen extends FrameLayout {
                 ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 36)));
 
         LinearLayout controls = new LinearLayout(context);
+        navigationControls = controls;
         controls.setGravity(Gravity.CENTER);
         TextView previous = Ui.iconButton(context, "‹", context.getString(R.string.reader_previous_page));
+        previousButton = previous;
         previous.setOnClickListener(view -> {
             keepChromeAwake();
             listener.onPrevious();
@@ -196,6 +202,7 @@ public final class ReaderScreen extends FrameLayout {
         modeParams.rightMargin = Ui.dp(context, 8);
         controls.addView(modeLabel, modeParams);
         TextView next = Ui.iconButton(context, "›", context.getString(R.string.reader_next_page));
+        nextButton = next;
         next.setOnClickListener(view -> {
             keepChromeAwake();
             listener.onNext();
@@ -333,6 +340,17 @@ public final class ReaderScreen extends FrameLayout {
         }
     }
 
+    public void setRightToLeft(boolean value) {
+        rightToLeft = value;
+        canvas.setRightToLeft(value);
+        int direction = value ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR;
+        seekBar.setLayoutDirection(direction);
+        navigationControls.setLayoutDirection(direction);
+        previousButton.setText(value ? "›" : "‹");
+        nextButton.setText(value ? "‹" : "›");
+        positionPagePreview();
+    }
+
     public void showPagePreview(int page, Bitmap bitmap) {
         if (!seekTracking || page != previewPage || bitmap == null || bitmap.isRecycled()) return;
         previewImage.setImageBitmap(bitmap);
@@ -447,6 +465,7 @@ public final class ReaderScreen extends FrameLayout {
                 seekBar.getWidth() - seekBar.getPaddingLeft() - seekBar.getPaddingRight());
         float ratio = seekBar.getMax() <= 0
                 ? 0.5f : (float) selectedSeekPage / seekBar.getMax();
+        if (rightToLeft) ratio = 1f - ratio;
         int[] rootLocation = new int[2];
         int[] seekLocation = new int[2];
         getLocationInWindow(rootLocation);

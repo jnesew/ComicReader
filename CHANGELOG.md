@@ -15,6 +15,7 @@ All notable public changes to ComicViewer for Android are recorded here.
 
 ### Reader
 
+- Mirror the page slider, preview position, and bottom navigation arrows for RTL reading.
 - Unavailable series issues now have named notices that ordinary navigation can pass, with Retry
   and no changes to the missing issues' reading progress, page counts, or bookmarks.
 - Budget PDF tile resolution across all visible pages together to prevent cache churn in
