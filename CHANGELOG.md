@@ -15,6 +15,8 @@ All notable public changes to ComicViewer for Android are recorded here.
 
 ### Reader
 
+- Budget PDF tile resolution across all visible pages together to prevent cache churn in
+  continuous and two-page views, including viewports straddling page boundaries.
 - Added cover-aware two-page spreads with natural LTR and RTL placement, standalone landscape
   pages, spread navigation, and shared zoom and pan controls.
 - Added forward navigation from the end of an issue into the next available issue in its series.

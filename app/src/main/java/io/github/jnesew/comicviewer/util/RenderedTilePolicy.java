@@ -14,6 +14,55 @@ public final class RenderedTilePolicy {
 
     private RenderedTilePolicy() {}
 
+    public static final class Region {
+        public final int left, top, right, bottom, width, height;
+        public final float displayScale;
+
+        public Region(int left, int top, int right, int bottom,
+                int width, int height, float displayScale) {
+            this.left = left;
+            this.top = top;
+            this.right = right;
+            this.bottom = bottom;
+            this.width = width;
+            this.height = height;
+            this.displayScale = displayScale;
+        }
+    }
+
+    /** Budget all visible pages together, leaving cache headroom for in-flight/fallback tiles. */
+    public static float[] frameScales(java.util.List<Region> regions, long budgetBytes) {
+        float[] scales = new float[regions.size()];
+        for (int i = 0; i < scales.length; i++) {
+            scales[i] = chooseRenderScale(regions.get(i).displayScale);
+        }
+        while (true) {
+            long total = 0L;
+            long largest = -1L;
+            int reduce = -1;
+            for (int i = 0; i < scales.length; i++) {
+                long bytes = tileBytes(regions.get(i), scales[i]);
+                total += bytes;
+                if (scales[i] > MIN_RENDER_SCALE && bytes > largest) {
+                    largest = bytes;
+                    reduce = i;
+                }
+            }
+            if (total <= budgetBytes || reduce < 0) return scales;
+            scales[reduce] = nextCoarserScale(scales[reduce]);
+        }
+    }
+
+    public static long tileBytes(Region region, float scale) {
+        int edge = sourceTileSize(scale);
+        int left = region.left / edge * edge;
+        int top = region.top / edge * edge;
+        long right = Math.min(region.width, ((long) region.right + edge - 1) / edge * edge);
+        long bottom = Math.min(region.height, ((long) region.bottom + edge - 1) / edge * edge);
+        return 4L * (long) Math.ceil((right - left) * (double) scale)
+                * (long) Math.ceil((bottom - top) * (double) scale);
+    }
+
     public static float chooseRenderScale(float displayScale) {
         if (!(displayScale > 0f)) return MIN_RENDER_SCALE;
         float target = Math.max(

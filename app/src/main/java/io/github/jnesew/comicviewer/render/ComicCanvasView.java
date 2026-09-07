@@ -482,7 +482,8 @@ public final class ComicCanvasView extends View {
             destination.set(singleX, singleY,
                     singleX + info.width * singleScale,
                     singleY + info.height * singleScale);
-            renderer.drawPage(canvas, page, destination, clip);
+            renderer.drawPages(canvas, Collections.singletonList(
+                    new TileRenderer.PageRequest(page, destination, clip)));
             return;
         }
 
@@ -493,10 +494,11 @@ public final class ComicCanvasView extends View {
         float rightWidth = normalizedPageWidth(rightPage, sourceHeight) * singleScale;
         float height = sourceHeight * singleScale;
         destination.set(singleX, singleY, singleX + leftWidth, singleY + height);
-        renderer.drawPage(canvas, leftPage, destination, clip);
+        TileRenderer.PageRequest left = new TileRenderer.PageRequest(leftPage, destination, clip);
         float rightX = singleX + leftWidth + pageGap;
         destination.set(rightX, singleY, rightX + rightWidth, singleY + height);
-        renderer.drawPage(canvas, rightPage, destination, clip);
+        renderer.drawPages(canvas, java.util.Arrays.asList(left,
+                new TileRenderer.PageRequest(rightPage, destination, clip)));
     }
 
     private void drawContinuous(Canvas canvas) {
@@ -513,17 +515,26 @@ public final class ComicCanvasView extends View {
         float x = (getWidth() - pageWidth) / 2f + continuousPanX;
         clip.set(0f, -prefetch, getWidth(), getHeight() + prefetch);
         drawContinuousLabels(canvas, first, last);
+        java.util.Map<TileRenderer, List<TileRenderer.PageRequest>> requests =
+                new java.util.LinkedHashMap<>();
         for (int index = first; index <= last; index++) {
             float top = continuousLayout.top(index) - documentScroll;
             destination.set(x, top, x + pageWidth, top + continuousLayout.height(index));
             TileRenderer pageRenderer = rendererForPage(index);
             if (pageRenderer != null) {
-                pageRenderer.drawPage(
-                        canvas,
+                // PDF pages use viewport-only requests even beside a raster issue.
+                RectF pageClip = pageRenderer.usesRenderedTiles()
+                        ? new RectF(0f, 0f, getWidth(), getHeight()) : clip;
+                requests.computeIfAbsent(pageRenderer, key -> new ArrayList<>()).add(
+                        new TileRenderer.PageRequest(
                         index < continuousLocalPage.length ? continuousLocalPage[index] : index,
                         destination,
-                        clip);
+                        pageClip));
             }
+        }
+        for (java.util.Map.Entry<TileRenderer, List<TileRenderer.PageRequest>> entry :
+                requests.entrySet()) {
+            entry.getKey().drawPages(canvas, entry.getValue());
         }
     }
 

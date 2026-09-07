@@ -63,6 +63,44 @@ public final class TileRenderer implements AutoCloseable {
     private volatile boolean closed;
     private volatile boolean errorReported;
 
+    public static final class PageRequest {
+        final int page;
+        final RectF destination;
+        final RectF clip;
+
+        public PageRequest(int page, RectF destination, RectF clip) {
+            this.page = page;
+            this.destination = new RectF(destination);
+            this.clip = new RectF(clip);
+        }
+    }
+
+    public void drawPages(Canvas canvas, java.util.List<PageRequest> requests) {
+        java.util.ArrayList<PageRequest> visibleRequests = new java.util.ArrayList<>();
+        java.util.ArrayList<RenderedTilePolicy.Region> regions = new java.util.ArrayList<>();
+        for (PageRequest request : requests) {
+            if (request.destination.width() <= 0 || request.destination.height() <= 0) continue;
+            RectF visible = new RectF(request.destination);
+            if (!visible.intersect(request.clip)) continue;
+            PageInfo info = archive.page(request.page);
+            float scale = request.destination.width() / info.width;
+            regions.add(new RenderedTilePolicy.Region(
+                    clamp((int) Math.floor((visible.left - request.destination.left) / scale), 0, info.width - 1),
+                    clamp((int) Math.floor((visible.top - request.destination.top) / scale), 0, info.height - 1),
+                    clamp((int) Math.ceil((visible.right - request.destination.left) / scale), 1, info.width),
+                    clamp((int) Math.ceil((visible.bottom - request.destination.top) / scale), 1, info.height),
+                    info.width, info.height, scale));
+            visibleRequests.add(request);
+        }
+        float[] scales = archive.supportsRenderedTiles()
+                ? RenderedTilePolicy.frameScales(regions, tiles.maxSize() * 1024L * 3L / 4L)
+                : new float[regions.size()];
+        for (int i = 0; i < visibleRequests.size(); i++) {
+            PageRequest request = visibleRequests.get(i);
+            drawPage(canvas, request.page, request.destination, request.clip, scales[i]);
+        }
+    }
+
     public TileRenderer(
             Context context,
             ComicDocument archive,
@@ -98,7 +136,8 @@ public final class TileRenderer implements AutoCloseable {
         return paint;
     }
 
-    public void drawPage(Canvas canvas, int pageIndex, RectF destination, RectF requestedClip) {
+    private void drawPage(Canvas canvas, int pageIndex, RectF destination, RectF requestedClip,
+            float plannedRenderScale) {
         if (closed || destination.width() <= 0f || destination.height() <= 0f) return;
         PageInfo page = archive.page(pageIndex);
         RectF visible = new RectF(destination);
@@ -109,7 +148,7 @@ public final class TileRenderer implements AutoCloseable {
         boolean rendered = archive.supportsRenderedTiles();
         int sample = rendered ? 1 : chooseSample(scale);
         float renderScale = rendered
-                ? RenderedTilePolicy.chooseRenderScale(scale)
+                ? plannedRenderScale
                 : 1f / sample;
         int sourceTile = rendered
                 ? RenderedTilePolicy.sourceTileSize(renderScale)
