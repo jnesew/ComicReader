@@ -504,11 +504,9 @@ public final class ComicCanvasView extends View {
 
     private void drawContinuous(Canvas canvas) {
         if (continuousLayout.size() == 0) return;
-        // A rendered PDF tile intersecting the viewport already extends to its grid edge.
-        // Extra high-resolution PDF prefetch can evict visible tiles while zooming.
-        TileRenderer visibleRenderer = rendererForPage(page);
-        float prefetch = visibleRenderer != null && visibleRenderer.usesRenderedTiles()
-                ? 0f : getHeight() * 0.55f;
+        // Intersecting tiles already extend beyond the viewport to their grid edges.
+        // Avoid spending the visible-frame budget on extra offscreen raster/PDF tiles.
+        float prefetch = 0f;
         int first = continuousLayout.pageAt(Math.max(0f, documentScroll - prefetch));
         int last = continuousLayout.pageAt(Math.min(
                 continuousLayout.documentHeight(), documentScroll + getHeight() + prefetch));

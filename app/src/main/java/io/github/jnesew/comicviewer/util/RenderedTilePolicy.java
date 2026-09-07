@@ -32,18 +32,34 @@ public final class RenderedTilePolicy {
 
     /** Budget all visible pages together, leaving cache headroom for in-flight/fallback tiles. */
     public static float[] frameScales(java.util.List<Region> regions, long budgetBytes) {
+        return frameScales(regions, budgetBytes, false);
+    }
+
+    public static float[] rasterFrameScales(java.util.List<Region> regions, long budgetBytes) {
+        return frameScales(regions, budgetBytes, true);
+    }
+
+    private static float[] frameScales(java.util.List<Region> regions, long budgetBytes,
+            boolean raster) {
         float[] scales = new float[regions.size()];
         for (int i = 0; i < scales.length; i++) {
-            scales[i] = chooseRenderScale(regions.get(i).displayScale);
+            float display = regions.get(i).displayScale;
+            if (raster) {
+                int sample = 1;
+                while (sample < 64 && sample * 2f <= 1f / Math.max(0.0001f, display)) sample *= 2;
+                scales[i] = 1f / sample;
+            } else {
+                scales[i] = chooseRenderScale(display);
+            }
         }
         while (true) {
             long total = 0L;
             long largest = -1L;
             int reduce = -1;
             for (int i = 0; i < scales.length; i++) {
-                long bytes = tileBytes(regions.get(i), scales[i]);
+                long bytes = tileBytes(regions.get(i), scales[i], raster);
                 total += bytes;
-                if (scales[i] > MIN_RENDER_SCALE && bytes > largest) {
+                if (scales[i] > (raster ? 1f / 64f : MIN_RENDER_SCALE) && bytes > largest) {
                     largest = bytes;
                     reduce = i;
                 }
@@ -54,7 +70,15 @@ public final class RenderedTilePolicy {
     }
 
     public static long tileBytes(Region region, float scale) {
-        int edge = sourceTileSize(scale);
+        return tileBytes(region, scale, false);
+    }
+
+    public static long rasterTileBytes(Region region, float scale) {
+        return tileBytes(region, scale, true);
+    }
+
+    private static long tileBytes(Region region, float scale, boolean raster) {
+        int edge = raster ? Math.round(768f / scale) : sourceTileSize(scale);
         int left = region.left / edge * edge;
         int top = region.top / edge * edge;
         long right = Math.min(region.width, ((long) region.right + edge - 1) / edge * edge);

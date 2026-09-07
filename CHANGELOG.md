@@ -15,6 +15,9 @@ All notable public changes to ComicViewer for Android are recorded here.
 
 ### Reader
 
+- Failed opening/retry attempts preserve saved titles, grouping, availability, and page indexes.
+- Extend visible-frame tile budgeting to CBZ/raster images and avoid offscreen high-resolution
+  tile requests that compete with currently visible pages.
 - Mirror the page slider, preview position, and bottom navigation arrows for RTL reading.
 - Unavailable series issues now have named notices that ordinary navigation can pass, with Retry
   and no changes to the missing issues' reading progress, page counts, or bookmarks.

@@ -7,6 +7,39 @@ import static org.junit.Assert.assertTrue;
 
 public class RenderedTilePolicyTest {
     @Test
+    public void tallCbzPagesFitTogetherAcrossReportedZoomRange() {
+        long budget = 18L * 1024 * 1024;
+        boolean reduced = false;
+        for (float zoom : new float[]{0.6f, 0.96f, 1f, 1.2f, 1.65f, 2f, 4f}) {
+            float displayScale = 1080f / 1900f * zoom;
+            for (int offset : new int[]{0, 500, 1600, 2700}) {
+                java.util.List<RenderedTilePolicy.Region> regions = java.util.Arrays.asList(
+                        new RenderedTilePolicy.Region(0, offset, 1900, 3900,
+                                1900, 3900, displayScale),
+                        new RenderedTilePolicy.Region(0, 0, 1900, 1800,
+                                1900, 3900, displayScale));
+                float[] scales = RenderedTilePolicy.rasterFrameScales(regions, budget);
+                long bytes = 0L;
+                for (int i = 0; i < scales.length; i++) {
+                    bytes += RenderedTilePolicy.rasterTileBytes(regions.get(i), scales[i]);
+                    int sample = Math.round(1f / scales[i]);
+                    assertTrue(sample >= 1 && sample <= 64 && (sample & (sample - 1)) == 0);
+                    reduced |= displayScale > 0.5f && sample > 1;
+                }
+                assertTrue("Raster frame exceeds cache at " + zoom, bytes <= budget);
+            }
+        }
+        assertTrue(reduced);
+    }
+
+    @Test
+    public void smallRasterFramePreservesOriginalSampling() {
+        java.util.List<RenderedTilePolicy.Region> regions = java.util.List.of(
+                new RenderedTilePolicy.Region(0, 0, 800, 800, 1900, 3900, 0.6f));
+        assertEquals(1f, RenderedTilePolicy.rasterFrameScales(regions, 18L * 1024 * 1024)[0], 0f);
+    }
+
+    @Test
     public void splitViewportWorkingSetFitsCacheAcrossZoomLevels() {
         long budget = 18L * 1024 * 1024;
         boolean reduced = false;

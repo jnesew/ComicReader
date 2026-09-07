@@ -99,7 +99,7 @@ public final class TileRenderer implements AutoCloseable {
         }
         float[] scales = archive.supportsRenderedTiles()
                 ? RenderedTilePolicy.frameScales(regions, tiles.maxSize() * 1024L * 3L / 4L)
-                : new float[regions.size()];
+                : RenderedTilePolicy.rasterFrameScales(regions, tiles.maxSize() * 1024L * 3L / 4L);
         for (int i = 0; i < visibleRequests.size(); i++) {
             PageRequest request = visibleRequests.get(i);
             drawPage(canvas, request.page, request.destination, request.clip, scales[i]);
@@ -188,7 +188,7 @@ public final class TileRenderer implements AutoCloseable {
         canvas.drawRect(visible, placeholderPaint);
         float scale = destination.width() / page.width;
         boolean rendered = archive.supportsRenderedTiles();
-        int sample = rendered ? 1 : chooseSample(scale);
+        int sample = rendered ? 1 : Math.round(1f / plannedRenderScale);
         float renderScale = rendered
                 ? plannedRenderScale
                 : 1f / sample;
@@ -359,14 +359,6 @@ public final class TileRenderer implements AutoCloseable {
         if (errorReported || closed) return;
         errorReported = true;
         mainHandler.post(() -> errorListener.onRenderError(message));
-    }
-
-    private static int chooseSample(float scale) {
-        if (scale >= 1f) return 1;
-        float inverse = 1f / Math.max(0.0001f, scale);
-        int sample = 1;
-        while (sample < 64 && sample * 2f <= inverse) sample *= 2;
-        return sample;
     }
 
     private void drawRenderedFallback(
