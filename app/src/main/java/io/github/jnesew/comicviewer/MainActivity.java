@@ -834,22 +834,14 @@ public final class MainActivity extends Activity implements
         showLoading(getString(R.string.reader_opening));
         archiveLoader.execute(() -> {
             boolean created = false;
+            ComicDocument pendingDocument = null;
             try {
                 DocumentInfo document = ComicDocumentFactory.describe(this, uri);
                 String sample = manualImport
                         ? sampleContent(uri, document.size) : "";
-                created = database.get(uri.toString()).uri.isEmpty();
-                ReadingProgress saved = database.ensureImported(
-                        uri.toString(), document.title, document.size, document.modified);
-                if (manualImport) {
-                    database.markManualSource(saved.uri);
-                    saved.manualSource = true;
-                    if (!sample.isEmpty()) {
-                        database.setLibraryFingerprint(
-                                saved.uri, document.size, sample, saved.contentFingerprint);
-                        saved.sampleSignature = sample;
-                    }
-                }
+                // Describing a missing SAF document can return its URI as a fallback title.
+                // Do not persist that description (or reset its index/grouping) before open succeeds.
+                ReadingProgress saved = database.get(uri.toString());
                 List<PageInfo> cachedPages = saved.indexComplete
                         ? database.pageIndex(saved.uri) : Collections.emptyList();
                 int openingPage = switch (openPosition) {
@@ -863,6 +855,17 @@ public final class MainActivity extends Activity implements
                         mainHandler.post(() -> {
                             if (generation == openGeneration) loadingLabel.setText(message);
                         }));
+                pendingDocument = opened;
+                created = saved.uri.isEmpty();
+                database.ensureImported(
+                        uri.toString(), opened.title(), document.size, document.modified);
+                if (manualImport) {
+                    database.markManualSource(opened.key());
+                    if (!sample.isEmpty()) {
+                        database.setLibraryFingerprint(
+                                opened.key(), document.size, sample, saved.contentFingerprint);
+                    }
+                }
                 database.updateTitle(opened.key(), opened.title());
                 applySeriesMetadata(opened, null);
                 ReadingProgress activated = database.get(opened.key());
@@ -878,7 +881,9 @@ public final class MainActivity extends Activity implements
                     hideLoading();
                     startBackgroundIndex(opened, generation);
                 });
+                pendingDocument = null;
             } catch (IOException | RuntimeException error) {
+                if (pendingDocument != null) pendingDocument.close();
                 if (created) {
                     String cover = database.forget(uri.toString());
                     CoverStore.delete(this, cover);
