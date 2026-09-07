@@ -15,6 +15,8 @@ All notable public changes to ComicViewer for Android are recorded here.
 
 ### Reader
 
+- Unavailable series issues now have named notices that ordinary navigation can pass, with Retry
+  and no changes to the missing issues' reading progress, page counts, or bookmarks.
 - Budget PDF tile resolution across all visible pages together to prevent cache churn in
   continuous and two-page views, including viewports straddling page boundaries.
 - Added cover-aware two-page spreads with natural LTR and RTL placement, standalone landscape

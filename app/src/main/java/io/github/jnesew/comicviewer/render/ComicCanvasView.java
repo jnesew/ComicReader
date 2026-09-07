@@ -35,6 +35,7 @@ public final class ComicCanvasView extends View {
         void onChromeToggleRequested();
         void onContinuousBoundaryApproached(int direction);
         void onContinuousBoundaryRetry(int direction);
+        void onUnavailableRetry(String documentKey);
     }
 
     public static final class ContinuousDocument {
@@ -1007,6 +1008,23 @@ public final class ComicCanvasView extends View {
         @Override
         public boolean onSingleTapConfirmed(MotionEvent event) {
             performClick();
+            if (!pages.isEmpty()) {
+                int hitPage = continuous
+                        ? continuousLayout.pageAt(documentScroll + event.getY()) : page;
+                TileRenderer hitRenderer = continuous ? rendererForPage(hitPage) : renderer;
+                if (hitRenderer != null && hitRenderer.isUnavailable()) {
+                    float scale = continuous ? contentWidth() * continuousZoom / 1000f : singleScale;
+                    float left = continuous
+                            ? (getWidth() - contentWidth() * continuousZoom) / 2f + continuousPanX
+                            : singleX;
+                    float top = continuous ? continuousLayout.top(hitPage) - documentScroll : singleY;
+                    if (TileRenderer.hitsNoticeRetry(
+                            (event.getX() - left) / scale, (event.getY() - top) / scale)) {
+                        if (listener != null) listener.onUnavailableRetry(hitRenderer.documentKey());
+                        return true;
+                    }
+                }
+            }
             if (continuous && continuousLayout.size() > 0) {
                 float documentY = documentScroll + event.getY();
                 if (topBoundaryRetry && documentY < continuousLayout.top(0)) {

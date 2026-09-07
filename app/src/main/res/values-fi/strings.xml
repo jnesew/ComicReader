@@ -2,6 +2,8 @@
     <string name="app_name">ComicViewer</string>
 
     <string name="library_title">Kirjasto</string>
+    <string name="reader_retry">Yritä uudelleen</string>
+    <string name="reader_unavailable_notice">Ei saatavilla\n\n%1$s\n\nJatka lukemista ohittaaksesi tämän numeron tai yritä avata se uudelleen.</string>
     <string name="library_search">Haku</string>
     <string name="library_search_hint">Hae sarjakuvia</string>
     <string name="library_menu">Kirjastovalikko</string>

@@ -615,7 +615,7 @@ public final class MainActivity extends Activity implements
 
     @Override
     public void onSeek(int targetPage) {
-        if (archive == null) return;
+        if (archive == null || archive.isUnavailable()) return;
         reader.canvas.showPage(clamp(targetPage, 0, archive.count() - 1), 0f);
         reader.keepChromeAwake();
     }
@@ -632,7 +632,7 @@ public final class MainActivity extends Activity implements
 
     @Override
     public void onBookmark() {
-        if (archive == null) return;
+        if (archive == null || archive.isUnavailable()) return;
         boolean added = database.toggleBookmark(archive.key(), reader.canvas.page());
         reader.updateBookmark(added);
         Toast.makeText(this,
@@ -715,11 +715,13 @@ public final class MainActivity extends Activity implements
     @Override
     public void onMoreMenu(View anchor) {
         PopupMenu menu = new PopupMenu(this, anchor);
-        menu.getMenu().add(R.string.reader_jump_to_page).setOnMenuItemClickListener(item -> {
+        menu.getMenu().add(R.string.reader_jump_to_page)
+                .setEnabled(archive != null && !archive.isUnavailable()).setOnMenuItemClickListener(item -> {
             showJumpDialog();
             return true;
         });
-        menu.getMenu().add(R.string.reader_bookmarks).setOnMenuItemClickListener(item -> {
+        menu.getMenu().add(R.string.reader_bookmarks)
+                .setEnabled(archive != null && !archive.isUnavailable()).setOnMenuItemClickListener(item -> {
             showBookmarks();
             return true;
         });
@@ -795,6 +797,23 @@ public final class MainActivity extends Activity implements
         requestContinuousAdjacent(direction, true);
     }
 
+    @Override
+    public void onRetryUnavailable() {
+        if (archive != null && archive.isUnavailable()) onUnavailableRetry(archive.key());
+    }
+
+    @Override
+    public void onUnavailableRetry(String key) {
+        if (comicOpening) return;
+        openComic(Uri.parse(key), false, OpenPosition.BEGINNING, reader.canvas.readingMode());
+    }
+
+    private void activateUnavailable(ReadingProgress item, String mode) {
+        item.readingMode = mode;
+        activateArchive(new io.github.jnesew.comicviewer.document.UnavailableComicDocument(item),
+                item, OpenPosition.BEGINNING);
+    }
+
     private void openComic(Uri uri, boolean manualImport) {
         openComic(uri, manualImport, OpenPosition.REMEMBERED);
     }
@@ -868,6 +887,11 @@ public final class MainActivity extends Activity implements
                     if (generation != openGeneration || isFinishing()) return;
                     comicOpening = false;
                     hideLoading();
+                    ReadingProgress failed = database.get(uri.toString());
+                    if (readingModeOverride != null && failed.seriesId > 0L) {
+                        activateUnavailable(failed, readingModeOverride);
+                        return;
+                    }
                     showError(getString(R.string.error_open_comic), safeMessage(error));
                 });
             }
@@ -936,6 +960,7 @@ public final class MainActivity extends Activity implements
         reader.canvas.setRightToLeft(ReadingDirection.isRightToLeft(
                 progress.readingDirection, opened.suggestedRightToLeft()));
         reader.canvas.setCanvasColor(preferences.canvasColor());
+        reader.setUnavailable(opened.isUnavailable());
         reader.canvas.setDocument(tileRenderer, opened.pages(), progress);
         reader.setTitle(progress.title);
         reader.updatePosition(reader.canvas.page(), reader.canvas.pageEnd(), opened.count());
@@ -955,6 +980,7 @@ public final class MainActivity extends Activity implements
     }
 
     private void startBackgroundIndex(ComicDocument opened, int generation) {
+        if (opened.isUnavailable()) return;
         indexWorker.execute(() -> {
             try {
                 ReadingProgress libraryItem = database.get(opened.key());
@@ -1602,8 +1628,10 @@ public final class MainActivity extends Activity implements
         float ratio = reader.canvas.pageRatio();
         progress.page = page;
         progress.scrollRatio = ratio;
-        progress.lastOpened = System.currentTimeMillis();
-        database.saveReadingProgress(progress);
+        if (!archive.isUnavailable()) {
+            progress.lastOpened = System.currentTimeMillis();
+            database.saveReadingProgress(progress);
+        }
         cancelContinuousPrefetch();
         for (ContinuousIssueResource resource : new ArrayList<>(continuousResources.values())) {
             if (resource.document != archive) resource.close();
@@ -1622,13 +1650,14 @@ public final class MainActivity extends Activity implements
     private boolean switchContinuousIssue(String key) {
         ContinuousIssueResource next = continuousResources.get(key);
         if (next == null) return false;
-        if (progress != null) {
+        if (progress != null && archive != null && !archive.isUnavailable()) {
             progress.lastOpened = System.currentTimeMillis();
             database.saveReadingProgress(progress);
         }
         archive = next.document;
         tileRenderer = next.renderer;
         progress = next.progress;
+        reader.setUnavailable(archive.isUnavailable());
         progress.readingMode = ComicCanvasView.CONTINUOUS;
         progress.lastOpened = System.currentTimeMillis();
         replacePagePreview(archive);
@@ -1722,7 +1751,7 @@ public final class MainActivity extends Activity implements
         ReadingProgress adjacent = edge == null ? null : direction > 0
                 ? SeriesNavigator.nextIssue(issues, edge.uri)
                 : SeriesNavigator.previousIssue(issues, edge.uri);
-        if (adjacent == null || !adjacent.available) {
+        if (adjacent == null) {
             updateContinuousBoundaries();
             return;
         }
@@ -1732,6 +1761,10 @@ public final class MainActivity extends Activity implements
                 Math.abs(adjacentIndex - activeIndex) > 1) return;
         if (continuousResources.containsKey(adjacent.uri) ||
                 continuousLoading.contains(adjacent.uri)) return;
+        if (!adjacent.available) {
+            installContinuousNotice(adjacent.uri, openGeneration, progress.seriesId);
+            return;
+        }
         if (retry) continuousErrors.remove(adjacent.uri);
         if (continuousErrors.containsKey(adjacent.uri)) {
             updateContinuousBoundaries();
@@ -1804,9 +1837,22 @@ public final class MainActivity extends Activity implements
                 continuousLoading.remove(uriKey);
                 if (generation != openGeneration || destroyed) return;
                 continuousErrors.put(uriKey, message);
-                updateContinuousBoundaries();
+                installContinuousNotice(uriKey, generation, seriesId);
             });
         }
+    }
+
+    private void installContinuousNotice(String uriKey, int generation, long seriesId) {
+        if (destroyed || generation != openGeneration || !reader.canvas.isContinuous() ||
+                progress == null || progress.seriesId != seriesId) return;
+        ReadingProgress item = database.get(uriKey);
+        if (item.uri.isEmpty() || continuousResources.containsKey(uriKey)) return;
+        item.readingMode = ComicCanvasView.CONTINUOUS;
+        ComicDocument notice = new io.github.jnesew.comicviewer.document.UnavailableComicDocument(item);
+        TileRenderer renderer = new TileRenderer(this, notice,
+                reader.canvas::postInvalidateOnAnimation, message -> { });
+        continuousResources.put(uriKey, new ContinuousIssueResource(notice, renderer, item));
+        refreshContinuousDocuments(archive.key(), reader.canvas.page(), reader.canvas.pageRatio());
     }
 
     private void cancelContinuousPrefetch() {
@@ -1947,10 +1993,13 @@ public final class MainActivity extends Activity implements
             return true;
         }
         if (!adjacent.available) {
-            Toast.makeText(this, direction > 0
-                            ? R.string.reader_next_issue_unavailable
-                            : R.string.reader_previous_issue_unavailable,
-                    Toast.LENGTH_SHORT).show();
+            if (reader.canvas.isContinuous()) {
+                requestContinuousAdjacent(direction, false);
+            } else {
+                cancelContinuousPrefetch();
+                ++openGeneration;
+                activateUnavailable(adjacent, reader.canvas.readingMode());
+            }
             return true;
         }
         if (reader.canvas.isContinuous()) {
@@ -1971,7 +2020,7 @@ public final class MainActivity extends Activity implements
 
     private void saveNow() {
         mainHandler.removeCallbacks(deferredSave);
-        if (archive == null || progress == null) return;
+        if (archive == null || progress == null || archive.isUnavailable()) return;
         progress.uri = archive.key();
         progress.page = reader.canvas.pageEnd();
         progress.pageCount = archive.count();
@@ -2010,7 +2059,7 @@ public final class MainActivity extends Activity implements
     }
 
     private void showJumpDialog() {
-        if (archive == null) return;
+        if (archive == null || archive.isUnavailable()) return;
         EditText input = new EditText(this);
         input.setInputType(InputType.TYPE_CLASS_NUMBER);
         input.setSingleLine(true);
@@ -2048,7 +2097,7 @@ public final class MainActivity extends Activity implements
     }
 
     private void showBookmarks() {
-        if (archive == null) return;
+        if (archive == null || archive.isUnavailable()) return;
         List<Integer> bookmarks = database.bookmarks(archive.key());
         if (bookmarks.isEmpty()) {
             new AlertDialog.Builder(this)

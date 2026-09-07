@@ -44,7 +44,10 @@ In paged modes, advancing beyond the final page or spread opens the next issue, 
 from the first page opens the final page or spread of the previous issue. Android's system Back
 action still returns to the library. Continuous mode buffers the adjacent issues and ordinary
 vertical scrolling crosses an issue separator in either direction. Loading and retry states appear
-at the boundary when needed. Series navigation never wraps or silently skips an unavailable issue.
+at the boundary when needed. An unavailable issue is shown as a named notice in its normal series
+position. Scroll or navigate forward/backward to pass it, or choose **Retry** to try opening it
+again. Notices cannot be bookmarked and do not change the missing issue's saved progress or page
+count. Series navigation never wraps.
 
 Each title remembers its page, page-relative scroll position, zoom, zoom-gesture lock, reading mode,
 reading direction, favorite state, and page bookmarks.

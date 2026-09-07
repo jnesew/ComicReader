@@ -76,6 +76,11 @@ public final class TileRenderer implements AutoCloseable {
     }
 
     public void drawPages(Canvas canvas, java.util.List<PageRequest> requests) {
+        if (closed) return;
+        if (archive.isUnavailable()) {
+            for (PageRequest request : requests) drawUnavailable(canvas, request);
+            return;
+        }
         java.util.ArrayList<PageRequest> visibleRequests = new java.util.ArrayList<>();
         java.util.ArrayList<RenderedTilePolicy.Region> regions = new java.util.ArrayList<>();
         for (PageRequest request : requests) {
@@ -99,6 +104,43 @@ public final class TileRenderer implements AutoCloseable {
             PageRequest request = visibleRequests.get(i);
             drawPage(canvas, request.page, request.destination, request.clip, scales[i]);
         }
+    }
+
+    public boolean isUnavailable() { return archive.isUnavailable(); }
+
+    public String documentKey() { return archive.key(); }
+
+    public static boolean hitsNoticeRetry(float x, float y) {
+        return x >= 300f && x <= 700f && y >= 750f && y <= 870f;
+    }
+
+    private void drawUnavailable(Canvas canvas, PageRequest request) {
+        RectF visible = new RectF(request.destination);
+        if (!visible.intersect(request.clip)) return;
+        int saved = canvas.save();
+        canvas.clipRect(visible);
+        canvas.translate(request.destination.left, request.destination.top);
+        canvas.scale(request.destination.width() / 1000f, request.destination.height() / 1000f);
+        Paint background = new Paint();
+        background.setColor(Color.rgb(35, 39, 47));
+        canvas.drawRect(0, 0, 1000, 1000, background);
+        android.text.TextPaint text = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
+        text.setColor(Color.WHITE);
+        text.setTextSize(44f);
+        String message = context.getString(R.string.reader_unavailable_notice, archive.title());
+        android.text.StaticLayout layout = android.text.StaticLayout.Builder
+                .obtain(message, 0, message.length(), text, 840)
+                .setAlignment(android.text.Layout.Alignment.ALIGN_CENTER)
+                .setMaxLines(9).setEllipsize(android.text.TextUtils.TruncateAt.END).build();
+        canvas.save();
+        canvas.translate(80, 120);
+        layout.draw(canvas);
+        canvas.restore();
+        background.setColor(Color.rgb(60, 72, 96));
+        canvas.drawRoundRect(new RectF(300, 750, 700, 870), 24, 24, background);
+        text.setTextAlign(Paint.Align.CENTER);
+        canvas.drawText(context.getString(R.string.reader_retry), 500, 825, text);
+        canvas.restoreToCount(saved);
     }
 
     public TileRenderer(

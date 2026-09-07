@@ -2,6 +2,8 @@
     <string name="app_name">ComicViewer</string>
 
     <string name="library_title">Library</string>
+    <string name="reader_retry">Retry</string>
+    <string name="reader_unavailable_notice">Unavailable\n\n%1$s\n\nContinue reading to move past this issue, or retry opening it.</string>
     <string name="library_search">Search</string>
     <string name="library_search_hint">Search comics</string>
     <string name="library_menu">Library menu</string>

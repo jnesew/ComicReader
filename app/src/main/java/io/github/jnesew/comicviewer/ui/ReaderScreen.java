@@ -29,6 +29,7 @@ public final class ReaderScreen extends FrameLayout {
         void onPagePreviewRequested(int page);
         void onPagePreviewCancelled();
         void onBookmark();
+        void onRetryUnavailable();
         void onLayoutMenu(View anchor);
         void onFitMenu(View anchor);
         void onMoreMenu(View anchor);
@@ -46,6 +47,8 @@ public final class ReaderScreen extends FrameLayout {
     private final TextView zoomLabel;
     private final TextView modeLabel;
     private final SeekBar seekBar;
+    private final TextView retry;
+    private boolean unavailable;
     private final LinearLayout previewCard;
     private final ImageView previewImage;
     private final ProgressBar previewLoading;
@@ -113,6 +116,14 @@ public final class ReaderScreen extends FrameLayout {
         status.setGravity(Gravity.CENTER_VERTICAL);
         pageLabel = Ui.text(context, context.getString(R.string.reader_page_label, 1, 1), 13, Ui.TEXT);
         status.addView(pageLabel, new LinearLayout.LayoutParams(0, Ui.dp(context, 30), 1f));
+        retry = Ui.text(context, context.getString(R.string.reader_retry), 14, Ui.ACCENT);
+        retry.setPadding(Ui.dp(context, 8), 0, Ui.dp(context, 8), 0);
+        retry.setMinHeight(Ui.dp(context, 48));
+        retry.setClickable(true);
+        retry.setFocusable(true);
+        retry.setVisibility(GONE);
+        retry.setOnClickListener(view -> listener.onRetryUnavailable());
+        status.addView(retry);
         zoomLabel = Ui.text(context, context.getString(R.string.reader_fit_width), 13, Ui.ACCENT);
         zoomLabel.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         zoomLabel.setPadding(Ui.dp(context, 12), 0, Ui.dp(context, 4), 0);
@@ -259,6 +270,10 @@ public final class ReaderScreen extends FrameLayout {
     }
 
     public void updatePosition(int page, int pageEnd, int count) {
+        if (unavailable) {
+            pageLabel.setText(R.string.comic_status_unavailable);
+            return;
+        }
         pageCount = Math.max(1, count);
         pageLabel.setText(pageEnd > page
                 ? getResources().getString(
@@ -303,6 +318,19 @@ public final class ReaderScreen extends FrameLayout {
         bookmark.setText(bookmarked ? "★" : "☆");
         bookmark.setContentDescription(getResources().getString(bookmarked ?
                 R.string.reader_remove_bookmark : R.string.reader_add_bookmark));
+    }
+
+    public void setUnavailable(boolean value) {
+        unavailable = value;
+        bookmark.setEnabled(!value);
+        bookmark.setAlpha(value ? 0.35f : 1f);
+        seekBar.setEnabled(!value);
+        seekBar.setAlpha(value ? 0.35f : 1f);
+        retry.setVisibility(value ? VISIBLE : GONE);
+        if (value) {
+            dismissPagePreview();
+            pageLabel.setText(R.string.comic_status_unavailable);
+        }
     }
 
     public void showPagePreview(int page, Bitmap bitmap) {
