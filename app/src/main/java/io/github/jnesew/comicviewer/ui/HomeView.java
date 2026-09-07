@@ -138,8 +138,7 @@ public final class HomeView extends FrameLayout {
         header.addView(headerBack, new LinearLayout.LayoutParams(
                 Ui.dp(context, 48), Ui.dp(context, 58)));
 
-        headerTitle = Ui.text(context, context.getString(R.string.library_title), 28, Ui.TEXT);
-        Ui.bold(headerTitle);
+        headerTitle = Ui.text(context, context.getString(R.string.library_title), 24, Ui.TEXT);
         headerTitle.setSingleLine(true);
         headerTitle.setEllipsize(TextUtils.TruncateAt.END);
         header.addView(headerTitle, new LinearLayout.LayoutParams(0, Ui.dp(context, 58), 1f));

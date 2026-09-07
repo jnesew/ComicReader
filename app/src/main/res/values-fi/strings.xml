@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">ComicViewer</string>
 
-    <string name="library_title">ComicViewer</string>
+    <string name="library_title">Kirjasto</string>
     <string name="library_search">Haku</string>
     <string name="library_search_hint">Hae sarjakuvia</string>
     <string name="library_menu">Kirjastovalikko</string>

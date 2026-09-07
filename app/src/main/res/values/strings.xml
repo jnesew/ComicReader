@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">ComicViewer</string>
 
-    <string name="library_title">ComicViewer</string>
+    <string name="library_title">Library</string>
     <string name="library_search">Search</string>
     <string name="library_search_hint">Search comics</string>
     <string name="library_menu">Library menu</string>
