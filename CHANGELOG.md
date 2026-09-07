@@ -21,6 +21,8 @@ All notable public changes to ComicViewer for Android are recorded here.
 - Added backward navigation from the first page into the final page or spread of the previous issue.
 - Continuous mode now buffers adjacent issues and crosses issue boundaries through ordinary
   scrolling, with inline separators and loading, unavailable, and retry states.
+- Fixed continuous scrolling stalling on short single-page issues and restoring into the previous
+  issue when the buffered content is shorter than the viewport.
 - Simplified the reader menu and moved Background color and Hardware shortcuts into Reader options.
 
 ## 1.0.3 - 2026-08-31

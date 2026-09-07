@@ -701,8 +701,7 @@ public final class ComicCanvasView extends View {
     }
 
     private float clampScroll(float value) {
-        return clamp(value, 0f,
-                Math.max(0f, continuousLayout.documentHeight() - Math.max(1, getHeight())));
+        return clamp(value, 0f, continuousLayout.maximumScroll(getHeight()));
     }
 
     private float currentSingleRatio() {
@@ -893,8 +892,7 @@ public final class ComicCanvasView extends View {
     private void notifyContinuousBoundaries() {
         if (listener == null || !continuous || continuousLayout.size() == 0) return;
         float threshold = Math.max(getHeight() * 1.5f, Ui.dp(getContext(), 480));
-        float maximum = Math.max(
-                0f, continuousLayout.documentHeight() - Math.max(1, getHeight()));
+        float maximum = continuousLayout.maximumScroll(getHeight());
         if (documentScroll <= threshold && !topApproachSent) {
             topApproachSent = true;
             listener.onContinuousBoundaryApproached(-1);
@@ -923,7 +921,9 @@ public final class ComicCanvasView extends View {
         int end = continuousIssueEnds[issue];
         float bottom = continuousLayout.top(end) + continuousLayout.height(end) + pageGap;
         scroller.forceFinished(true);
-        documentScroll = clampScroll(bottom - Math.max(1, getHeight()));
+        documentScroll = clampScroll(Math.max(
+                continuousLayout.top(continuousIssueStarts[issue]),
+                bottom - Math.max(1, getHeight())));
         updateContinuousPosition();
         invalidate();
     }
@@ -977,8 +977,7 @@ public final class ComicCanvasView extends View {
             }
 
             if (continuous) {
-                int maximum = Math.round(Math.max(
-                        0f, continuousLayout.documentHeight() - Math.max(1, getHeight())));
+                int maximum = Math.round(continuousLayout.maximumScroll(getHeight()));
                 scroller.fling(0, Math.round(documentScroll), 0, Math.round(-velocityY),
                         0, 0, 0, maximum);
             } else {

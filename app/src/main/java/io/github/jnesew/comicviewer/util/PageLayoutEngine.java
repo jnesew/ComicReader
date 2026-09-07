@@ -54,6 +54,14 @@ public final class PageLayoutEngine {
         return documentHeight;
     }
 
+    /** Keep the final page reachable at the top, even when it is shorter than the viewport.
+     * Continuous issue activation and subsequent buffering use that reading anchor. */
+    public float maximumScroll(float viewportHeight) {
+        if (tops.length == 0) return 0f;
+        return Math.max(tops[tops.length - 1],
+                Math.max(0f, documentHeight - Math.max(1f, viewportHeight)));
+    }
+
     public int pageAt(float documentY) {
         if (tops.length == 0) return 0;
         int low = 0;
