@@ -5,7 +5,6 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ComponentCallbacks2;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -21,21 +20,12 @@ import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
-import android.view.inputmethod.EditorInfo;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
-import android.text.InputType;
-import android.widget.CheckBox;
-import android.widget.ArrayAdapter;
-import android.widget.AutoCompleteTextView;
-import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.ProgressBar;
-import android.widget.RadioButton;
-import android.widget.RadioGroup;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -57,6 +47,10 @@ import io.github.jnesew.comicviewer.render.ComicCanvasView;
 import io.github.jnesew.comicviewer.render.PagePreviewLoader;
 import io.github.jnesew.comicviewer.render.TileRenderer;
 import io.github.jnesew.comicviewer.ui.HomeView;
+import io.github.jnesew.comicviewer.library.LibraryQueryController;
+import io.github.jnesew.comicviewer.ui.dialog.ComicEditorDialog;
+import io.github.jnesew.comicviewer.ui.dialog.ReaderOptionsDialog;
+import io.github.jnesew.comicviewer.ui.dialog.ReaderNavigationDialogs;
 import io.github.jnesew.comicviewer.ui.ReaderScreen;
 import io.github.jnesew.comicviewer.util.LibraryFolderLabel;
 import io.github.jnesew.comicviewer.util.LibraryScanResult;
@@ -67,7 +61,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -84,9 +77,6 @@ public final class MainActivity extends Activity implements
     private static final int REQUEST_IMPORT_COMICS = 4101;
     private static final int REQUEST_LIBRARY_FOLDER = 4102;
     private static final long AUTO_SCAN_COOLDOWN_MS = 5_000L;
-    private static final String[] SHORTCUT_ACTIONS = {
-            "next", "previous", "next_alt", "previous_alt"
-    };
 
     private enum OpenPosition {
         REMEMBERED,
@@ -180,7 +170,7 @@ public final class MainActivity extends Activity implements
         migrateLegacyReadingDirection();
 
         root = new FrameLayout(this);
-        home = new HomeView(this, database, this);
+        home = new HomeView(this, new LibraryQueryController(database), this);
         reader = new ReaderScreen(this, preferences, this);
         reader.canvas.setListener(this);
         reader.setVisibility(View.GONE);
@@ -420,6 +410,12 @@ public final class MainActivity extends Activity implements
         picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
                 Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         startActivityForResult(picker, REQUEST_IMPORT_COMICS);
+    }
+
+    @Override
+    public void onFavoriteRequested(ReadingProgress item) {
+        database.toggleFavorite(item.uri);
+        home.refresh();
     }
 
     @Override
@@ -2063,64 +2059,22 @@ public final class MainActivity extends Activity implements
         progress = null;
     }
 
+
+
     private void showJumpDialog() {
         if (archive == null || archive.isUnavailable()) return;
-        EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_NUMBER);
-        input.setSingleLine(true);
-        input.setText(Integer.toString(reader.canvas.page() + 1));
-        input.selectAll();
-        input.setImeOptions(EditorInfo.IME_ACTION_GO);
-        FrameLayout wrapper = new FrameLayout(this);
-        int side = Ui.dp(this, 24);
-        wrapper.setPadding(side, Ui.dp(this, 4), side, 0);
-        wrapper.addView(input, matchWidthWrapHeight());
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.reader_jump_to_page)
-                .setMessage(getString(R.string.reader_jump_message, archive.count()))
-                .setView(wrapper)
-                .setNegativeButton(R.string.cancel, null)
-                .setPositiveButton(R.string.go, null)
-                .create();
-        dialog.setOnShowListener(ignored -> dialog.getButton(DialogInterface.BUTTON_POSITIVE)
-                .setOnClickListener(view -> {
-                    try {
-                        int value = Integer.parseInt(input.getText().toString().trim());
-                        if (value < 1 || value > archive.count()) {
-                            input.setError(getString(R.string.reader_page_range_error, archive.count()));
-                            return;
-                        }
-                        reader.canvas.showPage(value - 1, 0f);
-                        dialog.dismiss();
-                    } catch (NumberFormatException error) {
-                        input.setError(getString(R.string.reader_page_number_error));
-                    }
-                }));
-        dialog.show();
-        input.requestFocus();
-        dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+        ComicDocument selected = archive;
+        new ReaderNavigationDialogs(this).showJump(reader.canvas.page(), archive.count(), page -> {
+            if (archive == selected) reader.canvas.showPage(page, 0f);
+        });
     }
 
     private void showBookmarks() {
         if (archive == null || archive.isUnavailable()) return;
-        List<Integer> bookmarks = database.bookmarks(archive.key());
-        if (bookmarks.isEmpty()) {
-            new AlertDialog.Builder(this)
-                    .setTitle(R.string.reader_bookmarks)
-                    .setMessage(R.string.reader_no_bookmarks)
-                    .setPositiveButton(R.string.ok, null)
-                    .show();
-            return;
-        }
-        String[] labels = new String[bookmarks.size()];
-        for (int i = 0; i < bookmarks.size(); i++) {
-            labels[i] = getString(R.string.reader_bookmark_page, bookmarks.get(i) + 1);
-        }
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.reader_bookmarks)
-                .setItems(labels, (dialog, which) -> reader.canvas.showPage(bookmarks.get(which), 0f))
-                .setNegativeButton(R.string.close, null)
-                .show();
+        ComicDocument selected = archive;
+        new ReaderNavigationDialogs(this).showBookmarks(database.bookmarks(archive.key()), page -> {
+            if (archive == selected) reader.canvas.showPage(page, 0f);
+        });
     }
 
     private void toggleTitleFavorite() {
@@ -2131,151 +2085,16 @@ public final class MainActivity extends Activity implements
                 progress.title), Toast.LENGTH_SHORT).show();
     }
 
+
+
+
     private void showComicEditor(ReadingProgress item) {
-        ReadingProgress current = database.get(item.uri);
-        if (current.uri.isEmpty()) return;
-        ScrollView scroll = new ScrollView(this);
-        LinearLayout fields = new LinearLayout(this);
-        fields.setOrientation(LinearLayout.VERTICAL);
-        fields.setPadding(Ui.dp(this, 22), Ui.dp(this, 8), Ui.dp(this, 22), Ui.dp(this, 8));
-        scroll.addView(fields);
-
-        TextView titleLabel = editorLabel(R.string.comic_title_label);
-        fields.addView(titleLabel, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        EditText title = new EditText(this);
-        title.setSingleLine(true);
-        title.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        title.setText(current.title);
-        fields.addView(title, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 54)));
-        TextView useOriginal = Ui.text(
-                this, getString(R.string.comic_use_original_title), 14, Ui.ACCENT);
-        useOriginal.setGravity(Gravity.CENTER_VERTICAL);
-        useOriginal.setPadding(0, 0, 0, Ui.dp(this, 8));
-        useOriginal.setClickable(true);
-        useOriginal.setOnClickListener(view -> {
-            String original = current.originalTitle.isEmpty()
-                    ? current.title : current.originalTitle;
-            title.setText(original);
-            title.setSelection(title.length());
+        new ComicEditorDialog(this).show(database.get(item.uri), database.seriesNames(), edit -> {
+            if (progress != null && edit.uri().equals(progress.uri)) saveNow();
+            database.setComicMetadata(edit.uri(), edit.title(), edit.seriesMode(),
+                    edit.series(), edit.number());
+            applyComicMetadataEdit(edit.uri());
         });
-        fields.addView(useOriginal, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 42)));
-
-        TextView groupingLabel = editorLabel(R.string.comic_grouping_label);
-        fields.addView(groupingLabel, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        RadioGroup grouping = new RadioGroup(this);
-        int automaticId = View.generateViewId();
-        int manualId = View.generateViewId();
-        int standaloneId = View.generateViewId();
-        RadioButton automatic = editorRadio(
-                automaticId, R.string.comic_grouping_automatic);
-        RadioButton manual = editorRadio(manualId, R.string.comic_grouping_series);
-        RadioButton standalone = editorRadio(
-                standaloneId, R.string.comic_grouping_standalone);
-        grouping.addView(automatic);
-        grouping.addView(manual);
-        grouping.addView(standalone);
-        fields.addView(grouping);
-
-        TextView seriesLabel = editorLabel(R.string.comic_series_label);
-        fields.addView(seriesLabel, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        AutoCompleteTextView series = new AutoCompleteTextView(this);
-        series.setSingleLine(true);
-        series.setThreshold(0);
-        series.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        series.setAdapter(new ArrayAdapter<>(this,
-                android.R.layout.simple_dropdown_item_1line, database.seriesNames()));
-        String initialSeries = current.seriesTitle.isEmpty()
-                ? current.detectedSeriesName : current.seriesTitle;
-        series.setText(initialSeries, false);
-        series.setOnClickListener(view -> series.showDropDown());
-        fields.addView(series, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 54)));
-
-        TextView numberLabel = editorLabel(R.string.comic_issue_number_label);
-        fields.addView(numberLabel, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        EditText number = new EditText(this);
-        number.setSingleLine(true);
-        number.setInputType(InputType.TYPE_CLASS_TEXT);
-        number.setText(current.seriesNumber.isEmpty()
-                ? current.detectedSeriesNumber : current.seriesNumber);
-        fields.addView(number, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 54)));
-
-        if (current.seriesOverride == LibraryDatabase.SERIES_AUTOMATIC) {
-            automatic.setChecked(true);
-        } else if (current.seriesOverride == LibraryDatabase.SERIES_STANDALONE) {
-            standalone.setChecked(true);
-        } else {
-            manual.setChecked(true);
-        }
-        Runnable updateSeriesFields = () -> {
-            boolean enabled = grouping.getCheckedRadioButtonId() == manualId;
-            series.setEnabled(enabled);
-            number.setEnabled(enabled);
-            seriesLabel.setEnabled(enabled);
-            numberLabel.setEnabled(enabled);
-        };
-        grouping.setOnCheckedChangeListener((group, checkedId) -> updateSeriesFields.run());
-        updateSeriesFields.run();
-
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.comic_edit_title)
-                .setView(scroll)
-                .setNegativeButton(R.string.cancel, null)
-                .setPositiveButton(R.string.save, null)
-                .create();
-        dialog.setOnShowListener(ignored -> dialog.getButton(DialogInterface.BUTTON_POSITIVE)
-                .setOnClickListener(view -> {
-                    String editedTitle = title.getText().toString().trim();
-                    if (editedTitle.isEmpty()) {
-                        title.setError(getString(R.string.comic_title_required));
-                        return;
-                    }
-                    int seriesMode;
-                    if (grouping.getCheckedRadioButtonId() == automaticId) {
-                        seriesMode = LibraryDatabase.SERIES_AUTOMATIC;
-                    } else if (grouping.getCheckedRadioButtonId() == standaloneId) {
-                        seriesMode = LibraryDatabase.SERIES_STANDALONE;
-                    } else {
-                        seriesMode = LibraryDatabase.SERIES_MANUAL;
-                        if (series.getText().toString().trim().isEmpty()) {
-                            series.setError(getString(R.string.comic_series_required));
-                            return;
-                        }
-                    }
-                    if (progress != null && current.uri.equals(progress.uri)) saveNow();
-                    database.setComicMetadata(
-                            current.uri, editedTitle, seriesMode,
-                            series.getText().toString(), number.getText().toString());
-                    applyComicMetadataEdit(current.uri);
-                    dialog.dismiss();
-                }));
-        dialog.show();
-    }
-
-    private TextView editorLabel(int text) {
-        TextView label = Ui.text(this, getString(text), 13, Ui.TEXT_MUTED);
-        label.setPadding(0, Ui.dp(this, 8), 0, 0);
-        return label;
-    }
-
-    private RadioButton editorRadio(int id, int text) {
-        RadioButton choice = new RadioButton(this);
-        choice.setId(id);
-        choice.setText(text);
-        choice.setTextColor(Ui.TEXT);
-        choice.setTextSize(15);
-        choice.setMinHeight(Ui.dp(this, 44));
-        choice.setButtonTintList(new ColorStateList(
-                new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
-                new int[]{Ui.ACCENT, Ui.TEXT_MUTED}));
-        return choice;
     }
 
     private void applyComicMetadataEdit(String uri) {
@@ -2305,62 +2124,39 @@ public final class MainActivity extends Activity implements
         home.refresh();
     }
 
+
+    private ReaderOptionsDialog optionsDialog() {
+        return new ReaderOptionsDialog(this, preferences, new ReaderOptionsDialog.Listener() {
+            @Override public void onOptionsSaved(ReaderOptionsDialog.Options options) {
+                preferences.setTapZones(options.tapZones());
+                preferences.setVolumeNavigation(options.volumeNavigation());
+                preferences.setRememberZoom(options.rememberZoom());
+                preferences.setDefaultZoomMode(options.defaultZoom());
+                preferences.setKeepScreenOn(options.keepScreenOn());
+                preferences.setAutoHideControls(options.autoHideControls());
+                reader.canvas.setTapZones(options.tapZones());
+                applyKeepScreenOn();
+                if (!options.autoHideControls() && readerActive) reader.showChrome();
+            }
+            @Override public void onThemeSelected(String key, int color) {
+                preferences.setCanvasTheme(key);
+                reader.canvas.setCanvasColor(color);
+            }
+            @Override public void onShortcutSelected(String action, ReaderPreferences.Shortcut shortcut) {
+                preferences.setShortcut(action, shortcut);
+            }
+            @Override public void onShortcutsReset() { preferences.resetShortcuts(); }
+        });
+    }
+
+    private void showReaderOptions() { optionsDialog().show(); }
+
     private void showReadingDirection() {
         if (archive == null || progress == null) return;
-        String[] values = {
-                ReadingDirection.AUTO,
-                ReadingDirection.LEFT_TO_RIGHT,
-                ReadingDirection.RIGHT_TO_LEFT
-        };
-        int[] labels = {
-                R.string.reading_direction_auto,
-                R.string.reading_direction_left_to_right,
-                R.string.reading_direction_right_to_left
-        };
-        String current = ReadingDirection.normalize(progress.readingDirection);
-
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(Ui.dp(this, 22), Ui.dp(this, 4), Ui.dp(this, 22), Ui.dp(this, 4));
-        TextView explanation = Ui.text(
-                this, getString(R.string.reading_direction_message), 14, Ui.TEXT_MUTED);
-        explanation.setPadding(0, 0, 0, Ui.dp(this, 8));
-        content.addView(explanation, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        RadioGroup choices = new RadioGroup(this);
-        int[] ids = new int[values.length];
-        for (int index = 0; index < values.length; index++) {
-            RadioButton choice = new RadioButton(this);
-            ids[index] = View.generateViewId();
-            choice.setId(ids[index]);
-            choice.setText(labels[index]);
-            choice.setTextColor(Ui.TEXT);
-            choice.setTextSize(16);
-            choice.setMinHeight(Ui.dp(this, 52));
-            choice.setButtonTintList(new ColorStateList(
-                    new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
-                    new int[]{Ui.ACCENT, Ui.TEXT_MUTED}));
-            choices.addView(choice, new RadioGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 52)));
-            if (values[index].equals(current)) choice.setChecked(true);
-        }
-        content.addView(choices);
-
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.reader_reading_direction)
-                .setView(content)
-                .setNegativeButton(R.string.cancel, null)
-                .create();
-        choices.setOnCheckedChangeListener((group, checkedId) -> {
-            for (int index = 0; index < ids.length; index++) {
-                if (ids[index] != checkedId) continue;
-                setReadingDirection(values[index]);
-                dialog.dismiss();
-                return;
-            }
+        ComicDocument selected = archive;
+        optionsDialog().showReadingDirection(progress.readingDirection, direction -> {
+            if (archive == selected) setReadingDirection(direction);
         });
-        dialog.show();
     }
 
     private void setReadingDirection(String direction) {
@@ -2373,124 +2169,8 @@ public final class MainActivity extends Activity implements
         reader.keepChromeAwake();
     }
 
-    private void showCanvasThemes() {
-        LinkedHashMap<String, Integer> themes = ReaderPreferences.canvasThemes();
-        ArrayList<String> keys = new ArrayList<>(themes.keySet());
-        String[] labels = new String[keys.size()];
-        int selected = 0;
-        for (int i = 0; i < keys.size(); i++) {
-            labels[i] = ReaderPreferences.themeLabel(this, keys.get(i));
-            if (keys.get(i).equals(preferences.canvasTheme())) selected = i;
-        }
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.reader_background_color)
-                .setSingleChoiceItems(labels, selected, (dialog, which) -> {
-                    preferences.setCanvasTheme(keys.get(which));
-                    reader.canvas.setCanvasColor(themes.get(keys.get(which)));
-                    dialog.dismiss();
-                })
-                .setNegativeButton(R.string.cancel, null)
-                .show();
-    }
 
-    private void showReaderOptions() {
-        ScrollView scroll = new ScrollView(this);
-        LinearLayout options = new LinearLayout(this);
-        options.setOrientation(LinearLayout.VERTICAL);
-        options.setPadding(Ui.dp(this, 12), Ui.dp(this, 4), Ui.dp(this, 12), Ui.dp(this, 4));
-        scroll.addView(options);
 
-        CheckBox tapZones = checkBox(R.string.option_tap_zones, preferences.tapZones());
-        CheckBox volume = checkBox(R.string.option_volume_navigation, preferences.volumeNavigation());
-        CheckBox remember = checkBox(R.string.option_remember_zoom, preferences.rememberZoom());
-        CheckBox screen = checkBox(R.string.option_keep_screen_awake, preferences.keepScreenOn());
-        CheckBox autoHide = checkBox(R.string.option_auto_hide_controls, preferences.autoHideControls());
-        options.addView(tapZones);
-        options.addView(volume);
-        options.addView(remember);
-
-        TextView defaultZoomTitle = Ui.text(
-                this, getString(R.string.option_default_zoom), 15, Ui.TEXT);
-        defaultZoomTitle.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 2));
-        options.addView(defaultZoomTitle);
-        TextView defaultZoomExplanation = Ui.text(
-                this, getString(R.string.option_default_zoom_description), 13, Ui.TEXT_MUTED);
-        defaultZoomExplanation.setPadding(0, 0, 0, Ui.dp(this, 4));
-        options.addView(defaultZoomExplanation);
-
-        String[] defaultZoomValues = {
-                OpeningZoomPolicy.APP_DEFAULT,
-                OpeningZoomPolicy.FIT_WIDTH,
-                OpeningZoomPolicy.FIT_PAGE
-        };
-        int[] defaultZoomLabels = {
-                R.string.option_default_zoom_app,
-                R.string.reader_fit_width,
-                R.string.reader_fit_page
-        };
-        int[] defaultZoomIds = new int[defaultZoomValues.length];
-        RadioGroup defaultZoomChoices = new RadioGroup(this);
-        String selectedDefaultZoom = preferences.defaultZoomMode();
-        for (int index = 0; index < defaultZoomValues.length; index++) {
-            RadioButton choice = new RadioButton(this);
-            defaultZoomIds[index] = View.generateViewId();
-            choice.setId(defaultZoomIds[index]);
-            choice.setText(defaultZoomLabels[index]);
-            choice.setTextColor(Ui.TEXT);
-            choice.setTextSize(15);
-            choice.setMinHeight(Ui.dp(this, 44));
-            choice.setButtonTintList(new ColorStateList(
-                    new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
-                    new int[]{Ui.ACCENT, Ui.TEXT_MUTED}));
-            defaultZoomChoices.addView(choice, new RadioGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 44)));
-            if (defaultZoomValues[index].equals(selectedDefaultZoom)) choice.setChecked(true);
-        }
-        options.addView(defaultZoomChoices);
-
-        TextView backgroundColor = optionsButton(R.string.reader_background_color);
-        backgroundColor.setOnClickListener(view -> showCanvasThemes());
-        options.addView(backgroundColor);
-        TextView hardwareShortcuts = optionsButton(R.string.reader_hardware_shortcuts);
-        hardwareShortcuts.setOnClickListener(view -> showKeyboardSettings());
-        options.addView(hardwareShortcuts);
-        options.addView(screen);
-        options.addView(autoHide);
-
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.reader_options)
-                .setView(scroll)
-                .setNegativeButton(R.string.cancel, null)
-                .setPositiveButton(R.string.save, (dialog, which) -> {
-                    preferences.setTapZones(tapZones.isChecked());
-                    preferences.setVolumeNavigation(volume.isChecked());
-                    preferences.setRememberZoom(remember.isChecked());
-                    for (int index = 0; index < defaultZoomIds.length; index++) {
-                        if (defaultZoomChoices.getCheckedRadioButtonId() == defaultZoomIds[index]) {
-                            preferences.setDefaultZoomMode(defaultZoomValues[index]);
-                            break;
-                        }
-                    }
-                    preferences.setKeepScreenOn(screen.isChecked());
-                    preferences.setAutoHideControls(autoHide.isChecked());
-                    reader.canvas.setTapZones(tapZones.isChecked());
-                    applyKeepScreenOn();
-                    if (!autoHide.isChecked() && readerActive) reader.showChrome();
-                })
-                .show();
-    }
-
-    private TextView optionsButton(int text) {
-        TextView button = Ui.text(this, getString(text), 15, Ui.TEXT);
-        button.setGravity(Gravity.CENTER_VERTICAL);
-        button.setPadding(Ui.dp(this, 14), Ui.dp(this, 6), Ui.dp(this, 14), Ui.dp(this, 6));
-        button.setBackground(Ui.rounded(Ui.SURFACE_HIGH, Ui.dp(this, 12), 0, 0));
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 48));
-        params.topMargin = Ui.dp(this, 8);
-        button.setLayoutParams(params);
-        return button;
-    }
 
     private void migrateLegacyReadingDirection() {
         if (!preferences.needsPerTitleDirectionMigration()) return;
@@ -2498,73 +2178,6 @@ public final class MainActivity extends Activity implements
         preferences.finishPerTitleDirectionMigration();
     }
 
-    private void showKeyboardSettings() {
-        LinearLayout rows = new LinearLayout(this);
-        rows.setOrientation(LinearLayout.VERTICAL);
-        rows.setPadding(Ui.dp(this, 18), Ui.dp(this, 4), Ui.dp(this, 18), Ui.dp(this, 4));
-        AlertDialog[] holder = new AlertDialog[1];
-        for (String action : SHORTCUT_ACTIONS) {
-            TextView button = Ui.text(this,
-                    shortcutLabel(action) + "\n" + preferences.shortcut(action).label(), 15, Ui.TEXT);
-            button.setGravity(Gravity.CENTER_VERTICAL);
-            button.setPadding(Ui.dp(this, 14), Ui.dp(this, 8), Ui.dp(this, 14), Ui.dp(this, 8));
-            button.setBackground(Ui.rounded(Ui.SURFACE_HIGH, Ui.dp(this, 12), 0, 0));
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 64));
-            params.bottomMargin = Ui.dp(this, 8);
-            rows.addView(button, params);
-            button.setOnClickListener(view -> captureShortcut(action, () -> {
-                if (holder[0] != null) holder[0].dismiss();
-                showKeyboardSettings();
-            }));
-        }
-        holder[0] = new AlertDialog.Builder(this)
-                .setTitle(R.string.reader_hardware_shortcuts)
-                .setMessage(R.string.shortcuts_instruction)
-                .setView(rows)
-                .setNeutralButton(R.string.shortcuts_reset_defaults, (dialog, which) -> {
-                    preferences.resetShortcuts();
-                    Toast.makeText(this, R.string.shortcuts_reset, Toast.LENGTH_SHORT).show();
-                })
-                .setPositiveButton(R.string.done, null)
-                .create();
-        holder[0].show();
-    }
-
-    @SuppressLint("GestureBackNavigation")
-    private void captureShortcut(String action, Runnable onSaved) {
-        TextView prompt = Ui.text(this, getString(R.string.shortcuts_press_combination), 17, Ui.TEXT);
-        prompt.setGravity(Gravity.CENTER);
-        prompt.setPadding(Ui.dp(this, 24), Ui.dp(this, 28), Ui.dp(this, 24), Ui.dp(this, 28));
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(shortcutLabel(action))
-                .setView(prompt)
-                .setNegativeButton(R.string.cancel, null)
-                .create();
-        dialog.setOnKeyListener((ignored, keyCode, event) -> {
-            // Predictive back is handled by the activity callback. This branch only lets a
-            // physical Back key retain the dialog's standard dismiss behavior.
-            if (keyCode == KeyEvent.KEYCODE_BACK) return false;
-            if (event.getAction() != KeyEvent.ACTION_UP || keyCode == KeyEvent.KEYCODE_UNKNOWN) return true;
-            ReaderPreferences.Shortcut candidate = new ReaderPreferences.Shortcut(
-                    keyCode, ReaderPreferences.normalizeModifiers(event.getMetaState()));
-            for (String other : SHORTCUT_ACTIONS) {
-                if (other.equals(action)) continue;
-                ReaderPreferences.Shortcut existing = preferences.shortcut(other);
-                if (existing.keyCode() == candidate.keyCode() &&
-                        existing.modifiers() == candidate.modifiers()) {
-                    prompt.setText(getString(
-                            R.string.shortcuts_already_used, shortcutLabel(other)));
-                    return true;
-                }
-            }
-            preferences.setShortcut(action, candidate);
-            dialog.dismiss();
-            onSaved.run();
-            return true;
-        });
-        dialog.show();
-    }
 
     @SuppressLint({"NewApi", "UseRequiresApi"})
     private static final class Api33Back {
@@ -2684,18 +2297,6 @@ public final class MainActivity extends Activity implements
         }
     }
 
-    private CheckBox checkBox(int label, boolean checked) {
-        CheckBox box = new CheckBox(this);
-        box.setText(label);
-        box.setTextColor(Ui.TEXT);
-        box.setTextSize(15);
-        box.setChecked(checked);
-        box.setButtonTintList(new ColorStateList(
-                new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
-                new int[]{Ui.ACCENT, Ui.TEXT_MUTED}));
-        box.setMinHeight(Ui.dp(this, 52));
-        return box;
-    }
 
     private void showError(String title, String message) {
         new AlertDialog.Builder(this)
@@ -2705,15 +2306,6 @@ public final class MainActivity extends Activity implements
                 .show();
     }
 
-    private String shortcutLabel(String action) {
-        int label = switch (action) {
-            case "previous" -> R.string.shortcut_previous;
-            case "next_alt" -> R.string.shortcut_next_alternate;
-            case "previous_alt" -> R.string.shortcut_previous_alternate;
-            default -> R.string.shortcut_next;
-        };
-        return getString(label);
-    }
 
     private String safeMessage(Throwable error) {
         String message = error.getMessage();

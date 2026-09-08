@@ -3,55 +3,41 @@ package io.github.jnesew.comicviewer.ui;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.content.res.ColorStateList;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
-import android.graphics.Paint;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.text.TextUtils;
-import android.util.LruCache;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
-import android.widget.BaseAdapter;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.GridView;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
-import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import io.github.jnesew.comicviewer.R;
+import io.github.jnesew.comicviewer.library.LibraryQueryController;
 import io.github.jnesew.comicviewer.data.LibraryDatabase;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
 import io.github.jnesew.comicviewer.model.SeriesGroup;
 import io.github.jnesew.comicviewer.util.LibraryGridDensity;
 import io.github.jnesew.comicviewer.util.LibraryScanResult;
-import io.github.jnesew.comicviewer.util.SeriesOrganizer;
 import io.github.jnesew.comicviewer.util.Ui;
 
-import java.io.File;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.RejectedExecutionException;
 
 /** Recycled, memory-bounded cover library optimized for narrow Android screens. */
 public final class HomeView extends FrameLayout {
     public interface Listener {
         void onOpenRequested();
+        void onFavoriteRequested(ReadingProgress item);
         void onRecentRequested(ReadingProgress progress);
         void onForgetRequested(ReadingProgress progress);
         void onSeriesForgetRequested(SeriesGroup series);
@@ -64,18 +50,12 @@ public final class HomeView extends FrameLayout {
     private static final String VIEW_TITLES = "titles";
     private static final String VIEW_SERIES = "series";
 
-    private final LibraryDatabase database;
+    private final LibraryQueryController queries;
     private final Listener listener;
     private final SharedPreferences viewPreferences;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private final ExecutorService coverLoader = Executors.newFixedThreadPool(2, runnable -> {
-        Thread thread = new Thread(runnable, "comic-cover-loader");
-        thread.setPriority(Thread.NORM_PRIORITY - 1);
-        return thread;
-    });
-    private final Set<String> inFlight = Collections.synchronizedSet(new HashSet<>());
-    private final LruCache<String, Bitmap> coverCache;
-    private final LibraryAdapter adapter = new LibraryAdapter();
+    private final CoverThumbnailLoader covers;
+    private final LibraryGridAdapter adapter;
 
     private final LinearLayout chrome;
     private final GridView grid;
@@ -102,9 +82,9 @@ public final class HomeView extends FrameLayout {
     private String selectedSeriesTitle = "";
     private boolean closed;
 
-    public HomeView(Context context, LibraryDatabase database, Listener listener) {
+    public HomeView(Context context, LibraryQueryController queries, Listener listener) {
         super(context);
-        this.database = database;
+        this.queries = queries;
         this.listener = listener;
         this.viewPreferences = context.getSharedPreferences(VIEW_PREFERENCES, Context.MODE_PRIVATE);
         this.sort = viewPreferences.getString("sort", LibraryDatabase.SORT_RECENT);
@@ -114,14 +94,8 @@ public final class HomeView extends FrameLayout {
                 viewPreferences.getString(GRID_DENSITY_PREFERENCE, null));
         setBackgroundColor(Ui.HOME_BACKGROUND);
 
-        long heapKb = Runtime.getRuntime().maxMemory() / 1024L;
-        int cacheKb = (int) Math.min(24L * 1024L, Math.max(8L * 1024L, heapKb / 16L));
-        coverCache = new LruCache<>(cacheKb) {
-            @Override
-            protected int sizeOf(String key, Bitmap bitmap) {
-                return Math.max(1, bitmap.getAllocationByteCount() / 1024);
-            }
-        };
+        covers = new CoverThumbnailLoader();
+        adapter = new LibraryGridAdapter(context, listener, this::openSeries, covers, gridDensity);
 
         chrome = new LinearLayout(context);
         chrome.setOrientation(LinearLayout.VERTICAL);
@@ -299,24 +273,11 @@ public final class HomeView extends FrameLayout {
     public void refresh() {
         if (closed) return;
         String query = searchInput == null ? "" : searchInput.getText().toString();
-        List<ReadingProgress> matching = database.library(query, sort, filter);
-        if (selectedSeriesId > 0L) {
-            ArrayList<ReadingProgress> selected = new ArrayList<>();
-            for (ReadingProgress item : matching) {
-                if (item.seriesId == selectedSeriesId) selected.add(item);
-            }
-            rows = SeriesOrganizer.sortIssues(selected);
-            seriesRows = Collections.emptyList();
-        } else if (VIEW_SERIES.equals(viewMode)) {
-            List<ReadingProgress> all = database.library(
-                    "", sort, LibraryDatabase.FILTER_ALL);
-            rows = Collections.emptyList();
-            seriesRows = SeriesOrganizer.group(all, matching, sort);
-        } else {
-            rows = matching;
-            seriesRows = Collections.emptyList();
-        }
-        adapter.notifyDataSetChanged();
+        LibraryQueryController.Snapshot snapshot = queries.query(
+                query, sort, filter, selectedSeriesId, VIEW_SERIES.equals(viewMode));
+        rows = snapshot.rows();
+        seriesRows = snapshot.seriesRows();
+        adapter.submit(rows, seriesRows, showingSeriesGrid());
         boolean empty = showingSeriesGrid() ? seriesRows.isEmpty() : rows.isEmpty();
         emptyState.setVisibility(empty ? VISIBLE : GONE);
         grid.setVisibility(empty ? GONE : VISIBLE);
@@ -387,22 +348,21 @@ public final class HomeView extends FrameLayout {
     }
 
     public void trimCoverCache() {
-        coverCache.trimToSize(Math.max(1, coverCache.maxSize() / 3));
+        covers.trimMemory();
     }
 
     public void close() {
         if (closed) return;
         closed = true;
         mainHandler.removeCallbacks(hideFolderStatus);
-        coverLoader.shutdownNow();
-        inFlight.clear();
-        coverCache.evictAll();
+        covers.close();
     }
 
     private void applyGridDensity(LibraryGridDensity density) {
         if (density == null || density == gridDensity || closed) return;
         int firstVisible = grid.getFirstVisiblePosition();
         gridDensity = density;
+        adapter.setDensity(density);
         viewPreferences.edit().putString(GRID_DENSITY_PREFERENCE, density.key).apply();
         grid.setColumnWidth(Ui.dp(getContext(), density.minimumCardWidthDp));
         grid.setVerticalSpacing(Ui.dp(getContext(), density.verticalSpacingDp));
@@ -562,324 +522,4 @@ public final class HomeView extends FrameLayout {
         return button;
     }
 
-    private void bindCover(ImageView image, ReadingProgress item) {
-        File file = item.coverPath == null ? null : new File(item.coverPath);
-        String key = item.uri + '\n' + item.coverPath + ':' +
-                (file != null && file.isFile() ? file.lastModified() + ":" + file.length() : "missing");
-        image.setTag(key);
-        image.setImageDrawable(null);
-        image.setBackground(Ui.rounded(Ui.SURFACE, Ui.dp(getContext(), 12), Ui.SURFACE_HIGH,
-                Ui.dp(getContext(), 1)));
-        Bitmap cached = coverCache.get(key);
-        if (cached != null && !cached.isRecycled()) {
-            image.setImageBitmap(cached);
-            return;
-        }
-        if (item.coverPath == null || item.coverPath.isEmpty()) return;
-        if (!file.isFile() || !inFlight.add(key)) return;
-        try {
-            coverLoader.execute(() -> {
-                Bitmap bitmap = null;
-                try {
-                    bitmap = decodeCover(file);
-                    if (bitmap != null && !closed) coverCache.put(key, bitmap);
-                } finally {
-                    inFlight.remove(key);
-                }
-                Bitmap ready = bitmap;
-                if (ready != null && !closed) {
-                    mainHandler.post(() -> {
-                        if (key.equals(image.getTag()) && !ready.isRecycled()) {
-                            image.setImageBitmap(ready);
-                        }
-                    });
-                }
-            });
-        } catch (RejectedExecutionException ignored) {
-            inFlight.remove(key);
-        }
-    }
-
-    private static Bitmap decodeCover(File file) {
-        BitmapFactory.Options bounds = new BitmapFactory.Options();
-        bounds.inJustDecodeBounds = true;
-        BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
-        int sample = 1;
-        while (sample < 16 && (bounds.outWidth / (sample * 2) >= 360 ||
-                bounds.outHeight / (sample * 2) >= 540)) sample *= 2;
-        BitmapFactory.Options options = new BitmapFactory.Options();
-        options.inSampleSize = sample;
-        options.inPreferredConfig = Bitmap.Config.RGB_565;
-        return BitmapFactory.decodeFile(file.getAbsolutePath(), options);
-    }
-
-    private final class LibraryAdapter extends BaseAdapter {
-        @Override
-        public int getCount() {
-            return showingSeriesGrid() ? seriesRows.size() : rows.size();
-        }
-
-        @Override
-        public Object getItem(int position) {
-            return showingSeriesGrid() ? seriesRows.get(position) : rows.get(position);
-        }
-
-        @Override
-        public long getItemId(int position) {
-            Object item = getItem(position);
-            return item instanceof SeriesGroup group
-                    ? group.key.hashCode() : ((ReadingProgress) item).uri.hashCode();
-        }
-
-        @Override
-        public boolean hasStableIds() {
-            return true;
-        }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            CardHolder holder;
-            if (convertView == null) {
-                holder = createCard();
-                convertView = holder.root;
-                convertView.setTag(holder);
-            } else {
-                holder = (CardHolder) convertView.getTag();
-            }
-            if (showingSeriesGrid()) {
-                bindSeriesCard(holder, seriesRows.get(position));
-                return convertView;
-            }
-            ReadingProgress item = rows.get(position);
-            holder.root.setAlpha(item.available ? 1f : 0.62f);
-            holder.root.setContentDescription(getResources().getString(
-                    R.string.comic_accessibility_progress, item.title, item.percent()));
-            holder.root.setOnClickListener(view -> listener.onRecentRequested(item));
-            holder.root.setOnLongClickListener(view -> {
-                listener.onForgetRequested(item);
-                return true;
-            });
-            holder.options.setContentDescription(getResources().getString(R.string.comic_options));
-            holder.options.setVisibility(VISIBLE);
-            holder.options.setOnClickListener(view -> showComicMenu(view, item));
-            holder.favorite.setVisibility(VISIBLE);
-            updateFavoriteButton(holder.favorite, item);
-            holder.favorite.setOnClickListener(view -> toggleFavorite(item));
-            holder.cover.setContentDescription(getResources().getString(
-                    R.string.cover_description, item.title));
-            bindCover(holder.cover, item);
-            holder.title.setText(item.title);
-            holder.progress.setProgress(item.percent());
-            bindTitleDetails(holder.details, item);
-            return convertView;
-        }
-    }
-
-    private void bindSeriesCard(CardHolder holder, SeriesGroup group) {
-        ReadingProgress standalone = group.isStandalone() ? group.issues.get(0) : null;
-        holder.root.setAlpha(group.isUnavailable() ? 0.62f : 1f);
-        if (standalone != null) {
-            holder.root.setContentDescription(getResources().getString(
-                    R.string.comic_accessibility_progress,
-                    standalone.title, standalone.percent()));
-        } else {
-            holder.root.setContentDescription(getResources().getQuantityString(
-                    R.plurals.series_accessibility_issues, group.issues.size(),
-                    group.title, group.issues.size()));
-        }
-        holder.root.setOnClickListener(view -> openSeries(group));
-        holder.root.setOnLongClickListener(view -> {
-            if (standalone != null) listener.onForgetRequested(standalone);
-            else listener.onSeriesForgetRequested(group);
-            return true;
-        });
-        holder.options.setContentDescription(getResources().getString(
-                standalone == null ? R.string.series_options : R.string.comic_options));
-        holder.options.setVisibility(VISIBLE);
-        holder.options.setOnClickListener(view -> {
-            if (standalone != null) showComicMenu(view, standalone);
-            else showSeriesMenu(view, group);
-        });
-        holder.favorite.setVisibility(GONE);
-        holder.favorite.setOnClickListener(null);
-        holder.cover.setContentDescription(getResources().getString(
-                R.string.series_cover_description, group.title));
-        bindCover(holder.cover, group.cover);
-        holder.title.setText(group.title);
-        holder.progress.setProgress(group.percent);
-        if (standalone != null) {
-            bindTitleDetails(holder.details, standalone);
-        } else if (group.isUnavailable()) {
-            holder.details.setText(R.string.comic_status_unavailable);
-        } else if (group.unavailableIssueCount() > 0) {
-            String total = getResources().getQuantityString(
-                    R.plurals.series_issue_count, group.issues.size(), group.issues.size());
-            String unavailable = getResources().getQuantityString(
-                    R.plurals.series_unavailable_issue_count, group.unavailableIssueCount(),
-                    group.unavailableIssueCount());
-            holder.details.setText(total + " · " + unavailable);
-        } else {
-            holder.details.setText(getResources().getQuantityString(
-                    R.plurals.series_issue_count, group.issues.size(), group.issues.size()));
-        }
-    }
-
-    private void bindTitleDetails(TextView details, ReadingProgress item) {
-        if (!item.available) {
-            details.setText(R.string.comic_status_unavailable);
-        } else if (item.isNew()) {
-            details.setText(R.string.comic_status_new);
-        } else if (item.isCompleted()) {
-            details.setText(R.string.comic_status_completed);
-        } else if (item.pageCount > 0) {
-            details.setText(getResources().getString(
-                    R.string.comic_page_progress,
-                    Math.min(item.page + 1, item.pageCount), item.pageCount));
-        } else {
-            details.setText(R.string.comic_status_indexing);
-        }
-    }
-
-    private void showComicMenu(View anchor, ReadingProgress item) {
-        PopupMenu menu = new PopupMenu(getContext(), anchor);
-        menu.getMenu().add(item.favorite ? R.string.title_remove_favorite : R.string.title_add_favorite)
-                .setOnMenuItemClickListener(selected -> {
-                    toggleFavorite(item);
-                    return true;
-                });
-        menu.getMenu().add(R.string.comic_edit).setOnMenuItemClickListener(selected -> {
-            listener.onComicEditRequested(item);
-            return true;
-        });
-        menu.getMenu().add(R.string.forget).setOnMenuItemClickListener(selected -> {
-            listener.onForgetRequested(item);
-            return true;
-        });
-        menu.show();
-    }
-
-    private void showSeriesMenu(View anchor, SeriesGroup group) {
-        PopupMenu menu = new PopupMenu(getContext(), anchor);
-        menu.getMenu().add(R.string.forget_series).setOnMenuItemClickListener(selected -> {
-            listener.onSeriesForgetRequested(group);
-            return true;
-        });
-        menu.show();
-    }
-
-    private void toggleFavorite(ReadingProgress item) {
-        item.favorite = database.toggleFavorite(item.uri);
-        refresh();
-    }
-
-    private void updateFavoriteButton(TextView button, ReadingProgress item) {
-        button.setText(item.favorite ? "★" : "☆");
-        button.setTextColor(item.favorite ? Ui.ACCENT : Ui.TEXT);
-        button.setContentDescription(getResources().getString(
-                item.favorite ? R.string.title_remove_favorite_named : R.string.title_add_favorite_named,
-                item.title));
-    }
-
-    private CardHolder createCard() {
-        Context context = getContext();
-        LibraryGridDensity density = gridDensity;
-        LinearLayout root = new LinearLayout(context);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setClickable(true);
-        root.setFocusable(true);
-        root.setPadding(0, 0, 0, Ui.dp(context, 2));
-
-        FrameLayout coverFrame = new FrameLayout(context);
-        ImageView cover = new ImageView(context);
-        cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        cover.setClipToOutline(true);
-        cover.setBackground(Ui.rounded(Ui.SURFACE, Ui.dp(context, 12), Ui.SURFACE_HIGH,
-                Ui.dp(context, 1)));
-        coverFrame.addView(cover, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        TextView favorite = Ui.text(context, "☆", density.favoriteTextSp, Ui.TEXT);
-        favorite.setGravity(Gravity.CENTER);
-        favorite.setClickable(true);
-        favorite.setFocusable(true);
-        favorite.setElevation(Ui.dp(context, 5));
-        favorite.setBackground(Ui.rounded(
-                Color.argb(218, 13, 16, 21), Ui.dp(context, 22), Ui.TEXT_MUTED, Ui.dp(context, 1)));
-        FrameLayout.LayoutParams favoriteParams = new FrameLayout.LayoutParams(
-                Ui.dp(context, 44), Ui.dp(context, 44), Gravity.TOP | Gravity.END);
-        favoriteParams.topMargin = Ui.dp(context, 7);
-        favoriteParams.rightMargin = Ui.dp(context, 7);
-        coverFrame.addView(favorite, favoriteParams);
-        root.addView(coverFrame, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, density.coverHeightDp)));
-
-        LinearLayout titleRow = new LinearLayout(context);
-        titleRow.setGravity(Gravity.TOP);
-        titleRow.setPadding(0, Ui.dp(context, 8), 0, Ui.dp(context, 4));
-        titleRow.setMinimumHeight(Ui.dp(context, density.titleRowHeightDp));
-        TextView title = Ui.text(context, "", density.titleTextSp, Ui.TEXT);
-        Ui.bold(title);
-        title.setIncludeFontPadding(true);
-        title.setLines(2);
-        title.setEllipsize(TextUtils.TruncateAt.END);
-        title.setGravity(Gravity.TOP);
-        Paint.FontMetricsInt titleMetrics = title.getPaint().getFontMetricsInt();
-        int titleLineBox = Math.max(
-                title.getLineHeight(), titleMetrics.bottom - titleMetrics.top);
-        int titleHeight = titleLineBox * 2 + Ui.dp(context, 3);
-        titleRow.addView(title, new LinearLayout.LayoutParams(
-                0, titleHeight, 1f));
-        TextView options = Ui.text(
-                context, "⋮", density == LibraryGridDensity.DENSE ? 18 : 20, Ui.TEXT_MUTED);
-        options.setGravity(Gravity.TOP | Gravity.END);
-        options.setClickable(true);
-        options.setFocusable(true);
-        titleRow.addView(options, new LinearLayout.LayoutParams(
-                Ui.dp(context, 30), ViewGroup.LayoutParams.MATCH_PARENT));
-        root.addView(titleRow, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        ProgressBar progress = new ProgressBar(
-                context, null, android.R.attr.progressBarStyleHorizontal);
-        progress.setMax(100);
-        progress.setProgressTintList(ColorStateList.valueOf(Ui.ACCENT));
-        progress.setProgressBackgroundTintList(ColorStateList.valueOf(Ui.SURFACE_HIGH));
-        root.addView(progress, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 4)));
-
-        TextView details = Ui.text(context, "", density.detailTextSp, Ui.TEXT_MUTED);
-        details.setSingleLine(true);
-        details.setEllipsize(TextUtils.TruncateAt.END);
-        details.setPadding(0, Ui.dp(context, 7), 0, 0);
-        root.addView(details, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, density.detailHeightDp)));
-        return new CardHolder(root, cover, favorite, title, options, progress, details);
-    }
-
-    private static final class CardHolder {
-        private final LinearLayout root;
-        private final ImageView cover;
-        private final TextView favorite;
-        private final TextView title;
-        private final TextView options;
-        private final ProgressBar progress;
-        private final TextView details;
-
-        private CardHolder(
-                LinearLayout root,
-                ImageView cover,
-                TextView favorite,
-                TextView title,
-                TextView options,
-                ProgressBar progress,
-                TextView details) {
-            this.root = root;
-            this.cover = cover;
-            this.favorite = favorite;
-            this.title = title;
-            this.options = options;
-            this.progress = progress;
-            this.details = details;
-        }
-    }
 }
