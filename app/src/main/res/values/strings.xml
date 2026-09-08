@@ -1,7 +1,9 @@
 <resources>
     <string name="app_name">ComicViewer</string>
 
-    <string name="library_title">ComicViewer</string>
+    <string name="library_title">Library</string>
+    <string name="reader_retry">Retry</string>
+    <string name="reader_unavailable_notice">Unavailable\n\n%1$s\n\nContinue reading to move past this issue, or retry opening it.</string>
     <string name="library_search">Search</string>
     <string name="library_search_hint">Search comics</string>
     <string name="library_menu">Library menu</string>
@@ -84,6 +86,18 @@
     </plurals>
     <string name="series_options">Series options</string>
     <string name="series_edit_assignment">Edit series…</string>
+    <string name="comic_edit">Edit comic…</string>
+    <string name="comic_edit_title">Edit comic</string>
+    <string name="comic_title_label">Comic title</string>
+    <string name="comic_use_original_title">Use original title</string>
+    <string name="comic_grouping_label">Grouping</string>
+    <string name="comic_grouping_automatic">Automatic grouping</string>
+    <string name="comic_grouping_series">Series</string>
+    <string name="comic_grouping_standalone">Standalone</string>
+    <string name="comic_series_label">Series</string>
+    <string name="comic_issue_number_label">Issue number (optional)</string>
+    <string name="comic_title_required">Enter a comic title</string>
+    <string name="comic_series_required">Enter a series name</string>
     <string name="series_use_automatic">Use automatic grouping</string>
     <string name="series_assignment_title">Series for “%1$s”</string>
     <string name="series_assignment_message">Set a series name and optional issue number. Leave the series name blank to keep this title standalone.</string>
@@ -128,7 +142,13 @@
     <string name="reader_first_page">First page</string>
     <string name="reader_last_page">Last page</string>
     <string name="reader_end_of_series">End of series</string>
+    <string name="reader_start_of_series">Start of series</string>
     <string name="reader_next_issue_unavailable">Next issue is unavailable</string>
+    <string name="reader_previous_issue_unavailable">Previous issue is unavailable</string>
+    <string name="reader_loading_next_issue">Loading next issue…</string>
+    <string name="reader_loading_previous_issue">Loading previous issue…</string>
+    <string name="reader_next_issue_retry">Could not open next issue · Tap to retry</string>
+    <string name="reader_previous_issue_retry">Could not open previous issue · Tap to retry</string>
     <string name="reader_page_label">Page %1$d / %2$d</string>
     <string name="reader_page_range_label">Pages %1$d–%2$d / %3$d</string>
     <string name="reader_page_slider">Page slider</string>
@@ -152,6 +172,7 @@
     <string name="reader_jump_to_page">Jump to page</string>
     <string name="reader_bookmarks">Bookmarks</string>
     <string name="reader_canvas_color">Canvas color</string>
+    <string name="reader_background_color">Background color</string>
     <string name="reader_options">Reader options</string>
     <string name="reader_hardware_shortcuts">Hardware shortcuts</string>
     <string name="reader_hide_controls">Hide controls</string>

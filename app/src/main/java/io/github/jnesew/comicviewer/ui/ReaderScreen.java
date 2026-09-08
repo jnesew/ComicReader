@@ -29,6 +29,7 @@ public final class ReaderScreen extends FrameLayout {
         void onPagePreviewRequested(int page);
         void onPagePreviewCancelled();
         void onBookmark();
+        void onRetryUnavailable();
         void onLayoutMenu(View anchor);
         void onFitMenu(View anchor);
         void onMoreMenu(View anchor);
@@ -46,6 +47,12 @@ public final class ReaderScreen extends FrameLayout {
     private final TextView zoomLabel;
     private final TextView modeLabel;
     private final SeekBar seekBar;
+    private final LinearLayout navigationControls;
+    private final TextView previousButton;
+    private final TextView nextButton;
+    private boolean rightToLeft;
+    private final TextView retry;
+    private boolean unavailable;
     private final LinearLayout previewCard;
     private final ImageView previewImage;
     private final ProgressBar previewLoading;
@@ -113,6 +120,14 @@ public final class ReaderScreen extends FrameLayout {
         status.setGravity(Gravity.CENTER_VERTICAL);
         pageLabel = Ui.text(context, context.getString(R.string.reader_page_label, 1, 1), 13, Ui.TEXT);
         status.addView(pageLabel, new LinearLayout.LayoutParams(0, Ui.dp(context, 30), 1f));
+        retry = Ui.text(context, context.getString(R.string.reader_retry), 14, Ui.ACCENT);
+        retry.setPadding(Ui.dp(context, 8), 0, Ui.dp(context, 8), 0);
+        retry.setMinHeight(Ui.dp(context, 48));
+        retry.setClickable(true);
+        retry.setFocusable(true);
+        retry.setVisibility(GONE);
+        retry.setOnClickListener(view -> listener.onRetryUnavailable());
+        status.addView(retry);
         zoomLabel = Ui.text(context, context.getString(R.string.reader_fit_width), 13, Ui.ACCENT);
         zoomLabel.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         zoomLabel.setPadding(Ui.dp(context, 12), 0, Ui.dp(context, 4), 0);
@@ -161,8 +176,10 @@ public final class ReaderScreen extends FrameLayout {
                 ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 36)));
 
         LinearLayout controls = new LinearLayout(context);
+        navigationControls = controls;
         controls.setGravity(Gravity.CENTER);
         TextView previous = Ui.iconButton(context, "‹", context.getString(R.string.reader_previous_page));
+        previousButton = previous;
         previous.setOnClickListener(view -> {
             keepChromeAwake();
             listener.onPrevious();
@@ -185,6 +202,7 @@ public final class ReaderScreen extends FrameLayout {
         modeParams.rightMargin = Ui.dp(context, 8);
         controls.addView(modeLabel, modeParams);
         TextView next = Ui.iconButton(context, "›", context.getString(R.string.reader_next_page));
+        nextButton = next;
         next.setOnClickListener(view -> {
             keepChromeAwake();
             listener.onNext();
@@ -259,6 +277,10 @@ public final class ReaderScreen extends FrameLayout {
     }
 
     public void updatePosition(int page, int pageEnd, int count) {
+        if (unavailable) {
+            pageLabel.setText(R.string.comic_status_unavailable);
+            return;
+        }
         pageCount = Math.max(1, count);
         pageLabel.setText(pageEnd > page
                 ? getResources().getString(
@@ -303,6 +325,30 @@ public final class ReaderScreen extends FrameLayout {
         bookmark.setText(bookmarked ? "★" : "☆");
         bookmark.setContentDescription(getResources().getString(bookmarked ?
                 R.string.reader_remove_bookmark : R.string.reader_add_bookmark));
+    }
+
+    public void setUnavailable(boolean value) {
+        unavailable = value;
+        bookmark.setEnabled(!value);
+        bookmark.setAlpha(value ? 0.35f : 1f);
+        seekBar.setEnabled(!value);
+        seekBar.setAlpha(value ? 0.35f : 1f);
+        retry.setVisibility(value ? VISIBLE : GONE);
+        if (value) {
+            dismissPagePreview();
+            pageLabel.setText(R.string.comic_status_unavailable);
+        }
+    }
+
+    public void setRightToLeft(boolean value) {
+        rightToLeft = value;
+        canvas.setRightToLeft(value);
+        int direction = value ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR;
+        seekBar.setLayoutDirection(direction);
+        navigationControls.setLayoutDirection(direction);
+        previousButton.setText(value ? "›" : "‹");
+        nextButton.setText(value ? "‹" : "›");
+        positionPagePreview();
     }
 
     public void showPagePreview(int page, Bitmap bitmap) {
@@ -419,6 +465,7 @@ public final class ReaderScreen extends FrameLayout {
                 seekBar.getWidth() - seekBar.getPaddingLeft() - seekBar.getPaddingRight());
         float ratio = seekBar.getMax() <= 0
                 ? 0.5f : (float) selectedSeekPage / seekBar.getMax();
+        if (rightToLeft) ratio = 1f - ratio;
         int[] rootLocation = new int[2];
         int[] seekLocation = new int[2];
         getLocationInWindow(rootLocation);

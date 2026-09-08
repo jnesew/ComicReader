@@ -44,7 +44,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
     public static final int METADATA_FAILED = -1;
 
     private static final String NAME = "comicviewer.sqlite3";
-    private static final int VERSION = 7;
+    private static final int VERSION = 8;
     private static final String PROGRESS_WITH_SERIES =
             "SELECT p.*, COALESCE(s.name, '') AS series_title FROM progress p " +
                     "LEFT JOIN series s ON s.id = p.series_id";
@@ -59,6 +59,8 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE progress (" +
                 "uri TEXT PRIMARY KEY," +
                 "title TEXT NOT NULL," +
+                "original_title TEXT NOT NULL DEFAULT ''," +
+                "title_override INTEGER NOT NULL DEFAULT 0," +
                 "page INTEGER NOT NULL DEFAULT 0," +
                 "page_count INTEGER NOT NULL DEFAULT 0," +
                 "scroll_ratio REAL NOT NULL DEFAULT 0," +
@@ -145,6 +147,14 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE scanned_files ADD COLUMN missing_confirmed " +
                     "INTEGER NOT NULL DEFAULT 0");
         }
+        if (oldVersion < 8) {
+            db.execSQL("ALTER TABLE progress ADD COLUMN original_title " +
+                    "TEXT NOT NULL DEFAULT ''");
+            db.execSQL("ALTER TABLE progress ADD COLUMN title_override " +
+                    "INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("UPDATE progress SET original_title=title " +
+                    "WHERE original_title=''");
+        }
         createIndexes(db);
     }
 
@@ -168,6 +178,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
             ReadingProgress created = new ReadingProgress();
             created.uri = uri;
             created.title = safeTitle;
+            created.originalTitle = safeTitle;
             created.addedAt = now;
             created.documentSize = documentSize;
             created.documentModified = documentModified;
@@ -177,7 +188,8 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
 
         boolean changed = fingerprintChanged(existing, documentSize, documentModified);
         ContentValues update = new ContentValues();
-        update.put("title", safeTitle);
+        update.put("original_title", safeTitle);
+        if (!existing.titleOverride) update.put("title", safeTitle);
         update.put("document_size", documentSize);
         update.put("document_modified", documentModified);
         update.put("available", 1);
@@ -214,7 +226,8 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
             existing.contentFingerprint = "";
         }
         db.update("progress", update, "uri=?", new String[]{uri});
-        existing.title = safeTitle;
+        existing.originalTitle = safeTitle;
+        if (!existing.titleOverride) existing.title = safeTitle;
         existing.documentSize = documentSize;
         existing.documentModified = documentModified;
         existing.available = true;
@@ -318,8 +331,14 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         if (progress.addedAt <= 0L) progress.addedAt = System.currentTimeMillis();
         ContentValues values = new ContentValues();
         values.put("uri", progress.uri);
-        values.put("title", InputLimits.normalizeText(
-                progress.title, InputLimits.MAX_TITLE_CODE_POINTS));
+        String safeTitle = InputLimits.normalizeText(
+                progress.title, InputLimits.MAX_TITLE_CODE_POINTS);
+        String safeOriginalTitle = InputLimits.normalizeText(
+                progress.originalTitle, InputLimits.MAX_TITLE_CODE_POINTS);
+        if (safeOriginalTitle.isEmpty()) safeOriginalTitle = safeTitle;
+        values.put("title", safeTitle);
+        values.put("original_title", safeOriginalTitle);
+        values.put("title_override", progress.titleOverride ? 1 : 0);
         values.put("page", progress.page);
         values.put("page_count", progress.pageCount);
         values.put("scroll_ratio", progress.scrollRatio);
@@ -434,8 +453,11 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         String safeTitle = InputLimits.normalizeText(
                 title, InputLimits.MAX_TITLE_CODE_POINTS);
         if (safeTitle.isEmpty()) return;
+        ReadingProgress current = get(uri);
+        if (current.uri.isEmpty()) return;
         ContentValues values = new ContentValues();
-        values.put("title", safeTitle);
+        values.put("original_title", safeTitle);
+        if (!current.titleOverride) values.put("title", safeTitle);
         getWritableDatabase().update("progress", values, "uri=?", new String[]{uri});
     }
 
@@ -518,6 +540,75 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
             values.put("series_override", SERIES_MANUAL);
         }
         db.update("progress", values, "uri=?", new String[]{uri});
+    }
+
+    /** Save title and series choices as one metadata edit. */
+    public void setComicMetadata(
+            String uri,
+            String title,
+            int seriesMode,
+            String seriesName,
+            String seriesNumber) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            ReadingProgress current = get(uri);
+            if (current.uri.isEmpty()) return;
+            String original = InputLimits.normalizeText(
+                    current.originalTitle, InputLimits.MAX_TITLE_CODE_POINTS);
+            if (original.isEmpty()) original = InputLimits.normalizeText(
+                    current.title, InputLimits.MAX_TITLE_CODE_POINTS);
+            String editedTitle = InputLimits.normalizeText(
+                    title, InputLimits.MAX_TITLE_CODE_POINTS);
+            if (editedTitle.isEmpty()) editedTitle = original;
+
+            ContentValues values = new ContentValues();
+            values.put("title", editedTitle);
+            values.put("original_title", original);
+            values.put("title_override", editedTitle.equals(original) ? 0 : 1);
+
+            if (seriesMode == SERIES_AUTOMATIC) {
+                long seriesId = current.detectedSeriesKey.isEmpty() ? 0L : ensureSeries(
+                        db, current.detectedSeriesKey, current.detectedSeriesName,
+                        current.detectedSeriesKey.startsWith("folder:") ? "folder" : "metadata");
+                values.put("series_id", seriesId);
+                values.put("series_number", current.detectedSeriesNumber);
+                values.put("series_override", SERIES_AUTOMATIC);
+            } else {
+                String safeSeriesName = InputLimits.normalizeText(
+                        seriesName, InputLimits.MAX_SERIES_CODE_POINTS);
+                if (seriesMode == SERIES_STANDALONE || safeSeriesName.isEmpty()) {
+                    values.put("series_id", 0);
+                    values.put("series_number", "");
+                    values.put("series_override", SERIES_STANDALONE);
+                } else {
+                    long seriesId = findSeriesByName(db, safeSeriesName);
+                    if (seriesId <= 0L) {
+                        seriesId = ensureSeries(db,
+                                "manual:" + normalizeSeriesName(safeSeriesName),
+                                safeSeriesName, "manual");
+                    }
+                    values.put("series_id", seriesId);
+                    values.put("series_number", InputLimits.normalizeText(
+                            seriesNumber, InputLimits.MAX_ISSUE_CODE_POINTS));
+                    values.put("series_override", SERIES_MANUAL);
+                }
+            }
+            db.update("progress", values, "uri=?", new String[]{uri});
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+    public List<String> seriesNames() {
+        ArrayList<String> result = new ArrayList<>();
+        try (Cursor cursor = getReadableDatabase().query(
+                "series", new String[]{"name"}, null, null,
+                "name COLLATE NOCASE", null, "name COLLATE NOCASE ASC")) {
+            while (cursor.moveToNext()) result.add(cursor.getString(0));
+        }
+        return result;
     }
 
     public void useAutomaticSeries(String uri) {
@@ -749,6 +840,14 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
             }
 
             ContentValues merged = new ContentValues();
+            if (!canonical.titleOverride && duplicate.titleOverride) {
+                merged.put("title", duplicate.title);
+                merged.put("title_override", 1);
+            }
+            if (clean(canonical.originalTitle).isEmpty() &&
+                    !clean(duplicate.originalTitle).isEmpty()) {
+                merged.put("original_title", duplicate.originalTitle);
+            }
             boolean useDuplicateReading = duplicate.lastOpened > canonical.lastOpened;
             if (useDuplicateReading) {
                 merged.put("page", duplicate.page);
@@ -1143,6 +1242,8 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         ReadingProgress result = new ReadingProgress();
         result.uri = string(cursor, "uri");
         result.title = string(cursor, "title");
+        result.originalTitle = string(cursor, "original_title");
+        result.titleOverride = integer(cursor, "title_override") != 0;
         result.page = integer(cursor, "page");
         result.pageCount = integer(cursor, "page_count");
         result.scrollRatio = real(cursor, "scroll_ratio");

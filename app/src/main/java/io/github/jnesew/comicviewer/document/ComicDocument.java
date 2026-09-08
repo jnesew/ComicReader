@@ -41,6 +41,9 @@ public interface ComicDocument extends Closeable {
     boolean isIndexComplete();
     boolean suggestedRightToLeft();
 
+    /** Presentation-only unavailable issue; its synthetic layout must never be persisted. */
+    default boolean isUnavailable() { return false; }
+
     default SeriesMetadata seriesMetadata() {
         return SeriesMetadata.EMPTY;
     }

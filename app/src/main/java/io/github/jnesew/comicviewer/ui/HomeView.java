@@ -55,7 +55,7 @@ public final class HomeView extends FrameLayout {
         void onRecentRequested(ReadingProgress progress);
         void onForgetRequested(ReadingProgress progress);
         void onSeriesForgetRequested(SeriesGroup series);
-        void onSeriesEditRequested(ReadingProgress progress);
+        void onComicEditRequested(ReadingProgress progress);
         void onLibraryMenuRequested(View anchor);
     }
 
@@ -138,8 +138,7 @@ public final class HomeView extends FrameLayout {
         header.addView(headerBack, new LinearLayout.LayoutParams(
                 Ui.dp(context, 48), Ui.dp(context, 58)));
 
-        headerTitle = Ui.text(context, context.getString(R.string.library_title), 28, Ui.TEXT);
-        Ui.bold(headerTitle);
+        headerTitle = Ui.text(context, context.getString(R.string.library_title), 24, Ui.TEXT);
         headerTitle.setSingleLine(true);
         headerTitle.setEllipsize(TextUtils.TruncateAt.END);
         header.addView(headerTitle, new LinearLayout.LayoutParams(0, Ui.dp(context, 58), 1f));
@@ -749,17 +748,10 @@ public final class HomeView extends FrameLayout {
                     toggleFavorite(item);
                     return true;
                 });
-        menu.getMenu().add(R.string.series_edit_assignment).setOnMenuItemClickListener(selected -> {
-            listener.onSeriesEditRequested(item);
+        menu.getMenu().add(R.string.comic_edit).setOnMenuItemClickListener(selected -> {
+            listener.onComicEditRequested(item);
             return true;
         });
-        if (item.seriesOverride != LibraryDatabase.SERIES_AUTOMATIC) {
-            menu.getMenu().add(R.string.series_use_automatic).setOnMenuItemClickListener(selected -> {
-                database.useAutomaticSeries(item.uri);
-                refresh();
-                return true;
-            });
-        }
         menu.getMenu().add(R.string.forget).setOnMenuItemClickListener(selected -> {
             listener.onForgetRequested(item);
             return true;

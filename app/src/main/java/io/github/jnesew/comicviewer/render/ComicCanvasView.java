@@ -3,6 +3,7 @@ package io.github.jnesew.comicviewer.render;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.RectF;
 import android.util.AttributeSet;
 import android.view.GestureDetector;
@@ -21,16 +22,35 @@ import io.github.jnesew.comicviewer.util.SpreadPageLayout;
 import io.github.jnesew.comicviewer.util.Ui;
 import io.github.jnesew.comicviewer.util.ZoomGestureGate;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Collections;
 
 /** Touch-first page and continuous canvas with tile-backed rendering. */
 public final class ComicCanvasView extends View {
     public interface Listener {
-        void onReaderPositionChanged(int page, float pageRatio);
+        void onReaderPositionChanged(String documentKey, int page, float pageRatio);
         void onReaderZoomChanged(String mode, float zoom);
         void onNavigateRequested(int delta);
         void onChromeToggleRequested();
+        void onContinuousBoundaryApproached(int direction);
+        void onContinuousBoundaryRetry(int direction);
+        void onUnavailableRetry(String documentKey);
+    }
+
+    public static final class ContinuousDocument {
+        public final String key;
+        public final String title;
+        public final TileRenderer renderer;
+        public final List<PageInfo> pages;
+
+        public ContinuousDocument(
+                String key, String title, TileRenderer renderer, List<PageInfo> pages) {
+            this.key = key == null ? "" : key;
+            this.title = title == null ? "" : title;
+            this.renderer = renderer;
+            this.pages = pages;
+        }
     }
 
     public static final String FIT_WIDTH = "fit_width";
@@ -48,9 +68,23 @@ public final class ComicCanvasView extends View {
     private final SpreadPageLayout spreadLayout = new SpreadPageLayout();
     private final RectF destination = new RectF();
     private final RectF clip = new RectF();
+    private final Paint separatorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint separatorLinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private TileRenderer renderer;
     private List<PageInfo> pages = Collections.emptyList();
+    private List<ContinuousDocument> continuousDocuments = Collections.emptyList();
+    private int[] continuousIssueForPage = new int[0];
+    private int[] continuousLocalPage = new int[0];
+    private int[] continuousIssueStarts = new int[0];
+    private int[] continuousIssueEnds = new int[0];
+    private float[] continuousExtraBefore = new float[0];
+    private String topBoundaryText = "";
+    private String bottomBoundaryText = "";
+    private boolean topBoundaryRetry;
+    private boolean bottomBoundaryRetry;
+    private boolean topApproachSent;
+    private boolean bottomApproachSent;
     private Listener listener;
     private int page;
     private float pageRatio;
@@ -73,6 +107,8 @@ public final class ComicCanvasView extends View {
     private float continuousPanX;
     private float pinchStartZoom = 1f;
     private final float pageGap;
+    private final float issueSeparatorHeight;
+    private final float boundaryHeight;
 
     private int pendingRestorePage;
     private float pendingRestoreRatio;
@@ -88,6 +124,13 @@ public final class ComicCanvasView extends View {
         setClickable(true);
         setContentDescription(context.getString(R.string.reader_default_title));
         pageGap = Ui.dp(context, 8);
+        issueSeparatorHeight = Ui.dp(context, 72);
+        boundaryHeight = Ui.dp(context, 58);
+        separatorPaint.setColor(Color.rgb(215, 221, 233));
+        separatorPaint.setTextSize(Ui.dp(context, 14));
+        separatorPaint.setTextAlign(Paint.Align.CENTER);
+        separatorLinePaint.setColor(Color.rgb(85, 91, 104));
+        separatorLinePaint.setStrokeWidth(Math.max(1f, Ui.dp(context, 1)));
         scroller = new OverScroller(context);
         gestureDetector = new GestureDetector(context, new Gestures());
         scaleDetector = new ScaleGestureDetector(context, new Scaling());
@@ -104,6 +147,12 @@ public final class ComicCanvasView extends View {
         this.pageRatio = clamp(progress.scrollRatio, 0f, 1f);
         this.continuous = CONTINUOUS.equals(progress.readingMode);
         this.spread = SPREAD.equals(progress.readingMode);
+        if (continuous) {
+            installContinuousDocuments(Collections.singletonList(new ContinuousDocument(
+                    progress.uri, progress.title, renderer, pages)));
+        } else {
+            clearContinuousDocuments();
+        }
         spreadLayout.calculate(pages);
         if (spread) this.page = spreadLayout.anchorFor(this.page);
         zoomGestureGate.setLocked(progress.zoomGesturesLocked);
@@ -128,6 +177,7 @@ public final class ComicCanvasView extends View {
     public void clearDocument() {
         renderer = null;
         pages = Collections.emptyList();
+        clearContinuousDocuments();
         spreadLayout.calculate(pages);
         scroller.forceFinished(true);
         invalidate();
@@ -149,7 +199,7 @@ public final class ComicCanvasView extends View {
     }
 
     public int page() {
-        return page;
+        return continuous ? localPageFor(page) : page;
     }
 
     public float pageRatio() {
@@ -170,12 +220,20 @@ public final class ComicCanvasView extends View {
     }
 
     public int pageEnd() {
+        if (continuous) return localPageFor(page);
         return spread ? spreadLayout.endFor(page) : page;
     }
 
     public int navigationTarget(int delta) {
         if (pages.isEmpty()) return 0;
-        if (!spread || continuous) {
+        if (continuous) {
+            int local = localPageFor(page);
+            int issue = issueFor(page);
+            int count = issue >= 0 && issue < continuousDocuments.size()
+                    ? continuousDocuments.get(issue).pages.size() : pages.size();
+            return clamp(local + delta, 0, Math.max(0, count - 1));
+        }
+        if (!spread) {
             return clamp(page + delta, 0, pages.size() - 1);
         }
         return spreadLayout.adjacentAnchor(page, delta);
@@ -184,9 +242,75 @@ public final class ComicCanvasView extends View {
     public boolean isAtDocumentEnd() {
         if (pages.isEmpty()) return false;
         if (!continuous) return pageEnd() >= pages.size() - 1;
-        float maximum = Math.max(
-                0f, continuousLayout.documentHeight() - Math.max(1, getHeight()));
+        int issue = issueFor(page);
+        if (issue < 0) return false;
+        int end = continuousIssueEnds[issue];
+        float bottom = continuousLayout.top(end) + continuousLayout.height(end) + pageGap;
+        float maximum = Math.max(continuousLayout.top(continuousIssueStarts[issue]),
+                bottom - Math.max(1, getHeight()));
         return documentScroll >= maximum - 1f;
+    }
+
+    public boolean isAtDocumentStart() {
+        if (pages.isEmpty()) return false;
+        if (!continuous) return page == 0;
+        int issue = issueFor(page);
+        return issue >= 0 && documentScroll <= continuousLayout.top(
+                continuousIssueStarts[issue]) + 1f;
+    }
+
+    public String continuousDocumentKey() {
+        int issue = issueFor(page);
+        return issue >= 0 && issue < continuousDocuments.size()
+                ? continuousDocuments.get(issue).key : "";
+    }
+
+    public boolean moveContinuousPage(int delta) {
+        if (!continuous || pages.isEmpty() || delta == 0) return false;
+        int issue = issueFor(page);
+        int local = localPageFor(page);
+        if (issue < 0) return false;
+        if (delta < 0 && local == 0 && !isAtDocumentStart()) return false;
+        if (delta > 0 && local == continuousDocuments.get(issue).pages.size() - 1 &&
+                !isAtDocumentEnd()) return false;
+        int target = page + (delta > 0 ? 1 : -1);
+        if (target < 0 || target >= pages.size()) return false;
+        int targetIssue = issueFor(target);
+        if (delta < 0 && targetIssue != issue) {
+            showContinuousIssueEnd(targetIssue);
+        } else {
+            showGlobalPage(target, 0f);
+        }
+        return true;
+    }
+
+    public void setContinuousDocuments(
+            List<ContinuousDocument> documents,
+            String anchorKey,
+            int anchorPage,
+            float anchorRatio) {
+        if (!continuous || documents == null || documents.isEmpty()) return;
+        scroller.forceFinished(true);
+        installContinuousDocuments(documents);
+        page = globalPageFor(anchorKey, anchorPage);
+        pageRatio = clamp(anchorRatio, 0f, 1f);
+        pendingRestorePage = page;
+        pendingRestoreRatio = pageRatio;
+        pendingRestore = true;
+        relayoutDocument();
+        invalidate();
+    }
+
+    public void setContinuousBoundary(
+            int direction, String text, boolean retry) {
+        if (direction < 0) {
+            topBoundaryText = text == null ? "" : text;
+            topBoundaryRetry = retry;
+        } else {
+            bottomBoundaryText = text == null ? "" : text;
+            bottomBoundaryRetry = retry;
+        }
+        invalidate();
     }
 
     public String zoomMode() {
@@ -216,6 +340,12 @@ public final class ComicCanvasView extends View {
 
     public void setCanvasColor(int color) {
         canvasColor = color;
+        int brightness = (Color.red(color) * 299 + Color.green(color) * 587 +
+                Color.blue(color) * 114) / 1000;
+        separatorPaint.setColor(brightness >= 150
+                ? Color.rgb(42, 45, 52) : Color.rgb(215, 221, 233));
+        separatorLinePaint.setColor(brightness >= 150
+                ? Color.rgb(130, 126, 118) : Color.rgb(85, 91, 104));
         invalidate();
     }
 
@@ -251,7 +381,9 @@ public final class ComicCanvasView extends View {
 
     public void showPage(int targetPage, float restoreRatio) {
         if (pages.isEmpty()) return;
-        page = clamp(targetPage, 0, pages.size() - 1);
+        page = continuous
+                ? globalPageFor(continuousDocumentKey(), targetPage)
+                : clamp(targetPage, 0, pages.size() - 1);
         if (spread) page = spreadLayout.anchorFor(page);
         pageRatio = clamp(restoreRatio, 0f, 1f);
         scroller.forceFinished(true);
@@ -351,7 +483,8 @@ public final class ComicCanvasView extends View {
             destination.set(singleX, singleY,
                     singleX + info.width * singleScale,
                     singleY + info.height * singleScale);
-            renderer.drawPage(canvas, page, destination, clip);
+            renderer.drawPages(canvas, Collections.singletonList(
+                    new TileRenderer.PageRequest(page, destination, clip)));
             return;
         }
 
@@ -362,27 +495,45 @@ public final class ComicCanvasView extends View {
         float rightWidth = normalizedPageWidth(rightPage, sourceHeight) * singleScale;
         float height = sourceHeight * singleScale;
         destination.set(singleX, singleY, singleX + leftWidth, singleY + height);
-        renderer.drawPage(canvas, leftPage, destination, clip);
+        TileRenderer.PageRequest left = new TileRenderer.PageRequest(leftPage, destination, clip);
         float rightX = singleX + leftWidth + pageGap;
         destination.set(rightX, singleY, rightX + rightWidth, singleY + height);
-        renderer.drawPage(canvas, rightPage, destination, clip);
+        renderer.drawPages(canvas, java.util.Arrays.asList(left,
+                new TileRenderer.PageRequest(rightPage, destination, clip)));
     }
 
     private void drawContinuous(Canvas canvas) {
         if (continuousLayout.size() == 0) return;
-        // A rendered PDF tile intersecting the viewport already extends to its grid edge.
-        // Extra high-resolution PDF prefetch can evict visible tiles while zooming.
-        float prefetch = renderer.usesRenderedTiles() ? 0f : getHeight() * 0.55f;
+        // Intersecting tiles already extend beyond the viewport to their grid edges.
+        // Avoid spending the visible-frame budget on extra offscreen raster/PDF tiles.
+        float prefetch = 0f;
         int first = continuousLayout.pageAt(Math.max(0f, documentScroll - prefetch));
         int last = continuousLayout.pageAt(Math.min(
                 continuousLayout.documentHeight(), documentScroll + getHeight() + prefetch));
         float pageWidth = contentWidth() * continuousZoom;
         float x = (getWidth() - pageWidth) / 2f + continuousPanX;
         clip.set(0f, -prefetch, getWidth(), getHeight() + prefetch);
+        drawContinuousLabels(canvas, first, last);
+        java.util.Map<TileRenderer, List<TileRenderer.PageRequest>> requests =
+                new java.util.LinkedHashMap<>();
         for (int index = first; index <= last; index++) {
             float top = continuousLayout.top(index) - documentScroll;
             destination.set(x, top, x + pageWidth, top + continuousLayout.height(index));
-            renderer.drawPage(canvas, index, destination, clip);
+            TileRenderer pageRenderer = rendererForPage(index);
+            if (pageRenderer != null) {
+                // PDF pages use viewport-only requests even beside a raster issue.
+                RectF pageClip = pageRenderer.usesRenderedTiles()
+                        ? new RectF(0f, 0f, getWidth(), getHeight()) : clip;
+                requests.computeIfAbsent(pageRenderer, key -> new ArrayList<>()).add(
+                        new TileRenderer.PageRequest(
+                        index < continuousLocalPage.length ? continuousLocalPage[index] : index,
+                        destination,
+                        pageClip));
+            }
+        }
+        for (java.util.Map.Entry<TileRenderer, List<TileRenderer.PageRequest>> entry :
+                requests.entrySet()) {
+            entry.getKey().drawPages(canvas, entry.getValue());
         }
     }
 
@@ -449,7 +600,7 @@ public final class ComicCanvasView extends View {
     private void relayoutDocument() {
         if (getWidth() <= 0 || pages.isEmpty()) return;
         if (continuous) {
-            continuousLayout.calculate(pages, contentWidth(), continuousZoom, pageGap);
+            calculateContinuousLayout();
             if (pendingRestore) {
                 documentScroll = clampScroll(
                         continuousLayout.positionFor(pendingRestorePage, pendingRestoreRatio));
@@ -522,7 +673,7 @@ public final class ComicCanvasView extends View {
         continuousZoom = clamp(requestedZoom, 0.6f, 5f);
         zoom = continuousZoom;
         zoomMode = CONTINUOUS;
-        continuousLayout.calculate(pages, contentWidth(), continuousZoom, pageGap);
+        calculateContinuousLayout();
         documentScroll = clampScroll(
                 verticalAnchor * continuousLayout.documentHeight() - focusY);
         float newWidth = contentWidth() * continuousZoom;
@@ -534,7 +685,7 @@ public final class ComicCanvasView extends View {
     }
 
     private void relayoutContinuousAround(int anchorPage, float anchorRatio) {
-        continuousLayout.calculate(pages, contentWidth(), continuousZoom, pageGap);
+        calculateContinuousLayout();
         documentScroll = clampScroll(continuousLayout.positionFor(anchorPage, anchorRatio));
         clampContinuousPan();
         updateContinuousPosition();
@@ -560,8 +711,7 @@ public final class ComicCanvasView extends View {
     }
 
     private float clampScroll(float value) {
-        return clamp(value, 0f,
-                Math.max(0f, continuousLayout.documentHeight() - Math.max(1, getHeight())));
+        return clamp(value, 0f, continuousLayout.maximumScroll(getHeight()));
     }
 
     private float currentSingleRatio() {
@@ -578,6 +728,7 @@ public final class ComicCanvasView extends View {
         page = newPage;
         pageRatio = newRatio;
         notifyPosition();
+        notifyContinuousBoundaries();
     }
 
     private float fitWidthScale() {
@@ -620,8 +771,177 @@ public final class ComicCanvasView extends View {
         return Math.max(1f, getWidth() - pageGap * 2f);
     }
 
+    private void installContinuousDocuments(List<ContinuousDocument> documents) {
+        ArrayList<ContinuousDocument> accepted = new ArrayList<>();
+        int pageCount = 0;
+        for (ContinuousDocument document : documents) {
+            if (document == null || document.renderer == null || document.pages == null ||
+                    document.pages.isEmpty()) continue;
+            accepted.add(document);
+            pageCount += document.pages.size();
+        }
+        if (accepted.isEmpty()) return;
+
+        continuousDocuments = Collections.unmodifiableList(accepted);
+        continuousIssueForPage = new int[pageCount];
+        continuousLocalPage = new int[pageCount];
+        continuousIssueStarts = new int[accepted.size()];
+        continuousIssueEnds = new int[accepted.size()];
+        continuousExtraBefore = new float[pageCount];
+        ArrayList<PageInfo> flattened = new ArrayList<>(pageCount);
+        int global = 0;
+        for (int issue = 0; issue < accepted.size(); issue++) {
+            ContinuousDocument document = accepted.get(issue);
+            continuousIssueStarts[issue] = global;
+            if (issue > 0) continuousExtraBefore[global] = issueSeparatorHeight;
+            for (int local = 0; local < document.pages.size(); local++) {
+                flattened.add(document.pages.get(local));
+                continuousIssueForPage[global] = issue;
+                continuousLocalPage[global] = local;
+                global++;
+            }
+            continuousIssueEnds[issue] = global - 1;
+        }
+        pages = Collections.unmodifiableList(flattened);
+        topApproachSent = false;
+        bottomApproachSent = false;
+    }
+
+    private void clearContinuousDocuments() {
+        continuousDocuments = Collections.emptyList();
+        continuousIssueForPage = new int[0];
+        continuousLocalPage = new int[0];
+        continuousIssueStarts = new int[0];
+        continuousIssueEnds = new int[0];
+        continuousExtraBefore = new float[0];
+        topBoundaryText = "";
+        bottomBoundaryText = "";
+        topBoundaryRetry = false;
+        bottomBoundaryRetry = false;
+        topApproachSent = false;
+        bottomApproachSent = false;
+    }
+
+    private int issueFor(int globalPage) {
+        if (!continuous || globalPage < 0 || globalPage >= continuousIssueForPage.length) return -1;
+        return continuousIssueForPage[globalPage];
+    }
+
+    private int localPageFor(int globalPage) {
+        if (!continuous || globalPage < 0 || globalPage >= continuousLocalPage.length) {
+            return clamp(globalPage, 0, Math.max(0, pages.size() - 1));
+        }
+        return continuousLocalPage[globalPage];
+    }
+
+    private int globalPageFor(String key, int localPage) {
+        int issue = -1;
+        for (int index = 0; index < continuousDocuments.size(); index++) {
+            if (continuousDocuments.get(index).key.equals(key)) {
+                issue = index;
+                break;
+            }
+        }
+        if (issue < 0) issue = Math.max(0, issueFor(page));
+        if (continuousIssueStarts.length == 0) return 0;
+        int maximum = continuousIssueEnds[issue] - continuousIssueStarts[issue];
+        return continuousIssueStarts[issue] + clamp(localPage, 0, maximum);
+    }
+
+    private TileRenderer rendererForPage(int globalPage) {
+        int issue = issueFor(globalPage);
+        return issue >= 0 && issue < continuousDocuments.size()
+                ? continuousDocuments.get(issue).renderer : renderer;
+    }
+
+    private void calculateContinuousLayout() {
+        if (continuousExtraBefore.length > 0) {
+            continuousExtraBefore[0] = boundaryHeight;
+        }
+        continuousLayout.calculate(
+                pages, contentWidth(), continuousZoom, pageGap,
+                continuousExtraBefore,
+                boundaryHeight);
+    }
+
+    private void drawContinuousLabels(Canvas canvas, int first, int last) {
+        for (int issue = 1; issue < continuousIssueStarts.length; issue++) {
+            int start = continuousIssueStarts[issue];
+            if (start < first - 1 || start > last + 1) continue;
+            float center = continuousLayout.top(start) - issueSeparatorHeight / 2f - documentScroll;
+            drawSeparatorLabel(canvas, continuousDocuments.get(issue).title, center);
+        }
+        if (!topBoundaryText.isEmpty() && continuousIssueStarts.length > 0) {
+            float center = continuousLayout.top(0) - boundaryHeight / 2f - documentScroll;
+            if (center > -boundaryHeight && center < getHeight() + boundaryHeight) {
+                drawSeparatorLabel(canvas, topBoundaryText, center);
+            }
+        }
+        if (!bottomBoundaryText.isEmpty() && continuousLayout.size() > 0) {
+            float center = continuousLayout.documentHeight() - boundaryHeight / 2f - documentScroll;
+            if (center > -boundaryHeight && center < getHeight() + boundaryHeight) {
+                drawSeparatorLabel(canvas, bottomBoundaryText, center);
+            }
+        }
+    }
+
+    private void drawSeparatorLabel(Canvas canvas, String text, float centerY) {
+        float inset = Ui.dp(getContext(), 22);
+        canvas.drawLine(inset, centerY - Ui.dp(getContext(), 17),
+                getWidth() - inset, centerY - Ui.dp(getContext(), 17), separatorLinePaint);
+        String fitted = text == null ? "" : text;
+        float maximum = Math.max(1f, getWidth() - Ui.dp(getContext(), 32));
+        while (fitted.length() > 1 && separatorPaint.measureText(fitted) > maximum) {
+            fitted = fitted.substring(0, fitted.length() - 1);
+        }
+        if (!fitted.equals(text)) fitted = fitted.trim() + "…";
+        canvas.drawText(fitted, getWidth() / 2f,
+                centerY + Ui.dp(getContext(), 7), separatorPaint);
+    }
+
+    private void notifyContinuousBoundaries() {
+        if (listener == null || !continuous || continuousLayout.size() == 0) return;
+        float threshold = Math.max(getHeight() * 1.5f, Ui.dp(getContext(), 480));
+        float maximum = continuousLayout.maximumScroll(getHeight());
+        if (documentScroll <= threshold && !topApproachSent) {
+            topApproachSent = true;
+            listener.onContinuousBoundaryApproached(-1);
+        } else if (documentScroll > threshold * 1.5f) {
+            topApproachSent = false;
+        }
+        if (maximum - documentScroll <= threshold && !bottomApproachSent) {
+            bottomApproachSent = true;
+            listener.onContinuousBoundaryApproached(1);
+        } else if (maximum - documentScroll > threshold * 1.5f) {
+            bottomApproachSent = false;
+        }
+    }
+
+    private void showGlobalPage(int targetPage, float restoreRatio) {
+        page = clamp(targetPage, 0, pages.size() - 1);
+        pageRatio = clamp(restoreRatio, 0f, 1f);
+        scroller.forceFinished(true);
+        documentScroll = clampScroll(continuousLayout.positionFor(page, pageRatio));
+        updateContinuousPosition();
+        invalidate();
+    }
+
+    private void showContinuousIssueEnd(int issue) {
+        if (issue < 0 || issue >= continuousIssueEnds.length) return;
+        int end = continuousIssueEnds[issue];
+        float bottom = continuousLayout.top(end) + continuousLayout.height(end) + pageGap;
+        scroller.forceFinished(true);
+        documentScroll = clampScroll(Math.max(
+                continuousLayout.top(continuousIssueStarts[issue]),
+                bottom - Math.max(1, getHeight())));
+        updateContinuousPosition();
+        invalidate();
+    }
+
     private void notifyPosition() {
-        if (listener != null && !pages.isEmpty()) listener.onReaderPositionChanged(page, pageRatio);
+        if (listener == null || pages.isEmpty()) return;
+        listener.onReaderPositionChanged(
+                continuous ? continuousDocumentKey() : "", page(), pageRatio);
     }
 
     private void notifyZoom() {
@@ -667,8 +987,7 @@ public final class ComicCanvasView extends View {
             }
 
             if (continuous) {
-                int maximum = Math.round(Math.max(
-                        0f, continuousLayout.documentHeight() - Math.max(1, getHeight())));
+                int maximum = Math.round(continuousLayout.maximumScroll(getHeight()));
                 scroller.fling(0, Math.round(documentScroll), 0, Math.round(-velocityY),
                         0, 0, 0, maximum);
             } else {
@@ -687,6 +1006,35 @@ public final class ComicCanvasView extends View {
         @Override
         public boolean onSingleTapConfirmed(MotionEvent event) {
             performClick();
+            if (!pages.isEmpty()) {
+                int hitPage = continuous
+                        ? continuousLayout.pageAt(documentScroll + event.getY()) : page;
+                TileRenderer hitRenderer = continuous ? rendererForPage(hitPage) : renderer;
+                if (hitRenderer != null && hitRenderer.isUnavailable()) {
+                    float scale = continuous ? contentWidth() * continuousZoom / 1000f : singleScale;
+                    float left = continuous
+                            ? (getWidth() - contentWidth() * continuousZoom) / 2f + continuousPanX
+                            : singleX;
+                    float top = continuous ? continuousLayout.top(hitPage) - documentScroll : singleY;
+                    if (TileRenderer.hitsNoticeRetry(
+                            (event.getX() - left) / scale, (event.getY() - top) / scale)) {
+                        if (listener != null) listener.onUnavailableRetry(hitRenderer.documentKey());
+                        return true;
+                    }
+                }
+            }
+            if (continuous && continuousLayout.size() > 0) {
+                float documentY = documentScroll + event.getY();
+                if (topBoundaryRetry && documentY < continuousLayout.top(0)) {
+                    if (listener != null) listener.onContinuousBoundaryRetry(-1);
+                    return true;
+                }
+                if (bottomBoundaryRetry &&
+                        documentY > continuousLayout.documentHeight() - boundaryHeight) {
+                    if (listener != null) listener.onContinuousBoundaryRetry(1);
+                    return true;
+                }
+            }
             if (!continuous && tapZones && getWidth() > 0) {
                 float fraction = event.getX() / getWidth();
                 if (fraction < 0.24f || fraction > 0.76f) {

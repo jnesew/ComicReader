@@ -290,7 +290,8 @@ public final class PdfComicDocument implements ComicDocument {
     public synchronized Bitmap renderTile(int pageIndex, Rect source, float renderScale)
             throws IOException {
         ensureOpen();
-        float scale = Math.max(0.01f, renderScale);
+        float scale = Math.max(
+                io.github.jnesew.comicviewer.util.RenderedTilePolicy.MIN_RENDER_SCALE, renderScale);
         int width = Math.max(1, Math.round(source.width() * scale));
         int height = Math.max(1, Math.round(source.height() * scale));
         validateBitmapSize(width, height);

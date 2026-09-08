@@ -12,11 +12,11 @@ accounts, ads, analytics, subscriptions, network access, or broad storage permis
 - CBZ, ZIP, image-based EPUB, and PDF support
 - Single-page, cover-aware two-page spread, and memory-conscious continuous-scroll reading
 - Fit width, fit page, actual size, pinch zoom, double-tap zoom, and tiled rendering
-- Per-title progress, zoom, scroll position, reading direction, bookmarks, and favorites
-- End-of-issue forward navigation into the next available issue in a series
+- Per-title progress, custom titles, zoom, scroll position, reading direction, bookmarks, and favorites
+- Seamless continuous scrolling and symmetric first/last-page navigation across series issues
 - Searchable cover library with filters, sorting, configurable density, and cached covers
 - Optional recursive scanning of one user-selected library folder
-- Series grouping from conservative metadata or folder structure, with manual correction
+- Series grouping from conservative metadata or folder structure, with per-comic correction
 - Page previews while scrubbing, natural page ordering, and direct “open with” support
 - English and Finnish interface resources
 - Android 8.0 (API 26) through Android 16 (API 36)

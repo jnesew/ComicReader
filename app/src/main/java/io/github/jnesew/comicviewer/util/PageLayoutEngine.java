@@ -11,18 +11,31 @@ public final class PageLayoutEngine {
     private float documentHeight;
 
     public void calculate(List<PageInfo> pages, float contentWidth, float zoom, float gap) {
+        calculate(pages, contentWidth, zoom, gap, null, 0f);
+    }
+
+    public void calculate(
+            List<PageInfo> pages,
+            float contentWidth,
+            float zoom,
+            float gap,
+            float[] extraBefore,
+            float footer) {
         int count = pages.size();
         tops = new float[count];
         heights = new float[count];
         float cursor = gap;
         float targetWidth = Math.max(1f, contentWidth) * Math.max(0.1f, zoom);
         for (int i = 0; i < count; i++) {
+            if (extraBefore != null && i < extraBefore.length) {
+                cursor += Math.max(0f, extraBefore[i]);
+            }
             PageInfo page = pages.get(i);
             tops[i] = cursor;
             heights[i] = targetWidth * page.aspectHeight();
             cursor += heights[i] + gap;
         }
-        documentHeight = count == 0 ? 0f : cursor;
+        documentHeight = count == 0 ? 0f : cursor + Math.max(0f, footer);
     }
 
     public int size() {
@@ -39,6 +52,14 @@ public final class PageLayoutEngine {
 
     public float documentHeight() {
         return documentHeight;
+    }
+
+    /** Keep the final page reachable at the top, even when it is shorter than the viewport.
+     * Continuous issue activation and subsequent buffering use that reading anchor. */
+    public float maximumScroll(float viewportHeight) {
+        if (tops.length == 0) return 0f;
+        return Math.max(tops[tops.length - 1],
+                Math.max(0f, documentHeight - Math.max(1f, viewportHeight)));
     }
 
     public int pageAt(float documentY) {

@@ -19,4 +19,15 @@ public final class SeriesNavigator {
         }
         return null;
     }
+
+    public static ReadingProgress previousIssue(
+            List<ReadingProgress> issues, String currentUri) {
+        if (issues == null || currentUri == null || currentUri.isEmpty()) return null;
+        List<ReadingProgress> ordered = SeriesOrganizer.sortIssues(issues);
+        for (int index = 0; index < ordered.size(); index++) {
+            if (!currentUri.equals(ordered.get(index).uri)) continue;
+            return index > 0 ? ordered.get(index - 1) : null;
+        }
+        return null;
+    }
 }
