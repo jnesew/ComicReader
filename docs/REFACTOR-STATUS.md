@@ -42,6 +42,11 @@ already published release/1.1 README/screenshot commits through 8624230.
   drafts, recipe template, canonical unsigned Gradle release command, Git-checkout
   reproducibility and signed-rebuild verification commands. See FDROID-READINESS.md.
 
+The updated Git-checkout reproducibility script also passes with the direct SDK builder
+at b0cce4c: both APKs have SHA-256
+`03ec563c65e44e6b12746ce1bda77dd0082b5a93736af5580c6b8390fe746f56`.
+This validates that script path, not the pending canonical Gradle/signature comparison.
+
 ## Verification limits
 
 Pinned Gradle 8.14.4 is not cached and network download is unavailable here.
@@ -59,7 +64,7 @@ remain required. No release/signing/production branch changes were made.
 - Complete the exact screenshot-source inventory and pinned AGP artifact notice check.
 - Select release version/code, verify the real signing certificate, test the recipe and
   signed candidate against the independent F-Droid rebuild, then submit when authorized.
-- Upload later local checkpoints: automatic approval review rejected creating the GitHub
-  tree for jnesew/ComicReader, citing insufficient explicit authorization for that
-  destination and possible disclosure. No alternate upload route was attempted.
-  Remote branch remains at a239be8. Local commits retain the subsequent work.
+- The user explicitly authorized uploading the refactor commits to
+  jnesew/ComicReader on refactor/reader-library-ownership after the initial automatic
+  review block. That destination is now approved. See branch history and CI for the
+  current uploaded checkpoint; the final Gradle/device gates above still apply.
