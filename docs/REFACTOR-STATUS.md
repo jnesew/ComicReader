@@ -18,7 +18,18 @@ already published release/1.1 README/screenshot commits through 8624230.
   MainActivity supplies picker results, status callbacks and a reader-busy predicate.
   Scan completion now also checks its generation. Database shutdown waits off-main
   for all database-using workers; source files are still never deleted by forgetting.
-  Direct SDK compilation passes. Device/provider tests remain outstanding.
+  Full GitHub CI passed at a239be8 (run 34263691114). Device/provider tests remain outstanding.
+
+- R3/R4: MainActivity now composes ReaderSession and ReaderController. The session
+  owns one DocumentResources holder per open document; continuous buffering shares
+  that holder. Progress capture, continuous-series loading and borrowed indexing
+  have separate controllers. Preview closes before its document. Request identity
+  rejects stale completions after cancellation/retry, including the same URI.
+  Index callbacks check generation and exact resource identity; model publication
+  occurs on the main thread. Adjacent-load failure closes both resources.
+- Direct SDK compilation and all 86 JVM tests pass, including request cancellation,
+  duplicate completion, resource closure, spread-end progress and placeholder
+  persistence cases. Source-security and database policy scripts pass.
 
 ## Verification limits
 
@@ -31,6 +42,5 @@ remain required. No release/signing/production branch changes were made.
 
 ## Remaining
 
-R3/R4 reader ownership, continuous series
-and indexing; R5 actual Java database harness and decomposition; R6 page mapping;
+R5 actual Java database harness and decomposition; R6 page mapping;
 F1 F-Droid preparation and final verification. Follow REFACTOR-PLAN.md.
