@@ -1,0 +1,1 @@
+Sisäinen refaktorointi eriyttää tiedostojen tuonnin, kansioskannaukset, lukijan ohjauksen ja avoimien tiedostojen hallinnan. Parantaa peruutusta ja resurssien vapauttamista sarjakuvaa vaihdettaessa. Lisää regressiotestejä ja valmistelee F-Droidin sovellustiedot. Lukuominaisuudet ja tuetut tiedostomuodot säilyvät ennallaan.

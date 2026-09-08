@@ -1,0 +1,1 @@
+Internal refactoring separates library imports, folder scans, reader controls and document ownership. Improves cancellation and resource cleanup when switching comics. Adds focused regression tests and prepares store metadata for F-Droid. Reading features and supported formats remain the same.

@@ -22,9 +22,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$work_dir/one" "$work_dir/two"
-git archive --format=tar HEAD | tar -xf - -C "$work_dir/one"
-git archive --format=tar HEAD | tar -xf - -C "$work_dir/two"
+commit="$(git rev-parse HEAD)"
+for checkout in "$work_dir/one" "$work_dir/two"; do
+    git clone --quiet --no-local --no-checkout "$project_dir" "$checkout"
+    git -C "$checkout" checkout --quiet --detach "$commit"
+    git -C "$checkout" remote set-url origin https://github.com/jnesew/ComicReader.git
+    test -z "$(git -C "$checkout" status --porcelain)"
+done
 
 version_name="$(sed -n 's/^comicViewerVersionName=//p' gradle.properties | tail -n 1)"
 export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
@@ -39,7 +43,7 @@ build_one() {
     if [[ "$builder" == "gradle" ]]; then
         (
             cd "$checkout"
-            ./gradlew --no-daemon --offline --dependency-verification strict clean assembleRelease
+            ./gradlew --no-daemon --offline --dependency-verification strict -PcomicViewerUnsignedRelease=true clean assembleRelease
         )
         local apk="$checkout/app/build/outputs/apk/release/app-release-unsigned.apk"
         [[ -f "$apk" ]] || {

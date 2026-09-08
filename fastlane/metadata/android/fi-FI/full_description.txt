@@ -1,0 +1,11 @@
+Lue omia sarjakuviasi ilman verkkoyhteyttä. ComicViewer on pieni Android-lukija CBZ-, PDF- ja kuvapohjaisille EPUB-tiedostoille.
+
+Valitse yksittäinen sivu, kahden sivun aukeama tai jatkuva vieritys. Jatka sarjan seuraavaan numeroon, palaa tallennettuun lukukohtaan, siirry sivulle ja käytä kirjanmerkkejä. Säädä zoomausta, lukitse zoomauseleet ja valitse lukusuunta tai automaattinen tunnistus.
+
+Järjestä paikalliset tiedostosi kansikuvanäkymässä. Käytettävissä ovat haku, lajittelu, suosikit ja sarjaryhmät. Tuo yksittäisiä tiedostoja tai skannaa Androidin tiedostovalitsimella valitsemasi kansio. Muokkaa nimiä ja sarjatietoja muuttamatta alkuperäisiä tiedostoja.
+
+ComicViewer ei tarvitse käyttäjätiliä, verkkoyhteyttä eikä Google Play -palveluita. Sovelluksessa ei ole mainoksia tai analytiikkaa. Tiedostot pysyvät laitteellasi. Sovellus ei pyydä Android-käyttöoikeuksia, vaan käyttää tiedostovalitsimella antamaasi pääsyä valittuihin tiedostoihin.
+
+Vaatii Android 8.0:n tai uudemman. EPUB-tuki on tarkoitettu kuvapohjaisille sarjakuville, ei mukautuvalle tekstille. Sovelluksen kielet ovat suomi ja englanti. Sarjakuvia ei toimiteta sovelluksen mukana.
+
+Kuvakaappausten sarjakuvat: Little Nemo in Slumberland (1905), Winsor McCay, tekijänoikeudesta vapaat teokset. Lähdetiedot ovat lähdekoodivaraston tiedostossa docs/STORE-ASSETS.md.

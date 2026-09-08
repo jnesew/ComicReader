@@ -5,12 +5,13 @@ plugins {
 def comicViewerVersionCode = providers.gradleProperty('comicViewerVersionCode').get().toInteger()
 def comicViewerVersionName = providers.gradleProperty('comicViewerVersionName').get()
 
+def unsignedRelease = providers.gradleProperty('comicViewerUnsignedRelease').orElse('false').get().toBoolean()
 def signingProperties = new Properties()
 def configuredSigningProperties = System.getenv('COMICVIEWER_SIGNING_PROPERTIES')
 def signingPropertiesFile = configuredSigningProperties
         ? rootProject.file(configuredSigningProperties)
         : rootProject.file('signing/keystore.properties')
-if (configuredSigningProperties && !signingPropertiesFile.exists()) {
+if (!unsignedRelease && configuredSigningProperties && !signingPropertiesFile.exists()) {
     throw new GradleException(
             "COMICVIEWER_SIGNING_PROPERTIES does not exist: ${signingPropertiesFile}")
 }
@@ -31,7 +32,7 @@ def signingValues = [
 ]
 def signingRequested = signingPropertiesFile.exists() || signingValues.any { !it.isEmpty() }
 def releaseSigningConfigured = signingValues.every { !it.isEmpty() }
-if (signingRequested && !releaseSigningConfigured) {
+if (!unsignedRelease && signingRequested && !releaseSigningConfigured) {
     throw new GradleException('Release signing is only partially configured. ' +
             'Provide storeFile, storePassword, keyAlias, and keyPassword together.')
 }
@@ -45,12 +46,13 @@ android {
         applicationId 'io.github.jnesew.comicviewer'
         minSdk 26
         targetSdk 36
+        testInstrumentationRunner "io.github.jnesew.comicviewer.data.DatabaseTestRunner"
         versionCode comicViewerVersionCode
         versionName comicViewerVersionName
     }
 
     signingConfigs {
-        if (releaseSigningConfigured) {
+        if (!unsignedRelease && releaseSigningConfigured) {
             localRelease {
                 storeFile rootProject.file(signingStoreFile)
                 storePassword signingStorePassword
@@ -65,7 +67,7 @@ android {
             pseudoLocalesEnabled true
         }
         release {
-            if (releaseSigningConfigured) {
+            if (!unsignedRelease && releaseSigningConfigured) {
                 signingConfig signingConfigs.localRelease
             }
             minifyEnabled true

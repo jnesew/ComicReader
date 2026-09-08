@@ -50,7 +50,12 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                     "LEFT JOIN series s ON s.id = p.series_id";
 
     public LibraryDatabase(Context context) {
-        super(context, NAME, null, VERSION);
+        this(context, NAME);
+    }
+
+    /** Named databases keep instrumentation fixtures separate from the user library. */
+    LibraryDatabase(Context context, String name) {
+        super(context, name, null, VERSION);
         setWriteAheadLoggingEnabled(true);
     }
 

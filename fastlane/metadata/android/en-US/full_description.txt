@@ -1,0 +1,11 @@
+Read your own comics offline with ComicViewer, a small Android reader for CBZ, PDF and image-based EPUB files.
+
+Choose single-page, two-page spread or continuous scrolling. Continue across issues in a series, remember your reading position, jump to a page and use bookmarks. Adjust zoom, lock zoom gestures and choose left-to-right, right-to-left or automatic reading direction.
+
+Organize local files in a cover grid with search, sorting, favorites and series groups. Import individual files or scan a folder selected through Android's file picker. Edit titles and series information without changing the source files.
+
+ComicViewer works without an account, network access, advertising, analytics or Google Play services. Files stay on your device. It requests no Android permissions and uses access granted through the system file picker.
+
+Requires Android 8.0 or later. EPUB support is for image-based comics; this is not a reflowable text ebook reader. The app is available in English and Finnish. No comics are bundled.
+
+Screenshot artwork: Little Nemo in Slumberland (1905), Winsor McCay, public domain. See the repository's docs/STORE-ASSETS.md for source details.

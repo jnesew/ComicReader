@@ -74,10 +74,7 @@ public final class ComicCanvasView extends View {
     private TileRenderer renderer;
     private List<PageInfo> pages = Collections.emptyList();
     private List<ContinuousDocument> continuousDocuments = Collections.emptyList();
-    private int[] continuousIssueForPage = new int[0];
-    private int[] continuousLocalPage = new int[0];
-    private int[] continuousIssueStarts = new int[0];
-    private int[] continuousIssueEnds = new int[0];
+    private ContinuousPageMap pageMap = new ContinuousPageMap(Collections.emptyList());
     private float[] continuousExtraBefore = new float[0];
     private String topBoundaryText = "";
     private String bottomBoundaryText = "";
@@ -244,9 +241,9 @@ public final class ComicCanvasView extends View {
         if (!continuous) return pageEnd() >= pages.size() - 1;
         int issue = issueFor(page);
         if (issue < 0) return false;
-        int end = continuousIssueEnds[issue];
+        int end = pageMap.end(issue);
         float bottom = continuousLayout.top(end) + continuousLayout.height(end) + pageGap;
-        float maximum = Math.max(continuousLayout.top(continuousIssueStarts[issue]),
+        float maximum = Math.max(continuousLayout.top(pageMap.start(issue)),
                 bottom - Math.max(1, getHeight()));
         return documentScroll >= maximum - 1f;
     }
@@ -256,7 +253,7 @@ public final class ComicCanvasView extends View {
         if (!continuous) return page == 0;
         int issue = issueFor(page);
         return issue >= 0 && documentScroll <= continuousLayout.top(
-                continuousIssueStarts[issue]) + 1f;
+                pageMap.start(issue)) + 1f;
     }
 
     public String continuousDocumentKey() {
@@ -292,8 +289,10 @@ public final class ComicCanvasView extends View {
         if (!continuous || documents == null || documents.isEmpty()) return;
         scroller.forceFinished(true);
         installContinuousDocuments(documents);
-        page = globalPageFor(anchorKey, anchorPage);
-        pageRatio = clamp(anchorRatio, 0f, 1f);
+        ContinuousPageMap.Position restored = pageMap.restore(
+                new ContinuousPageMap.Anchor(anchorKey, anchorPage, anchorRatio), page);
+        page = restored.page();
+        pageRatio = restored.ratio();
         pendingRestorePage = page;
         pendingRestoreRatio = pageRatio;
         pendingRestore = true;
@@ -526,7 +525,7 @@ public final class ComicCanvasView extends View {
                         ? new RectF(0f, 0f, getWidth(), getHeight()) : clip;
                 requests.computeIfAbsent(pageRenderer, key -> new ArrayList<>()).add(
                         new TileRenderer.PageRequest(
-                        index < continuousLocalPage.length ? continuousLocalPage[index] : index,
+                        index < pageMap.size() ? pageMap.localPageFor(index) : index,
                         destination,
                         pageClip));
             }
@@ -783,24 +782,16 @@ public final class ComicCanvasView extends View {
         if (accepted.isEmpty()) return;
 
         continuousDocuments = Collections.unmodifiableList(accepted);
-        continuousIssueForPage = new int[pageCount];
-        continuousLocalPage = new int[pageCount];
-        continuousIssueStarts = new int[accepted.size()];
-        continuousIssueEnds = new int[accepted.size()];
-        continuousExtraBefore = new float[pageCount];
+        ArrayList<ContinuousPageMap.Issue> issues = new ArrayList<>();
         ArrayList<PageInfo> flattened = new ArrayList<>(pageCount);
-        int global = 0;
-        for (int issue = 0; issue < accepted.size(); issue++) {
-            ContinuousDocument document = accepted.get(issue);
-            continuousIssueStarts[issue] = global;
-            if (issue > 0) continuousExtraBefore[global] = issueSeparatorHeight;
-            for (int local = 0; local < document.pages.size(); local++) {
-                flattened.add(document.pages.get(local));
-                continuousIssueForPage[global] = issue;
-                continuousLocalPage[global] = local;
-                global++;
-            }
-            continuousIssueEnds[issue] = global - 1;
+        for (ContinuousDocument document : accepted) {
+            issues.add(new ContinuousPageMap.Issue(document.key, document.pages.size()));
+            flattened.addAll(document.pages);
+        }
+        pageMap = new ContinuousPageMap(issues);
+        continuousExtraBefore = new float[pageMap.size()];
+        for (int issue = 1; issue < pageMap.issueCount(); issue++) {
+            continuousExtraBefore[pageMap.start(issue)] = issueSeparatorHeight;
         }
         pages = Collections.unmodifiableList(flattened);
         topApproachSent = false;
@@ -809,10 +800,7 @@ public final class ComicCanvasView extends View {
 
     private void clearContinuousDocuments() {
         continuousDocuments = Collections.emptyList();
-        continuousIssueForPage = new int[0];
-        continuousLocalPage = new int[0];
-        continuousIssueStarts = new int[0];
-        continuousIssueEnds = new int[0];
+        pageMap = new ContinuousPageMap(Collections.emptyList());
         continuousExtraBefore = new float[0];
         topBoundaryText = "";
         bottomBoundaryText = "";
@@ -823,29 +811,16 @@ public final class ComicCanvasView extends View {
     }
 
     private int issueFor(int globalPage) {
-        if (!continuous || globalPage < 0 || globalPage >= continuousIssueForPage.length) return -1;
-        return continuousIssueForPage[globalPage];
+        return continuous ? pageMap.issueFor(globalPage) : -1;
     }
 
     private int localPageFor(int globalPage) {
-        if (!continuous || globalPage < 0 || globalPage >= continuousLocalPage.length) {
-            return clamp(globalPage, 0, Math.max(0, pages.size() - 1));
-        }
-        return continuousLocalPage[globalPage];
+        return continuous ? pageMap.localPageFor(globalPage)
+                : clamp(globalPage, 0, Math.max(0, pages.size() - 1));
     }
 
     private int globalPageFor(String key, int localPage) {
-        int issue = -1;
-        for (int index = 0; index < continuousDocuments.size(); index++) {
-            if (continuousDocuments.get(index).key.equals(key)) {
-                issue = index;
-                break;
-            }
-        }
-        if (issue < 0) issue = Math.max(0, issueFor(page));
-        if (continuousIssueStarts.length == 0) return 0;
-        int maximum = continuousIssueEnds[issue] - continuousIssueStarts[issue];
-        return continuousIssueStarts[issue] + clamp(localPage, 0, maximum);
+        return pageMap.globalPageFor(key, localPage, page);
     }
 
     private TileRenderer rendererForPage(int globalPage) {
@@ -865,13 +840,13 @@ public final class ComicCanvasView extends View {
     }
 
     private void drawContinuousLabels(Canvas canvas, int first, int last) {
-        for (int issue = 1; issue < continuousIssueStarts.length; issue++) {
-            int start = continuousIssueStarts[issue];
+        for (int issue = 1; issue < pageMap.issueCount(); issue++) {
+            int start = pageMap.start(issue);
             if (start < first - 1 || start > last + 1) continue;
             float center = continuousLayout.top(start) - issueSeparatorHeight / 2f - documentScroll;
             drawSeparatorLabel(canvas, continuousDocuments.get(issue).title, center);
         }
-        if (!topBoundaryText.isEmpty() && continuousIssueStarts.length > 0) {
+        if (!topBoundaryText.isEmpty() && pageMap.issueCount() > 0) {
             float center = continuousLayout.top(0) - boundaryHeight / 2f - documentScroll;
             if (center > -boundaryHeight && center < getHeight() + boundaryHeight) {
                 drawSeparatorLabel(canvas, topBoundaryText, center);
@@ -927,12 +902,12 @@ public final class ComicCanvasView extends View {
     }
 
     private void showContinuousIssueEnd(int issue) {
-        if (issue < 0 || issue >= continuousIssueEnds.length) return;
-        int end = continuousIssueEnds[issue];
+        if (issue < 0 || issue >= pageMap.issueCount()) return;
+        int end = pageMap.end(issue);
         float bottom = continuousLayout.top(end) + continuousLayout.height(end) + pageGap;
         scroller.forceFinished(true);
         documentScroll = clampScroll(Math.max(
-                continuousLayout.top(continuousIssueStarts[issue]),
+                continuousLayout.top(pageMap.start(issue)),
                 bottom - Math.max(1, getHeight())));
         updateContinuousPosition();
         invalidate();

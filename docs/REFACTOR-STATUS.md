@@ -31,6 +31,17 @@ already published release/1.1 README/screenshot commits through 8624230.
   duplicate completion, resource closure, spread-end progress and placeholder
   persistence cases. Source-security and database policy scripts pass.
 
+- R5 harness: seven production Android SQLite integration cases compile. Added a
+  platform-only instrumentation runner and CI packaging check; no new dependencies.
+  Database delegate extraction is intentionally pending the actual device baseline.
+  Only a named-fixture constructor was added to LibraryDatabase; schema/SQL unchanged.
+- R6: pure ContinuousPageMap owns issue/local/global indexing and anchor restoration.
+  All 91 JVM tests pass, including prepend, eviction, index-count changes, unavailable
+  one-page issues, missing anchors and boundary round trips.
+- F1 preparation: localized store text, existing icon/selected captures, release-note
+  drafts, recipe template, canonical unsigned Gradle release command, Git-checkout
+  reproducibility and signed-rebuild verification commands. See FDROID-READINESS.md.
+
 ## Verification limits
 
 Pinned Gradle 8.14.4 is not cached and network download is unavailable here.
@@ -42,5 +53,13 @@ remain required. No release/signing/production branch changes were made.
 
 ## Remaining
 
-R5 actual Java database harness and decomposition; R6 page mapping;
-F1 F-Droid preparation and final verification. Follow REFACTOR-PLAN.md.
+- Run the actual Android database baseline, extract the R5 delegates, rerun that suite.
+- Run final pinned Gradle lint/build and instrumentation packaging, plus release-device
+  coverage. The successful remote CI runs above cover R1/R2 only.
+- Complete the exact screenshot-source inventory and pinned AGP artifact notice check.
+- Select release version/code, verify the real signing certificate, test the recipe and
+  signed candidate against the independent F-Droid rebuild, then submit when authorized.
+- Upload later local checkpoints: automatic approval review rejected creating the GitHub
+  tree for jnesew/ComicReader, citing insufficient explicit authorization for that
+  destination and possible disclosure. No alternate upload route was attempted.
+  Remote branch remains at a239be8. Local commits retain the subsequent work.

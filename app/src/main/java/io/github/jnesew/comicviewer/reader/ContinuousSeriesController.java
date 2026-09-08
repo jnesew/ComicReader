@@ -217,17 +217,15 @@ final class ContinuousSeriesController {
                     readyDocument,
                     session.reader.canvas::postInvalidateOnAnimation,
                     message -> Toast.makeText(session.context, message, Toast.LENGTH_LONG).show());
-            TileRenderer readyRenderer = openedRenderer;
+            DocumentResources resource = new DocumentResources(
+                    readyDocument, openedRenderer, activated);
             session.mainHandler.post(() -> {
                 boolean currentRequest = pending.complete(uriKey, request);
                 if (!currentRequest || generation != session.openGeneration || session.destroyed || !session.reader.canvas.isContinuous() ||
                         session.progress() == null || session.progress().seriesId != seriesId) {
-                    readyRenderer.close();
-                    readyDocument.close();
+                    resource.close();
                     return;
                 }
-                DocumentResources resource = new DocumentResources(
-                        readyDocument, readyRenderer, activated);
                 continuousResources.put(uriKey, resource);
                 continuousErrors.remove(uriKey);
                 refreshContinuousDocuments(
@@ -235,8 +233,11 @@ final class ContinuousSeriesController {
                 session.indexing.startContinuousBackgroundIndex(resource, generation);
             });
         } catch (IOException | RuntimeException error) {
-            if (openedRenderer != null) openedRenderer.close();
-            if (opened != null) opened.close();
+            try {
+                if (openedRenderer != null) openedRenderer.close();
+            } finally {
+                if (opened != null) opened.close();
+            }
             String message = session.safeMessage(error);
             session.mainHandler.post(() -> {
                 if (!pending.complete(uriKey, request)) return;

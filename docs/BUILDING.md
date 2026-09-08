@@ -11,6 +11,12 @@ The checked-in wrapper pins Gradle 8.14.4 and its distribution SHA-256. Android 
 8.13.2 and the test graph are covered by strict dependency verification. The APK has no
 third-party runtime dependency.
 
+## Canonical release candidate
+
+Run `./build-release.sh` from a clean commit. It runs tests and release lint, then creates
+an unsigned optimized Gradle APK with signing explicitly disabled. Follow
+[FDROID-READINESS.md](FDROID-READINESS.md) to sign and verify the eventual release.
+
 ## Gradle build
 
 ```bash
@@ -54,6 +60,22 @@ component and checksum.
 
 ## Reproducibility
 
-`scripts/verify-reproducible-build.sh` creates two isolated source trees, performs strict offline
+`scripts/verify-reproducible-build.sh` creates two independent clean Git checkouts of the same commit, performs strict offline
 release builds, and requires the unsigned APKs to match byte for byte. A signed APK may differ
 because signing metadata is intentionally outside the source-build comparison.
+
+## Actual Android database checks
+
+With a test device or emulator connected, run:
+
+```bash
+./gradlew --dependency-verification strict connectedDebugAndroidTest
+```
+
+The platform-only DatabaseTestRunner exercises the production LibraryDatabase using a
+separate named database. No user library is erased. Run this suite before and after
+R5's delegate extraction; its seven cases include transaction rollback and schema upgrade.
+Without a device, `assembleDebugAndroidTest` checks packaging but does not run SQLite.
+
+Use an emulator or spare test device for debug instrumentation: its debug certificate
+cannot replace an installed release APK signed with the existing release key.

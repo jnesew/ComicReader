@@ -1,0 +1,31 @@
+# Review template. Substitute verified release values before copying to fdroiddata.
+Categories:
+  - Reading
+License: MIT
+SourceCode: https://github.com/jnesew/ComicReader
+IssueTracker: https://github.com/jnesew/ComicReader/issues
+Changelog: https://github.com/jnesew/ComicReader/releases
+
+AutoName: ComicViewer
+RepoType: git
+Repo: https://github.com/jnesew/ComicReader.git
+
+Binaries: https://github.com/jnesew/ComicReader/releases/download/v%v/ComicViewer-Android-v%v.apk
+AllowedAPKSigningKeys:
+  - REPLACE_WITH_VERIFIED_CERTIFICATE_SHA256
+
+Builds:
+  - versionName: REPLACE_WITH_VERSION_NAME
+    versionCode: REPLACE_WITH_VERSION_CODE
+    commit: REPLACE_WITH_FULL_COMMIT_SHA
+    subdir: app
+    gradle:
+      - yes
+    gradleprops:
+      - comicViewerUnsignedRelease=true
+
+AutoUpdateMode: Version v%v
+UpdateCheckMode: Tags ^v[0-9]+\.[0-9]+\.[0-9]+$
+UpdateCheckData: 'gradle.properties|comicViewerVersionCode=(\d+)|.|comicViewerVersionName=([0-9.]+)'
+CurrentVersion: REPLACE_WITH_VERSION_NAME
+CurrentVersionCode: REPLACE_WITH_VERSION_CODE
