@@ -30,9 +30,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import io.github.jnesew.comicviewer.data.CoverStore;
-import io.github.jnesew.comicviewer.data.ContentFingerprint;
 import io.github.jnesew.comicviewer.data.LibraryDatabase;
-import io.github.jnesew.comicviewer.data.LibraryFolderScanner;
 import io.github.jnesew.comicviewer.data.ReaderPreferences;
 import io.github.jnesew.comicviewer.document.ComicDocument;
 import io.github.jnesew.comicviewer.document.ComicDocumentFactory;
@@ -42,18 +40,18 @@ import io.github.jnesew.comicviewer.model.PageInfo;
 import io.github.jnesew.comicviewer.model.ReadingDirection;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
 import io.github.jnesew.comicviewer.model.SeriesGroup;
-import io.github.jnesew.comicviewer.model.SeriesMetadata;
 import io.github.jnesew.comicviewer.render.ComicCanvasView;
 import io.github.jnesew.comicviewer.render.PagePreviewLoader;
 import io.github.jnesew.comicviewer.render.TileRenderer;
 import io.github.jnesew.comicviewer.ui.HomeView;
 import io.github.jnesew.comicviewer.library.LibraryQueryController;
+import io.github.jnesew.comicviewer.library.LibraryImportCoordinator;
+import io.github.jnesew.comicviewer.library.FolderScanCoordinator;
 import io.github.jnesew.comicviewer.ui.dialog.ComicEditorDialog;
 import io.github.jnesew.comicviewer.ui.dialog.ReaderOptionsDialog;
 import io.github.jnesew.comicviewer.ui.dialog.ReaderNavigationDialogs;
 import io.github.jnesew.comicviewer.ui.ReaderScreen;
 import io.github.jnesew.comicviewer.util.LibraryFolderLabel;
-import io.github.jnesew.comicviewer.util.LibraryScanResult;
 import io.github.jnesew.comicviewer.util.SeriesNavigator;
 import io.github.jnesew.comicviewer.util.Ui;
 
@@ -67,7 +65,6 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class MainActivity extends Activity implements
         HomeView.Listener,
@@ -76,7 +73,6 @@ public final class MainActivity extends Activity implements
 
     private static final int REQUEST_IMPORT_COMICS = 4101;
     private static final int REQUEST_LIBRARY_FOLDER = 4102;
-    private static final long AUTO_SCAN_COOLDOWN_MS = 5_000L;
 
     private enum OpenPosition {
         REMEMBERED,
@@ -100,21 +96,11 @@ public final class MainActivity extends Activity implements
         thread.setPriority(Thread.NORM_PRIORITY - 1);
         return thread;
     });
-    private final ExecutorService libraryWorker = Executors.newFixedThreadPool(2, runnable -> {
-        Thread thread = new Thread(runnable, "comic-library-worker");
-        thread.setPriority(Thread.NORM_PRIORITY - 1);
-        return thread;
-    });
-    private final ExecutorService scanWorker = Executors.newSingleThreadExecutor(runnable -> {
-        Thread thread = new Thread(runnable, "comic-folder-scanner");
-        thread.setPriority(Thread.NORM_PRIORITY - 1);
-        return thread;
-    });
-    private final Set<String> libraryJobs = Collections.synchronizedSet(new java.util.HashSet<>());
-    private final AtomicBoolean folderScanRunning = new AtomicBoolean();
 
     private FrameLayout root;
     private LibraryDatabase database;
+    private LibraryImportCoordinator imports;
+    private FolderScanCoordinator scans;
     private ReaderPreferences preferences;
     private HomeView home;
     private ReaderScreen reader;
@@ -135,10 +121,6 @@ public final class MainActivity extends Activity implements
     private volatile boolean comicOpening;
     private volatile int openGeneration;
     private volatile boolean destroyed;
-    private volatile long lastFolderScanStarted;
-    private volatile String pendingReleaseFolderUri = "";
-    private volatile Future<?> folderScanTask;
-    private volatile int folderScanGeneration;
     private Object platformBackCallback;
 
     private final Runnable deferredSave = this::saveNow;
@@ -169,6 +151,21 @@ public final class MainActivity extends Activity implements
         preferences = new ReaderPreferences(this);
         migrateLegacyReadingDirection();
 
+        imports = new LibraryImportCoordinator(this, database, new LibraryImportCoordinator.Listener() {
+            @Override public void onLibraryChanged() { home.refresh(); }
+            @Override public void onImportFinished(int count) {
+                Toast.makeText(MainActivity.this, count > 0 ? getResources().getQuantityString(
+                        R.plurals.comics_added, count, count) : getString(R.string.comics_add_failed),
+                        Toast.LENGTH_SHORT).show();
+            }
+        });
+        scans = new FolderScanCoordinator(this, database, preferences, imports,
+                () -> readerActive || comicOpening, new FolderScanCoordinator.Listener() {
+                    @Override public void onLibraryChanged() { home.refresh(); }
+                    @Override public void onScanStatus(String detail, boolean scanning, boolean persistent) {
+                        updateLibraryFolderUi(detail, scanning, persistent);
+                    }
+                });
         root = new FrameLayout(this);
         home = new HomeView(this, new LibraryQueryController(database), this);
         reader = new ReaderScreen(this, preferences, this);
@@ -194,9 +191,9 @@ public final class MainActivity extends Activity implements
             persistReadAccess(uri, launchIntent.getFlags());
             mainHandler.post(() -> openComic(uri, true));
         }
-        startCoverBackfill();
-        startMetadataBackfill();
-        mainHandler.postDelayed(() -> maybeScanLibraryFolder(false), 300L);
+        imports.startCoverBackfill();
+        imports.startMetadataBackfill();
+        mainHandler.postDelayed(() -> scans.maybeScanLibraryFolder(false), 300L);
     }
 
     @Override
@@ -215,21 +212,8 @@ public final class MainActivity extends Activity implements
         if (requestCode == REQUEST_LIBRARY_FOLDER) {
             if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
             Uri selected = data.getData();
-            String previous = preferences.libraryFolderUri();
-            folderScanGeneration++;
-            Future<?> activeScan = folderScanTask;
-            if (activeScan != null) activeScan.cancel(true);
-            folderScanRunning.set(false);
             persistReadAccess(selected, data.getFlags());
-            DocumentInfo folder = ComicDocumentFactory.describe(this, selected);
-            preferences.setLibraryFolder(
-                    selected.toString(), LibraryFolderLabel.compact(folder.displayName));
-            if (!previous.isEmpty() && !previous.equals(selected.toString())) {
-                pendingReleaseFolderUri = previous;
-            }
-            updateLibraryFolderUi("", false, false);
-            lastFolderScanStarted = 0L;
-            maybeScanLibraryFolder(true);
+            scans.selectFolder(selected);
             return;
         }
         if (requestCode != REQUEST_IMPORT_COMICS || resultCode != RESULT_OK || data == null) return;
@@ -246,7 +230,7 @@ public final class MainActivity extends Activity implements
         ArrayList<Uri> uris = new ArrayList<>(selected);
         for (Uri uri : uris) persistReadAccess(uri, data.getFlags());
         if (uris.size() == 1) openComic(uris.get(0), true);
-        else importComics(uris);
+        else imports.importComics(uris);
     }
 
     @Override
@@ -259,7 +243,7 @@ public final class MainActivity extends Activity implements
     protected void onResume() {
         super.onResume();
         if (database != null && !readerActive) {
-            mainHandler.postDelayed(() -> maybeScanLibraryFolder(false), 350L);
+            mainHandler.postDelayed(() -> scans.maybeScanLibraryFolder(false), 350L);
         }
     }
 
@@ -278,10 +262,25 @@ public final class MainActivity extends Activity implements
         archiveLoader.shutdownNow();
         adjacentLoader.shutdownNow();
         indexWorker.shutdownNow();
-        libraryWorker.shutdownNow();
-        scanWorker.shutdownNow();
+        imports.close();
+        scans.close();
         home.close();
-        database.close();
+        Thread cleanup = new Thread(() -> {
+            boolean interrupted = false;
+            for (;;) {
+                try {
+                    archiveLoader.awaitTermination(Long.MAX_VALUE, java.util.concurrent.TimeUnit.NANOSECONDS);
+                    adjacentLoader.awaitTermination(Long.MAX_VALUE, java.util.concurrent.TimeUnit.NANOSECONDS);
+                    indexWorker.awaitTermination(Long.MAX_VALUE, java.util.concurrent.TimeUnit.NANOSECONDS);
+                    imports.awaitStopped();
+                    scans.awaitStopped();
+                    break;
+                } catch (InterruptedException ignored) { interrupted = true; }
+            }
+            database.close();
+            if (interrupted) Thread.currentThread().interrupt();
+        }, "comic-database-close");
+        cleanup.start();
         super.onDestroy();
     }
 
@@ -478,10 +477,9 @@ public final class MainActivity extends Activity implements
                 });
         if (configured) {
             menu.getMenu().add(R.string.library_rescan_folder)
-                    .setEnabled(!folderScanRunning.get())
+                    .setEnabled(!scans.isRunning())
                     .setOnMenuItemClickListener(item -> {
-                        lastFolderScanStarted = 0L;
-                        maybeScanLibraryFolder(true);
+                        scans.maybeScanLibraryFolder(true);
                         return true;
                     });
             menu.getMenu().add(R.string.library_stop_folder)
@@ -497,7 +495,7 @@ public final class MainActivity extends Activity implements
             int count = confirmedMissing.size();
             menu.getMenu().add(getResources().getQuantityString(
                             R.plurals.library_review_unavailable, count, count))
-                    .setEnabled(!folderScanRunning.get())
+                    .setEnabled(!scans.isRunning())
                     .setOnMenuItemClickListener(item -> {
                         showConfirmedMissingReview();
                         return true;
@@ -515,7 +513,7 @@ public final class MainActivity extends Activity implements
     }
 
     private void showConfirmedMissingReview() {
-        if (folderScanRunning.get()) return;
+        if (scans.isRunning()) return;
         List<ReadingProgress> missing = database.confirmedMissingItems(
                 preferences.libraryFolderUri());
         if (missing.isEmpty()) {
@@ -596,7 +594,7 @@ public final class MainActivity extends Activity implements
         home.refresh();
         applyKeepScreenOn();
         showSystemBars(true);
-        maybeScanLibraryFolder(false);
+        scans.maybeScanLibraryFolder(false);
     }
 
     @Override
@@ -834,7 +832,7 @@ public final class MainActivity extends Activity implements
             try {
                 DocumentInfo document = ComicDocumentFactory.describe(this, uri);
                 String sample = manualImport
-                        ? sampleContent(uri, document.size) : "";
+                        ? imports.sampleContent(uri, document.size) : "";
                 // Describing a missing SAF document can return its URI as a fallback title.
                 // Do not persist that description (or reset its index/grouping) before open succeeds.
                 ReadingProgress saved = database.get(uri.toString());
@@ -863,7 +861,7 @@ public final class MainActivity extends Activity implements
                     }
                 }
                 database.updateTitle(opened.key(), opened.title());
-                applySeriesMetadata(opened, null);
+                imports.applySeriesMetadata(opened, null);
                 ReadingProgress activated = database.get(opened.key());
                 if (readingModeOverride != null) {
                     activated.readingMode = readingModeOverride;
@@ -985,7 +983,7 @@ public final class MainActivity extends Activity implements
         indexWorker.execute(() -> {
             try {
                 ReadingProgress libraryItem = database.get(opened.key());
-                boolean ownsCoverJob = libraryJobs.add(opened.key());
+                boolean ownsCoverJob = imports.claimJob(opened.key());
                 if (ownsCoverJob && !CoverStore.exists(libraryItem.coverPath)) {
                     try {
                         String coverPath = CoverStore.ensureCover(this, opened);
@@ -1001,10 +999,10 @@ public final class MainActivity extends Activity implements
                     } catch (IOException | RuntimeException coverError) {
                         database.setCover(opened.key(), "", LibraryDatabase.COVER_FAILED);
                     } finally {
-                        libraryJobs.remove(opened.key());
+                        imports.releaseJob(opened.key());
                     }
                 } else if (ownsCoverJob) {
-                    libraryJobs.remove(opened.key());
+                    imports.releaseJob(opened.key());
                 }
                 if (opened.isIndexComplete()) return;
                 opened.buildPageIndex(this, null, new ComicDocument.IndexCallback() {
@@ -1068,160 +1066,6 @@ public final class MainActivity extends Activity implements
         });
     }
 
-    private void importComics(List<Uri> uris) {
-        libraryWorker.execute(() -> {
-            int imported = 0;
-            for (Uri uri : uris) {
-                if (destroyed || Thread.currentThread().isInterrupted()) break;
-                if (processLibraryItem(uri, true, null, true)) imported++;
-            }
-            int count = imported;
-            mainHandler.post(() -> {
-                if (destroyed) return;
-                home.refresh();
-                Toast.makeText(this, count > 0 ? getResources().getQuantityString(
-                        R.plurals.comics_added, count, count) :
-                        getString(R.string.comics_add_failed), Toast.LENGTH_SHORT).show();
-            });
-        });
-    }
-
-    private void startCoverBackfill() {
-        libraryWorker.execute(() -> {
-            for (ReadingProgress item : database.coversNeedingBackfill(200)) {
-                if (destroyed || Thread.currentThread().isInterrupted()) return;
-                try {
-                    processLibraryItem(Uri.parse(item.uri), false);
-                } catch (RuntimeException ignored) {
-                    database.setCover(item.uri, "", LibraryDatabase.COVER_FAILED);
-                }
-            }
-        });
-    }
-
-    private void startMetadataBackfill() {
-        libraryWorker.execute(() -> {
-            for (ReadingProgress item : database.metadataNeedingBackfill(500)) {
-                if (destroyed || Thread.currentThread().isInterrupted()) return;
-                String key = item.uri;
-                if (!libraryJobs.add(key)) continue;
-                try {
-                    Uri uri = Uri.parse(key);
-                    DocumentInfo document = ComicDocumentFactory.describe(this, uri);
-                    List<PageInfo> cachedPages = item.indexComplete
-                            ? database.pageIndex(key) : Collections.emptyList();
-                    try (ComicDocument opened = ComicDocumentFactory.open(
-                            this, uri, document, item.page, cachedPages,
-                            item.documentSize, item.documentModified, null)) {
-                        database.updateTitle(key, opened.title());
-                        applySeriesMetadata(opened, null);
-                    }
-                } catch (IOException | RuntimeException error) {
-                    database.markMetadataFailed(key);
-                } finally {
-                    libraryJobs.remove(key);
-                }
-            }
-            mainHandler.post(() -> {
-                if (!destroyed) home.refresh();
-            });
-        });
-    }
-
-    private boolean processLibraryItem(Uri uri, boolean buildFullIndex) {
-        return processLibraryItem(uri, buildFullIndex, null, false);
-    }
-
-    private boolean processLibraryItem(
-            Uri uri,
-            boolean buildFullIndex,
-            LibraryFolderScanner.Entry sourceEntry,
-            boolean manualImport) {
-        String key = uri.toString();
-        if (!libraryJobs.add(key)) return false;
-        boolean created = false;
-        try {
-            DocumentInfo document = ComicDocumentFactory.describe(this, uri);
-            String sample = manualImport
-                    ? sampleContent(uri, document.size) : "";
-            created = database.get(key).uri.isEmpty();
-            ReadingProgress item = database.ensureImported(
-                    key, document.title, document.size, document.modified);
-            if (manualImport) {
-                database.markManualSource(key);
-                if (!sample.isEmpty()) {
-                    database.setLibraryFingerprint(
-                            key, document.size, sample, item.contentFingerprint);
-                }
-            }
-            List<PageInfo> cachedPages = item.indexComplete
-                    ? database.pageIndex(key) : Collections.emptyList();
-            try (ComicDocument opened = ComicDocumentFactory.open(
-                    this, uri, document, item.page, cachedPages,
-                    item.documentSize, item.documentModified, null)) {
-                database.updateTitle(key, opened.title());
-                applySeriesMetadata(opened, sourceEntry);
-                if (!CoverStore.exists(item.coverPath)) {
-                    String cover = CoverStore.ensureCover(this, opened);
-                    database.setCover(key, cover, LibraryDatabase.COVER_READY);
-                }
-                database.updateArchiveState(key, opened.count(), opened.indexedPages(),
-                        opened.isIndexComplete(), opened.documentSize(), opened.documentModified());
-                mainHandler.post(() -> {
-                    if (!destroyed) home.refresh();
-                });
-                if (buildFullIndex && !opened.isIndexComplete()) {
-                    opened.buildPageIndex(this, null, new ComicDocument.IndexCallback() {
-                        @Override
-                        public void onProgress(int indexedPages, int pageCount) {
-                            database.updateArchiveState(key, pageCount, indexedPages, false,
-                                    opened.documentSize(), opened.documentModified());
-                        }
-
-                        @Override
-                        public void onPagesUpdated() {
-                        }
-
-                        @Override
-                        public void onComplete(List<PageInfo> pages) {
-                            database.replacePageIndex(key, pages);
-                        }
-                    });
-                }
-            }
-            mainHandler.post(() -> {
-                if (!destroyed) home.refresh();
-            });
-            return true;
-        } catch (IOException | RuntimeException error) {
-            if (created) {
-                String cover = database.forget(key);
-                CoverStore.delete(this, cover);
-            } else {
-                database.setCover(key, "", LibraryDatabase.COVER_FAILED);
-            }
-            return false;
-        } finally {
-            libraryJobs.remove(key);
-        }
-    }
-
-    private void applySeriesMetadata(
-            ComicDocument opened, LibraryFolderScanner.Entry sourceEntry) {
-        SeriesMetadata metadata = opened.seriesMetadata();
-        String folderKey = sourceEntry == null ? "" : sourceEntry.seriesFolderKey;
-        String folderName = sourceEntry == null ? "" : sourceEntry.seriesFolderName;
-        if (sourceEntry == null && !metadata.hasSeries()) {
-            ReadingProgress current = database.get(opened.key());
-            if (current.detectedSeriesKey.startsWith("folder:")) {
-                folderKey = current.detectedSeriesKey.substring("folder:".length());
-                folderName = current.detectedSeriesName;
-            }
-        }
-        database.applyDetectedSeries(
-                opened.key(), metadata.name, metadata.number, folderKey, folderName);
-    }
-
     private void chooseLibraryFolder() {
         Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
         picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
@@ -1236,358 +1080,8 @@ public final class MainActivity extends Activity implements
                 .setMessage(R.string.library_stop_folder_message)
                 .setNegativeButton(R.string.cancel, null)
                 .setPositiveButton(R.string.library_stop_folder, (dialog, which) ->
-                        stopLibraryFolder())
+                        scans.stopLibraryFolder())
                 .show();
-    }
-
-    private void stopLibraryFolder() {
-        String configured = preferences.libraryFolderUri();
-        preferences.clearLibraryFolder();
-        folderScanGeneration++;
-        Future<?> activeScan = folderScanTask;
-        if (activeScan != null) activeScan.cancel(true);
-        folderScanRunning.set(false);
-        if (!configured.isEmpty()) {
-            database.markFolderUnavailable(configured);
-            releaseReadAccess(Uri.parse(configured));
-        }
-        String pendingRelease = pendingReleaseFolderUri;
-        if (!pendingRelease.isEmpty() && !pendingRelease.equals(configured)) {
-            database.markFolderUnavailable(pendingRelease);
-            releaseReadAccess(Uri.parse(pendingRelease));
-        }
-        pendingReleaseFolderUri = "";
-        updateLibraryFolderUi("", false, false);
-        home.refresh();
-    }
-
-    private void maybeScanLibraryFolder(boolean userRequested) {
-        if (destroyed || preferences == null || database == null) return;
-        String configured = preferences.libraryFolderUri();
-        if (configured.isEmpty()) return;
-        long now = System.currentTimeMillis();
-        if (!userRequested && now - lastFolderScanStarted < AUTO_SCAN_COOLDOWN_MS) return;
-        if (!folderScanRunning.compareAndSet(false, true)) return;
-        int scanGeneration = ++folderScanGeneration;
-        lastFolderScanStarted = now;
-        updateLibraryFolderUi("", true, true);
-        Uri treeUri;
-        try {
-            treeUri = Uri.parse(configured);
-        } catch (RuntimeException exception) {
-            if (scanGeneration == folderScanGeneration) folderScanRunning.set(false);
-            updateLibraryFolderUi(
-                    getString(R.string.library_scan_incomplete_short), false, true);
-            return;
-        }
-
-        folderScanTask = scanWorker.submit(() -> {
-            ScanCounts counts = new ScanCounts();
-            long scanStarted = System.currentTimeMillis();
-            LibraryFolderScanner.Summary traversal = null;
-            try {
-                traversal = LibraryFolderScanner.scan(
-                        this, treeUri,
-                        () -> destroyed || Thread.currentThread().isInterrupted() ||
-                                scanGeneration != folderScanGeneration ||
-                                !preferences.libraryFolderUri().equals(treeUri.toString()),
-                        entry -> processScannedEntry(
-                                entry, scanStarted, counts, scanGeneration));
-                if (!destroyed && traversal.complete() && !readerActive && !comicOpening &&
-                        preferences.libraryFolderUri().equals(treeUri.toString())) {
-                    database.finishFolderScan(treeUri.toString(), scanStarted);
-                    String pendingRelease = pendingReleaseFolderUri;
-                    if (!pendingRelease.isEmpty() &&
-                            !pendingRelease.equals(treeUri.toString())) {
-                        database.markFolderUnavailable(pendingRelease);
-                        releaseReadAccess(Uri.parse(pendingRelease));
-                        pendingReleaseFolderUri = "";
-                    }
-                }
-            } catch (IOException | RuntimeException error) {
-                counts.errors++;
-            } finally {
-                if (scanGeneration == folderScanGeneration) folderScanRunning.set(false);
-            }
-            LibraryFolderScanner.Summary finished = traversal;
-            mainHandler.post(() -> {
-                if (destroyed || scanGeneration != folderScanGeneration) return;
-                home.refresh();
-                LibraryScanResult result = folderScanResult(counts, finished);
-                String summary = folderScanSummary(result);
-                updateLibraryFolderUi(summary, false, result.shouldPersist());
-                if (!preferences.libraryFolderUri().equals(treeUri.toString())) {
-                    lastFolderScanStarted = 0L;
-                    maybeScanLibraryFolder(false);
-                }
-            });
-        });
-    }
-
-    private void processScannedEntry(
-            LibraryFolderScanner.Entry entry,
-            long scanStarted,
-            ScanCounts counts,
-            int scanGeneration) {
-        if (destroyed || Thread.currentThread().isInterrupted()) return;
-        if (!scanStillConfigured(entry, scanGeneration)) return;
-        String identity = entry.sourceIdentity();
-        LibraryDatabase.ScannedFile existing = database.scannedFile(identity);
-        String documentUri = entry.uri.toString();
-        ReadingProgress existingProgress = existing == null
-                ? new ReadingProgress() : database.get(existing.canonicalUri);
-        boolean providerUnchanged = existing != null &&
-                providerFingerprintMatches(existing, entry) && !existingProgress.uri.isEmpty();
-
-        FingerprintProbe probe = new FingerprintProbe();
-        if (existing != null) probe.sample = existing.sampleSignature;
-        boolean newSource = existing == null;
-        boolean scannerOwnsCanonical = existing != null &&
-                existing.canonicalUri.equals(existing.documentUri);
-        boolean safeToMerge = !readerActive && !comicOpening;
-        if (newSource || (scannerOwnsCanonical && safeToMerge &&
-                !existingProgress.uri.isEmpty())) {
-            ReadingProgress manualMatch = findExactManualDuplicate(
-                    entry, documentUri, probe);
-            if (manualMatch != null && scanStillConfigured(entry, scanGeneration)) {
-                LibraryDatabase.DuplicateMergeResult merge = null;
-                if (!newSource) {
-                    merge = database.mergeExactDuplicate(
-                            manualMatch.uri, existing.canonicalUri,
-                            probe.sample, probe.fullFingerprint);
-                    if (!merge.merged) manualMatch = null;
-                }
-                if (manualMatch != null) {
-                    database.upsertScannedFile(scannedFile(
-                            entry, manualMatch.uri, probe.sample,
-                            probe.fullFingerprint, scanStarted));
-                    database.setLibraryFingerprint(
-                            manualMatch.uri, entry.size,
-                            probe.sample, probe.fullFingerprint);
-                    reapplyFolderSeries(manualMatch.uri, entry);
-                    if (merge != null) {
-                        for (String cover : merge.obsoleteCoverPaths) {
-                            CoverStore.delete(this, cover);
-                        }
-                    }
-                    counts.duplicates++;
-                    return;
-                }
-            }
-        }
-
-        if (providerUnchanged) {
-            database.touchScannedFile(
-                    identity, entry.uri.toString(), entry.relativePath,
-                    entry.size, entry.modified, scanStarted);
-            updateRenamedTitle(existing, entry);
-            reapplyFolderSeries(existing.canonicalUri, entry);
-            counts.unchanged++;
-            return;
-        }
-
-        if ((readerActive || comicOpening) && existing != null &&
-                existing.canonicalUri.equals(existing.documentUri) &&
-                !existing.documentUri.equals(documentUri)) {
-            counts.skipped++;
-            return;
-        }
-        if (existing != null && existing.canonicalUri.equals(existing.documentUri) &&
-                !existing.documentUri.equals(documentUri) && !readerActive && !comicOpening) {
-            database.relinkCanonicalUri(existing.canonicalUri, documentUri);
-        }
-
-        if (probe.sample.isEmpty()) probe.sample = sampleContent(entry.uri, entry.size);
-
-        if (existing == null && !probe.sample.isEmpty()) {
-            for (LibraryDatabase.ScannedFile candidate : database.duplicateCandidates(
-                    identity, entry.size, probe.sample)) {
-                if (database.get(candidate.canonicalUri).uri.isEmpty()) continue;
-                try {
-                    if (probe.fullFingerprint.isEmpty()) {
-                        probe.fullFingerprint = ContentFingerprint.full(this, entry.uri);
-                    }
-                    String candidateFingerprint = candidate.contentFingerprint;
-                    if (candidateFingerprint.isEmpty()) {
-                        candidateFingerprint = ContentFingerprint.full(
-                                this, Uri.parse(candidate.documentUri));
-                        database.setScannedFingerprint(
-                                candidate.sourceIdentity, candidateFingerprint);
-                    }
-                    if (!probe.fullFingerprint.equals(candidateFingerprint)) continue;
-                    if (!scanStillConfigured(entry, scanGeneration)) return;
-                    database.upsertScannedFile(scannedFile(
-                            entry, candidate.canonicalUri, probe.sample,
-                            probe.fullFingerprint, scanStarted));
-                    counts.duplicates++;
-                    return;
-                } catch (IOException | RuntimeException ignored) {
-                    // An inaccessible candidate is not sufficient evidence to suppress this item.
-                }
-            }
-        }
-
-        boolean previouslyImported = existing != null || !database.get(documentUri).uri.isEmpty();
-        if (!processLibraryItem(entry.uri, false, entry, false)) {
-            counts.skipped++;
-            return;
-        }
-        if (!scanStillConfigured(entry, scanGeneration)) {
-            if (!previouslyImported) {
-                String cover = database.forget(documentUri);
-                CoverStore.delete(this, cover);
-            }
-            return;
-        }
-        database.upsertScannedFile(scannedFile(
-                entry, documentUri, probe.sample, probe.fullFingerprint, scanStarted));
-        if (previouslyImported) counts.updated++;
-        else counts.imported++;
-    }
-
-    private void reapplyFolderSeries(
-            String canonicalUri, LibraryFolderScanner.Entry entry) {
-        ReadingProgress current = database.get(canonicalUri);
-        if (current.uri.isEmpty()) return;
-        boolean embedded = current.detectedSeriesKey.startsWith("metadata:");
-        database.applyDetectedSeries(
-                canonicalUri,
-                embedded ? current.detectedSeriesName : "",
-                embedded ? current.detectedSeriesNumber : "",
-                entry.seriesFolderKey,
-                entry.seriesFolderName);
-    }
-
-    private void updateRenamedTitle(
-            LibraryDatabase.ScannedFile existing, LibraryFolderScanner.Entry entry) {
-        if (existing.relativePath.equals(entry.relativePath)) return;
-        ReadingProgress current = database.get(existing.canonicalUri);
-        if (current.uri.isEmpty()) return;
-        String oldFilename = existing.relativePath;
-        int slash = oldFilename.lastIndexOf('/');
-        if (slash >= 0) oldFilename = oldFilename.substring(slash + 1);
-        String oldTitle = DocumentInfo.stripSupportedExtension(oldFilename);
-        if (!current.title.equals(oldTitle)) return;
-        database.updateTitle(
-                existing.canonicalUri,
-                DocumentInfo.stripSupportedExtension(entry.displayName));
-    }
-
-    private ReadingProgress findExactManualDuplicate(
-            LibraryFolderScanner.Entry entry,
-            String excludedCanonicalUri,
-            FingerprintProbe probe) {
-        if (libraryJobs.contains(excludedCanonicalUri)) return null;
-        List<ReadingProgress> candidates = database.manualDuplicateCandidates(
-                entry.size, excludedCanonicalUri);
-        if (candidates.isEmpty()) return null;
-        // Re-read both sides for the confirmation attempt. Persisted hashes are useful hints, but
-        // a document provider may replace bytes without the title having been reopened first.
-        probe.sample = sampleContent(entry.uri, entry.size);
-        probe.fullFingerprint = "";
-        if (probe.sample.isEmpty()) return null;
-
-        for (ReadingProgress candidate : candidates) {
-            if (candidate.uri.equals(entry.uri.toString()) ||
-                    libraryJobs.contains(candidate.uri)) continue;
-            try {
-                Uri candidateUri = Uri.parse(candidate.uri);
-                String candidateSample = ContentFingerprint.sample(
-                        this, candidateUri, candidate.documentSize);
-                database.setLibraryFingerprint(
-                        candidate.uri, candidate.documentSize, candidateSample, "");
-                if (!probe.sample.equals(candidateSample)) continue;
-                if (probe.fullFingerprint.isEmpty()) {
-                    probe.fullFingerprint = ContentFingerprint.full(this, entry.uri);
-                }
-                String candidateFingerprint = ContentFingerprint.full(this, candidateUri);
-                database.setLibraryFingerprint(
-                        candidate.uri, candidate.documentSize,
-                        candidateSample, candidateFingerprint);
-                if (probe.fullFingerprint.equals(candidateFingerprint)) return candidate;
-            } catch (IOException | RuntimeException ignored) {
-                // A revoked manual grant is not evidence that two entries are identical.
-            }
-        }
-        return null;
-    }
-
-    private String sampleContent(Uri uri, long documentSize) {
-        try {
-            return ContentFingerprint.sample(this, uri, documentSize);
-        } catch (IOException | RuntimeException ignored) {
-            // Opening remains the authoritative readability and format validation step.
-            return "";
-        }
-    }
-
-    private static LibraryDatabase.ScannedFile scannedFile(
-            LibraryFolderScanner.Entry entry,
-            String canonicalUri,
-            String sample,
-            String fingerprint,
-            long seenAt) {
-        LibraryDatabase.ScannedFile result = new LibraryDatabase.ScannedFile();
-        result.sourceIdentity = entry.sourceIdentity();
-        result.treeUri = entry.treeUri;
-        result.documentId = entry.documentId;
-        result.documentUri = entry.uri.toString();
-        result.relativePath = entry.relativePath;
-        result.canonicalUri = canonicalUri;
-        result.documentSize = entry.size;
-        result.documentModified = entry.modified;
-        result.sampleSignature = sample;
-        result.contentFingerprint = fingerprint;
-        result.lastSeen = seenAt;
-        result.available = true;
-        return result;
-    }
-
-    private static boolean providerFingerprintMatches(
-            LibraryDatabase.ScannedFile existing, LibraryFolderScanner.Entry entry) {
-        boolean sizeChanged = existing.documentSize >= 0L && entry.size >= 0L &&
-                existing.documentSize != entry.size;
-        boolean modifiedChanged = existing.documentModified >= 0L && entry.modified >= 0L &&
-                existing.documentModified != entry.modified;
-        return !sizeChanged && !modifiedChanged;
-    }
-
-    private boolean scanStillConfigured(
-            LibraryFolderScanner.Entry entry, int scanGeneration) {
-        return !destroyed && !Thread.currentThread().isInterrupted() &&
-                scanGeneration == folderScanGeneration &&
-                preferences.libraryFolderUri().equals(entry.treeUri);
-    }
-
-    private LibraryScanResult folderScanResult(
-            ScanCounts counts, LibraryFolderScanner.Summary traversal) {
-        int providerErrors = traversal == null ? 1 : traversal.providerErrors;
-        boolean incomplete = counts.errors + providerErrors > 0 ||
-                (traversal != null && traversal.bounded);
-        return new LibraryScanResult(
-                counts.imported, counts.updated, counts.unchanged,
-                counts.duplicates, counts.skipped, incomplete);
-    }
-
-    private String folderScanSummary(LibraryScanResult result) {
-        if (!result.shouldShow()) return "";
-        ArrayList<String> parts = new ArrayList<>();
-        if (result.incomplete) {
-            parts.add(getString(R.string.library_scan_incomplete_short));
-        }
-        if (result.added > 0) {
-            parts.add(getString(R.string.library_scan_added, result.added));
-        }
-        if (result.updated > 0) {
-            parts.add(getString(R.string.library_scan_updated, result.updated));
-        }
-        if (result.duplicates > 0) {
-            parts.add(getString(R.string.library_scan_duplicates, result.duplicates));
-        }
-        if (result.skipped > 0) {
-            parts.add(getString(R.string.library_scan_skipped, result.skipped));
-        }
-        return String.join(" · ", parts);
     }
 
     private void updateLibraryFolderUi(
@@ -1596,20 +1090,6 @@ public final class MainActivity extends Activity implements
         home.setLibraryFolderState(
                 LibraryFolderLabel.compact(preferences.libraryFolderLabel()),
                 detail, scanning, persistent);
-    }
-
-    private static final class ScanCounts {
-        private int imported;
-        private int updated;
-        private int unchanged;
-        private int duplicates;
-        private int skipped;
-        private int errors;
-    }
-
-    private static final class FingerprintProbe {
-        private String sample = "";
-        private String fullFingerprint = "";
     }
 
     private void beginContinuousSession() {
@@ -2059,8 +1539,6 @@ public final class MainActivity extends Activity implements
         progress = null;
     }
 
-
-
     private void showJumpDialog() {
         if (archive == null || archive.isUnavailable()) return;
         ComicDocument selected = archive;
@@ -2084,9 +1562,6 @@ public final class MainActivity extends Activity implements
                 progress.favorite ? R.string.title_added_favorite : R.string.title_removed_favorite,
                 progress.title), Toast.LENGTH_SHORT).show();
     }
-
-
-
 
     private void showComicEditor(ReadingProgress item) {
         new ComicEditorDialog(this).show(database.get(item.uri), database.seriesNames(), edit -> {
@@ -2123,7 +1598,6 @@ public final class MainActivity extends Activity implements
         }
         home.refresh();
     }
-
 
     private ReaderOptionsDialog optionsDialog() {
         return new ReaderOptionsDialog(this, preferences, new ReaderOptionsDialog.Listener() {
@@ -2169,15 +1643,11 @@ public final class MainActivity extends Activity implements
         reader.keepChromeAwake();
     }
 
-
-
-
     private void migrateLegacyReadingDirection() {
         if (!preferences.needsPerTitleDirectionMigration()) return;
         if (preferences.legacyRightToLeft()) database.migrateLegacyRightToLeftTitles();
         preferences.finishPerTitleDirectionMigration();
     }
-
 
     @SuppressLint({"NewApi", "UseRequiresApi"})
     private static final class Api33Back {
@@ -2297,7 +1767,6 @@ public final class MainActivity extends Activity implements
         }
     }
 
-
     private void showError(String title, String message) {
         new AlertDialog.Builder(this)
                 .setTitle(title)
@@ -2305,7 +1774,6 @@ public final class MainActivity extends Activity implements
                 .setPositiveButton(R.string.ok, null)
                 .show();
     }
-
 
     private String safeMessage(Throwable error) {
         String message = error.getMessage();
