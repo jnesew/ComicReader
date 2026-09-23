@@ -6,6 +6,11 @@ All notable public changes to ComicViewer for Android are recorded here.
 
 ### Library
 
+- Rescans can automatically reconnect an unavailable issue after a verified full-content match,
+  retaining saved position, read status, bookmarks, favorites and metadata edits. Small existing
+  imports gain fingerprints gradually through bounded background work.
+- Added explicit read/unread actions for issues and complete series, with unread and caught-up
+  series counts. New issues in an already-read series remain unread.
 - Added consistent forget actions for unavailable titles and complete series, including explicit
   confirmation that comic files are never deleted.
 - Added a review-and-remove flow for entries proven missing by a complete folder scan. Titles made
@@ -15,6 +20,9 @@ All notable public changes to ComicViewer for Android are recorded here.
 
 ### Reader
 
+- Added global default layout and direction with per-title overrides and an automatic option.
+- Completion now follows deliberate forward navigation past the issue end or an explicit read
+  action, rather than simply visiting its final page.
 - Failed opening/retry attempts preserve saved titles, grouping, availability, and page indexes.
 - Extend visible-frame tile budgeting to CBZ/raster images and avoid offscreen high-resolution
   tile requests that compete with currently visible pages.

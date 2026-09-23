@@ -795,6 +795,32 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         getWritableDatabase().update("progress", values, "uri=?", new String[]{uri});
     }
 
+    /** A forgotten/replaced import cannot receive the result of an earlier hash job. */
+    public boolean retainManualFingerprint(String uri, long size, long modified,
+            String sample, String full) {
+        ContentValues values = new ContentValues();
+        values.put("sample_signature", sample);
+        values.put("content_fingerprint", full);
+        return getWritableDatabase().update("progress", values,
+                "uri=? AND manual_source=1 AND document_size=? AND document_modified=? " +
+                        "AND (sample_signature=? OR sample_signature='') " +
+                        "AND content_fingerprint=''",
+                new String[]{uri, Long.toString(size), Long.toString(modified), sample}) == 1;
+    }
+
+    public List<ReadingProgress> manualFingerprintBackfill(int limit) {
+        ArrayList<ReadingProgress> result = new ArrayList<>();
+        try (Cursor cursor = getReadableDatabase().rawQuery(
+                PROGRESS_WITH_SERIES + " WHERE p.manual_source=1 " +
+                        "AND p.content_fingerprint='' AND p.document_size>=0 " +
+                        "AND p.document_size<=? ORDER BY RANDOM() LIMIT ?",
+                new String[]{Long.toString(128L * 1024L * 1024L),
+                        Integer.toString(Math.max(0, limit))})) {
+            while (cursor.moveToNext()) result.add(fromCursor(cursor));
+        }
+        return result;
+    }
+
     /**
      * Return independently imported titles with the same reported size. Prefix and full hashes are
      * intentionally checked by the caller because reading provider content does not belong in SQL.
@@ -843,6 +869,11 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
     }
 
     public void upsertScannedFile(ScannedFile source) {
+        getWritableDatabase().insertWithOnConflict(
+                "scanned_files", null, scannedFileValues(source), SQLiteDatabase.CONFLICT_REPLACE);
+    }
+
+    private static ContentValues scannedFileValues(ScannedFile source) {
         ContentValues values = new ContentValues();
         values.put("source_identity", source.sourceIdentity);
         values.put("tree_uri", source.treeUri);
@@ -857,8 +888,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         values.put("last_seen", source.lastSeen);
         values.put("available", source.available ? 1 : 0);
         values.put("missing_confirmed", source.missingConfirmed ? 1 : 0);
-        getWritableDatabase().insertWithOnConflict(
-                "scanned_files", null, values, SQLiteDatabase.CONFLICT_REPLACE);
+        return values;
     }
 
     public void setScannedFingerprint(String sourceIdentity, String fingerprint) {
@@ -866,6 +896,44 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         values.put("content_fingerprint", clean(fingerprint));
         getWritableDatabase().update(
                 "scanned_files", values, "source_identity=?", new String[]{sourceIdentity});
+    }
+
+    /** Publish a background hash only while the same source version still exists. */
+    public boolean retainScannedFingerprint(ScannedFile source, String sample, String full) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            ScannedFile current = null;
+            try (Cursor cursor = db.query("scanned_files", null, "source_identity=?",
+                    new String[]{source.sourceIdentity}, null, null, null, "1")) {
+                if (cursor.moveToFirst()) current = scannedFileFromCursor(cursor);
+            }
+            if (current == null || !current.documentUri.equals(source.documentUri) ||
+                    !current.canonicalUri.equals(source.canonicalUri) ||
+                    current.lastSeen != source.lastSeen ||
+                    current.documentSize != source.documentSize ||
+                    current.documentModified != source.documentModified ||
+                    (!current.sampleSignature.isEmpty() &&
+                            !current.sampleSignature.equals(sample)) ||
+                    (!current.contentFingerprint.isEmpty() &&
+                            !current.contentFingerprint.equals(full))) return false;
+            ContentValues values = new ContentValues();
+            values.put("sample_signature", sample);
+            values.put("content_fingerprint", full);
+            db.update("scanned_files", values, "source_identity=?",
+                    new String[]{source.sourceIdentity});
+            if (source.canonicalUri.equals(source.documentUri)) {
+                values.put("document_size", source.documentSize);
+                db.update("progress", values, "uri=? AND document_size=? AND " +
+                        "(content_fingerprint='' OR content_fingerprint=?)",
+                        new String[]{source.canonicalUri,
+                                Long.toString(source.documentSize), full});
+            }
+            db.setTransactionSuccessful();
+            return true;
+        } finally {
+            db.endTransaction();
+        }
     }
 
     public void touchScannedFile(
@@ -1002,6 +1070,58 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
             db.endTransaction();
         }
         return result;
+    }
+
+    /** Transfer all state only while the saved full hash and source identity remain unchanged. */
+    public boolean reconnectByFingerprint(String oldUri, ScannedFile oldSource,
+            ScannedFile replacement) {
+        if (oldUri.equals(replacement.documentUri) ||
+                replacement.contentFingerprint.isEmpty() ||
+                (oldSource != null &&
+                        !oldSource.contentFingerprint.equals(replacement.contentFingerprint))) {
+            return false;
+        }
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            String savedHash;
+            try (Cursor cursor = db.query("progress", new String[]{"content_fingerprint"},
+                    "uri=?", new String[]{oldUri}, null, null, null, "1")) {
+                if (!cursor.moveToFirst()) return false;
+                savedHash = cursor.getString(0);
+            }
+            if (oldSource != null) {
+                ScannedFile current = null;
+                try (Cursor cursor = db.query("scanned_files", null, "source_identity=?",
+                        new String[]{oldSource.sourceIdentity}, null, null, null, "1")) {
+                    if (cursor.moveToFirst()) current = scannedFileFromCursor(cursor);
+                }
+                if (current == null || !current.canonicalUri.equals(oldUri) ||
+                        !current.documentUri.equals(oldSource.documentUri) ||
+                        current.documentSize != oldSource.documentSize ||
+                        current.documentModified != oldSource.documentModified ||
+                        !current.sampleSignature.equals(oldSource.sampleSignature) ||
+                        !current.contentFingerprint.equals(replacement.contentFingerprint) ||
+                        (!savedHash.isEmpty() && !savedHash.equals(replacement.contentFingerprint))) {
+                    return false;
+                }
+            } else if (!savedHash.equals(replacement.contentFingerprint)) return false;
+            if (!migrateUri(db, oldUri, replacement.documentUri)) return false;
+            ContentValues values = new ContentValues();
+            values.put("available", 1);
+            values.put("manual_source", 0);
+            values.put("document_size", replacement.documentSize);
+            values.put("document_modified", replacement.documentModified);
+            values.put("sample_signature", replacement.sampleSignature);
+            values.put("content_fingerprint", replacement.contentFingerprint);
+            db.update("progress", values, "uri=?", new String[]{replacement.documentUri});
+            db.insertWithOnConflict("scanned_files", null, scannedFileValues(replacement),
+                    SQLiteDatabase.CONFLICT_REPLACE);
+            db.setTransactionSuccessful();
+            return true;
+        } finally {
+            db.endTransaction();
+        }
     }
 
     public boolean relinkCanonicalUri(String oldUri, String newUri) {

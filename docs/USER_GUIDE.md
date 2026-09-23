@@ -27,6 +27,15 @@ ComicViewer's local reading state and caches but never the original comic files.
 unavailable title also offers the same choice while retaining the option to reconnect or rescan
 its source folder instead.
 
+Rescanning an accessible folder can automatically reconnect an issue whose file moved or whose
+old location became unavailable. ComicViewer compares the full file contents with an identity it
+saved while the old file was readable; it retains reading progress, read status, bookmarks and
+your edits. A matching filename or cover alone is never enough. Recent imports up to 128 MiB are
+fingerprinted in the background, and older accessible imports are gradually covered on subsequent
+launches or scans. Files without a saved full fingerprint, including larger files, may still need
+their folder reconnected or the original document imported again. Incomplete scans never establish
+that an issue was deleted.
+
 After a complete folder scan proves that files are no longer present, **Review unavailable
 comics** appears in the library menu. It allows selecting and forgetting those stale entries in
 one operation. ComicViewer excludes titles made unavailable merely because folder access was
