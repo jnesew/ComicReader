@@ -35,6 +35,8 @@ public final class ComicCanvasView extends View {
         void onChromeToggleRequested();
         void onContinuousBoundaryApproached(int direction);
         void onContinuousBoundaryRetry(int direction);
+        void onContinuousReadingCompleted(String documentKey);
+        void onContinuousIssueCrossedByScroll(String previousKey, String nextKey);
         void onUnavailableRetry(String documentKey);
     }
 
@@ -63,6 +65,7 @@ public final class ComicCanvasView extends View {
     private final GestureDetector gestureDetector;
     private final ScaleGestureDetector scaleDetector;
     private final OverScroller scroller;
+    private boolean forwardFling;
     private final ZoomGestureGate zoomGestureGate = new ZoomGestureGate();
     private final PageLayoutEngine continuousLayout = new PageLayoutEngine();
     private final SpreadPageLayout spreadLayout = new SpreadPageLayout();
@@ -578,8 +581,11 @@ public final class ComicCanvasView extends View {
     public void computeScroll() {
         if (!scroller.computeScrollOffset()) return;
         if (continuous) {
+            String previousKey = continuousDocumentKey();
+            float previousScroll = documentScroll;
             documentScroll = scroller.getCurrY();
             updateContinuousPosition();
+            notifyUserScrolledForward(previousKey, forwardFling && documentScroll > previousScroll);
         } else {
             singleX = -scroller.getCurrX();
             singleY = -scroller.getCurrY();
@@ -919,6 +925,17 @@ public final class ComicCanvasView extends View {
                 continuous ? continuousDocumentKey() : "", page(), pageRatio);
     }
 
+    private void notifyUserScrolledForward(String previousKey, boolean forward) {
+        if (!forward || listener == null) return;
+        String currentKey = continuousDocumentKey();
+        if (!previousKey.isEmpty() && !previousKey.equals(currentKey)) {
+            listener.onContinuousIssueCrossedByScroll(previousKey, currentKey);
+        }
+        if (!currentKey.isEmpty() && isAtDocumentEnd()) {
+            listener.onContinuousReadingCompleted(currentKey);
+        }
+    }
+
     private void notifyZoom() {
         if (listener != null) listener.onReaderZoomChanged(zoomMode(), zoom());
     }
@@ -927,6 +944,7 @@ public final class ComicCanvasView extends View {
         @Override
         public boolean onDown(MotionEvent event) {
             scroller.forceFinished(true);
+            forwardFling = false;
             return true;
         }
 
@@ -934,10 +952,14 @@ public final class ComicCanvasView extends View {
         public boolean onScroll(MotionEvent first, MotionEvent current, float distanceX, float distanceY) {
             if (zoomGestureGate.isScaling()) return true;
             if (continuous) {
+                String previousKey = continuousDocumentKey();
+                float previousScroll = documentScroll;
                 documentScroll = clampScroll(documentScroll + distanceY);
                 continuousPanX -= distanceX;
                 clampContinuousPan();
                 updateContinuousPosition();
+                notifyUserScrolledForward(previousKey, distanceY > 0f &&
+                        documentScroll >= previousScroll);
             } else {
                 singleX -= distanceX;
                 singleY -= distanceY;
@@ -962,6 +984,7 @@ public final class ComicCanvasView extends View {
             }
 
             if (continuous) {
+                forwardFling = velocityY < 0f;
                 int maximum = Math.round(continuousLayout.maximumScroll(getHeight()));
                 scroller.fling(0, Math.round(documentScroll), 0, Math.round(-velocityY),
                         0, 0, 0, maximum);

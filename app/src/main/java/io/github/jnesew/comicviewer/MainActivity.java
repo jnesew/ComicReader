@@ -342,6 +342,18 @@ public final class MainActivity extends Activity implements
     }
 
     @Override
+    public void onComicReadStatusRequested(ReadingProgress item, boolean read) {
+        database.setReadStatus(item.uri, read);
+        home.refresh();
+    }
+
+    @Override
+    public void onSeriesReadStatusRequested(SeriesGroup series, boolean read) {
+        database.setSeriesReadStatus(series.id, read);
+        home.refresh();
+    }
+
+    @Override
     public void onLibraryMenuRequested(View anchor) {
         PopupMenu menu = new PopupMenu(this, anchor);
         boolean configured = !preferences.libraryFolderUri().isEmpty();

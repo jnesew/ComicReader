@@ -44,7 +44,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
     public static final int METADATA_FAILED = -1;
 
     private static final String NAME = "comicviewer.sqlite3";
-    private static final int VERSION = 9;
+    private static final int VERSION = 10;
     private static final String PROGRESS_WITH_SERIES =
             "SELECT p.*, COALESCE(s.name, '') AS series_title FROM progress p " +
                     "LEFT JOIN series s ON s.id = p.series_id";
@@ -75,6 +75,8 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                 "reading_mode TEXT NOT NULL DEFAULT 'single'," +
                 "reading_mode_override INTEGER NOT NULL DEFAULT 0," +
                 "last_opened INTEGER NOT NULL DEFAULT 0," +
+                "read_status INTEGER NOT NULL DEFAULT 0," +
+                "read_status_changed_at INTEGER NOT NULL DEFAULT 0," +
                 "added_at INTEGER NOT NULL DEFAULT 0," +
                 "cover_path TEXT NOT NULL DEFAULT ''," +
                 "cover_state INTEGER NOT NULL DEFAULT 0," +
@@ -173,6 +175,16 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
             db.execSQL("UPDATE progress SET reading_direction_override=1 " +
                     "WHERE reading_direction IN ('ltr','rtl')");
         }
+        if (oldVersion < 10) {
+            db.execSQL("ALTER TABLE progress ADD COLUMN read_status " +
+                    "INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("ALTER TABLE progress ADD COLUMN read_status_changed_at " +
+                    "INTEGER NOT NULL DEFAULT 0");
+            // Preserve the previous Completed filter, but never mark an unopened single
+            // page title read solely because its default page index is zero.
+            db.execSQL("UPDATE progress SET read_status=1 WHERE last_opened>0 " +
+                    "AND page_count>0 AND page>=page_count-1");
+        }
         createIndexes(db);
     }
 
@@ -262,11 +274,10 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
             arguments.add("%" + trimmed + "%");
         }
         switch (filter == null ? FILTER_ALL : filter) {
-            case FILTER_NEW -> clauses.add("p.last_opened <= 0");
+            case FILTER_NEW -> clauses.add("p.last_opened <= 0 AND p.read_status=0");
             case FILTER_READING -> clauses.add(
-                    "p.last_opened > 0 AND (p.page_count <= 0 OR p.page < p.page_count - 1)");
-            case FILTER_COMPLETED -> clauses.add(
-                    "p.last_opened > 0 AND p.page_count > 0 AND p.page >= p.page_count - 1");
+                    "p.last_opened > 0 AND p.read_status=0");
+            case FILTER_COMPLETED -> clauses.add("p.read_status=1");
             case FILTER_FAVORITES -> clauses.add("p.favorite = 1");
             default -> {
             }
@@ -366,6 +377,8 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         values.put("reading_mode", progress.readingMode);
         values.put("reading_mode_override", progress.readingModeOverride ? 1 : 0);
         values.put("last_opened", progress.lastOpened);
+        values.put("read_status", progress.read ? 1 : 0);
+        values.put("read_status_changed_at", progress.readStatusChangedAt);
         values.put("added_at", progress.addedAt);
         values.put("cover_path", progress.coverPath);
         values.put("cover_state", progress.coverState);
@@ -408,9 +421,9 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         // Layout choices have their own mutation. Continuous traversal and old in-memory
         // snapshots must not turn an inherited choice into a per-title setting.
         values.put("last_opened", progress.lastOpened);
-        int updated = getWritableDatabase().update(
-                "progress", values, "uri=?", new String[]{progress.uri});
-        if (updated == 0) save(progress);
+        // A title is imported before reading begins. Do not resurrect a forgotten title
+        // or overwrite its newer independent state from a delayed save.
+        getWritableDatabase().update("progress", values, "uri=?", new String[]{progress.uri});
     }
 
     public void updateArchiveState(
@@ -691,6 +704,33 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         getWritableDatabase().update("progress", values, "uri=?", new String[]{uri});
     }
 
+    /** Independent of page saves: a stale reader snapshot cannot undo a read decision. */
+    public boolean setReadStatus(String uri, boolean read) {
+        ContentValues values = new ContentValues();
+        values.put("read_status", read ? 1 : 0);
+        values.put("read_status_changed_at", System.currentTimeMillis());
+        return getWritableDatabase().update("progress", values, "uri=?",
+                new String[]{uri}) == 1;
+    }
+
+    /** Operates on all current members, regardless of search/filter state. */
+    public int setSeriesReadStatus(long seriesId, boolean read) {
+        if (seriesId <= 0L) return 0;
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            ContentValues values = new ContentValues();
+            values.put("read_status", read ? 1 : 0);
+            values.put("read_status_changed_at", System.currentTimeMillis());
+            int changed = db.update("progress", values, "series_id=?",
+                    new String[]{Long.toString(seriesId)});
+            db.setTransactionSuccessful();
+            return changed;
+        } finally {
+            db.endTransaction();
+        }
+    }
+
     public void migrateLegacyRightToLeftTitles() {
         ContentValues values = new ContentValues();
         values.put("reading_direction", ReadingDirection.RIGHT_TO_LEFT);
@@ -890,6 +930,14 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                 merged.put("zoom", duplicate.zoom);
                 if (!canonical.readingModeOverride) merged.put("reading_mode", duplicate.readingMode);
                 merged.put("last_opened", duplicate.lastOpened);
+            }
+            // A later explicit decision wins, including Mark unread. Without one,
+            // retain legacy completion from either exact copy.
+            if (duplicate.readStatusChangedAt > canonical.readStatusChangedAt ||
+                    (canonical.readStatusChangedAt == 0L &&
+                            duplicate.readStatusChangedAt == 0L && duplicate.read)) {
+                merged.put("read_status", duplicate.read ? 1 : 0);
+                merged.put("read_status_changed_at", duplicate.readStatusChangedAt);
             }
             if (!canonical.readingModeOverride && duplicate.readingModeOverride) {
                 merged.put("reading_mode", duplicate.readingMode);
@@ -1291,6 +1339,8 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         result.readingMode = string(cursor, "reading_mode");
         result.readingModeOverride = integer(cursor, "reading_mode_override") != 0;
         result.lastOpened = longValue(cursor, "last_opened");
+        result.read = integer(cursor, "read_status") != 0;
+        result.readStatusChangedAt = longValue(cursor, "read_status_changed_at");
         result.addedAt = longValue(cursor, "added_at");
         result.coverPath = string(cursor, "cover_path");
         result.coverState = integer(cursor, "cover_state");

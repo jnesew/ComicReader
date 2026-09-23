@@ -52,4 +52,16 @@ public final class SeriesGroup {
     public boolean isUnavailable() {
         return availableIssueCount() == 0;
     }
+
+    public int unreadIssueCount() {
+        int unread = 0;
+        for (ReadingProgress issue : issues) {
+            if (!issue.isCompleted()) unread++;
+        }
+        return unread;
+    }
+
+    public boolean isCaughtUp() {
+        return !issues.isEmpty() && unreadIssueCount() == 0;
+    }
 }

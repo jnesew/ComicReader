@@ -58,10 +58,12 @@
     <string name="filter_completed">Valmiit</string>
     <string name="filter_favorites">Suosikit</string>
     <string name="cover_description">Sarjakuvan %1$s kansi</string>
-    <string name="comic_accessibility_progress">%1$s, %2$d prosenttia luettu</string>
+    <string name="comic_accessibility_progress">%1$s, lukukohta %2$d prosenttia</string>
     <string name="comic_page_progress">Sivu %1$d / %2$d</string>
     <string name="comic_status_new">Uusi</string>
     <string name="comic_status_completed">Valmis</string>
+    <string name="comic_mark_read">Merkitse luetuksi</string>
+    <string name="comic_mark_unread">Merkitse lukemattomaksi</string>
     <string name="comic_status_indexing">Indeksoidaan…</string>
     <string name="comic_status_unavailable">Lähde ei ole saatavilla</string>
     <string name="comic_options">Sarjakuvan valinnat</string>
@@ -84,6 +86,13 @@
         <item quantity="one">%1$d ei saatavilla</item>
         <item quantity="other">%1$d ei saatavilla</item>
     </plurals>
+    <plurals name="series_unread_issue_count">
+        <item quantity="one">%1$d lukematon</item>
+        <item quantity="other">%1$d lukematonta</item>
+    </plurals>
+    <string name="series_caught_up">Ajantasalla</string>
+    <string name="series_mark_read">Merkitse sarja luetuksi</string>
+    <string name="series_mark_unread">Merkitse sarja lukemattomaksi</string>
     <string name="series_options">Sarjan valinnat</string>
     <string name="series_edit_assignment">Muokkaa sarjaa…</string>
     <string name="comic_edit">Muokkaa sarjakuvaa…</string>
