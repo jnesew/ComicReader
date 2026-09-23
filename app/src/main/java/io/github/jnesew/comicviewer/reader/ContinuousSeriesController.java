@@ -6,6 +6,7 @@ import io.github.jnesew.comicviewer.document.ComicDocumentFactory;
 import io.github.jnesew.comicviewer.document.DocumentInfo;
 import io.github.jnesew.comicviewer.model.PageInfo;
 import io.github.jnesew.comicviewer.model.ReadingDirection;
+import io.github.jnesew.comicviewer.model.ReaderDefaults;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
 import io.github.jnesew.comicviewer.render.ComicCanvasView;
 import io.github.jnesew.comicviewer.render.TileRenderer;
@@ -92,7 +93,10 @@ final class ContinuousSeriesController {
         session.reader.updatePosition(session.reader.canvas.page(), session.reader.canvas.pageEnd(), session.document().count());
         session.reader.updateBookmark(session.database.isBookmarked(session.document().key(), session.reader.canvas.page()));
         session.reader.setRightToLeft(ReadingDirection.isRightToLeft(
-                session.progress().readingDirection, session.document().suggestedRightToLeft()));
+                ReaderDefaults.direction(session.progress().readingDirection,
+                        session.progress().readingDirectionOverride,
+                        session.preferences.defaultReadingDirection()),
+                session.document().suggestedRightToLeft()));
         trimContinuousResources();
         refreshContinuousDocuments(key, session.reader.canvas.page(), session.reader.canvas.pageRatio());
         requestContinuousAdjacent(-1, false);

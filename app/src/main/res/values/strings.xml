@@ -177,6 +177,7 @@
     <string name="reader_hardware_shortcuts">Hardware shortcuts</string>
     <string name="reader_hide_controls">Hide controls</string>
     <string name="reader_reading_direction">Reading direction</string>
+    <string name="reader_use_global_default">Use global default</string>
     <string name="reading_direction_message">Auto follows EPUB metadata and uses left-to-right for CBZ, ZIP, and PDF.</string>
     <string name="reading_direction_auto">Auto</string>
     <string name="reading_direction_left_to_right">Left-to-right</string>
@@ -203,6 +204,8 @@
     <string name="option_default_zoom">Default zoom</string>
     <string name="option_default_zoom_description">Used when a title has no remembered zoom or per-title zoom memory is off. Continuous scroll fits width.</string>
     <string name="option_default_zoom_app">App default (Fit width)</string>
+    <string name="option_default_layout">Default page layout</string>
+    <string name="option_default_direction">Default reading direction</string>
     <string name="option_keep_screen_awake">Keep screen awake while reading</string>
     <string name="option_auto_hide_controls">Auto-hide reader controls</string>
     <string name="shortcuts_instruction">Tap an action, then press a key on an attached keyboard.</string>

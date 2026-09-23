@@ -49,13 +49,20 @@ position. Scroll or navigate forward/backward to pass it, or choose **Retry** to
 again. Notices cannot be bookmarked and do not change the missing issue's saved progress or page
 count. Series navigation never wraps.
 
-Each title remembers its page, page-relative scroll position, zoom, zoom-gesture lock, reading mode,
-reading direction, favorite state, and page bookmarks.
+Each title remembers its page, page-relative scroll position, zoom, zoom-gesture lock,
+favorite state, and page bookmarks. Layout and direction follow the global reader defaults
+until you choose a per-title setting. The layout control and reading-direction dialog both
+offer “Use global default” to restore inheritance. An explicit per-title Auto direction
+still follows publication metadata even if the global default is right-to-left.
 
 Reader Options provides a global default zoom for titles without remembered view state, and for all
 titles when per-title zoom memory is disabled. Opening precedence is remembered per-title zoom,
 then the configured global default, then the built-in Fit width fallback. Continuous scroll starts
 fitted to width when no per-title zoom is restored.
+Reader Options also provides a default layout (single page, spread, or continuous) and
+default direction (Auto, left-to-right, or right-to-left). Changing either affects titles
+that still use the global default. Titles read before this update retain their previous
+saved layout; unopened titles follow the new default.
 
 ## Controls
 

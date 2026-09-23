@@ -11,6 +11,7 @@ import io.github.jnesew.comicviewer.document.ComicDocument;
 import io.github.jnesew.comicviewer.document.ComicDocumentFactory;
 import io.github.jnesew.comicviewer.document.DocumentInfo;
 import io.github.jnesew.comicviewer.model.OpeningZoomPolicy;
+import io.github.jnesew.comicviewer.model.ReaderDefaults;
 import io.github.jnesew.comicviewer.model.PageInfo;
 import io.github.jnesew.comicviewer.model.ReadingDirection;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
@@ -189,9 +190,10 @@ public final class ReaderSession implements AutoCloseable {
                 database.updateTitle(opened.key(), opened.title());
                 imports.applySeriesMetadata(opened, null);
                 ReadingProgress activated = database.get(opened.key());
-                if (readingModeOverride != null) {
-                    activated.readingMode = readingModeOverride;
-                }
+                activated.readingMode = readingModeOverride != null
+                        ? ReaderDefaults.normalizeLayout(readingModeOverride)
+                        : ReaderDefaults.layout(activated.readingMode,
+                                activated.readingModeOverride, preferences.defaultReadingLayout());
                 mainHandler.post(() -> {
                     if (!opening.complete("active", request) || destroyed ||
                             generation != openGeneration || host.isFinishing()) {
@@ -284,7 +286,9 @@ public final class ReaderSession implements AutoCloseable {
                 });
         reader.canvas.setTapZones(preferences.tapZones());
         reader.setRightToLeft(ReadingDirection.isRightToLeft(
-                progress().readingDirection, opened.suggestedRightToLeft()));
+                ReaderDefaults.direction(progress().readingDirection,
+                        progress().readingDirectionOverride, preferences.defaultReadingDirection()),
+                opened.suggestedRightToLeft()));
         reader.canvas.setCanvasColor(preferences.canvasColor());
         reader.setUnavailable(opened.isUnavailable());
         reader.canvas.setDocument(renderer(), opened.pages(), progress());

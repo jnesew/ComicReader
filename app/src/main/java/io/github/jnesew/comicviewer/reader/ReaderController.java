@@ -8,6 +8,7 @@ import android.widget.Toast;
 import io.github.jnesew.comicviewer.data.ReaderPreferences;
 import io.github.jnesew.comicviewer.document.ComicDocument;
 import io.github.jnesew.comicviewer.model.ReadingDirection;
+import io.github.jnesew.comicviewer.model.ReaderDefaults;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
 import io.github.jnesew.comicviewer.render.ComicCanvasView;
 import io.github.jnesew.comicviewer.ui.dialog.ReaderOptionsDialog;
@@ -133,6 +134,13 @@ public final class ReaderController implements ReaderScreen.Listener, ComicCanva
     @Override
     public void onLayoutMenu(View anchor) {
         PopupMenu menu = new PopupMenu(context, anchor);
+        menu.getMenu().add(0, 4, 0, R.string.reader_use_global_default)
+                .setCheckable(true)
+                .setChecked(session.progress() != null && !session.progress().readingModeOverride)
+                .setOnMenuItemClickListener(item -> {
+                    changeReadingLayout(session.preferences.defaultReadingLayout(), false);
+                    return true;
+                });
         addLayoutChoice(menu, 1, R.string.reader_layout_single, ComicCanvasView.SINGLE);
         addLayoutChoice(menu, 2, R.string.reader_layout_spread, ComicCanvasView.SPREAD);
         addLayoutChoice(menu, 3, R.string.reader_layout_continuous, ComicCanvasView.CONTINUOUS);
@@ -144,22 +152,29 @@ public final class ReaderController implements ReaderScreen.Listener, ComicCanva
             PopupMenu menu, int itemId, int label, String readingMode) {
         menu.getMenu().add(0, itemId, itemId, label)
                 .setCheckable(true)
-                .setChecked(readingMode.equals(session.reader.canvas.readingMode()))
+                .setChecked(session.progress() != null && session.progress().readingModeOverride &&
+                        readingMode.equals(session.reader.canvas.readingMode()))
                 .setOnMenuItemClickListener(item -> {
-                    if (!ComicCanvasView.CONTINUOUS.equals(readingMode) &&
-                            session.reader.canvas.isContinuous()) {
-                        session.continuous.leaveContinuousSession(readingMode);
-                    } else {
-                        session.reader.canvas.setReadingMode(readingMode);
-                        if (ComicCanvasView.CONTINUOUS.equals(readingMode)) {
-                            session.continuous.beginContinuousSession();
-                        }
-                    }
-                    session.reader.updateMode(session.reader.canvas.readingMode());
-                    session.saves.scheduleSave();
-                    session.reader.keepChromeAwake();
+                    changeReadingLayout(readingMode, true);
                     return true;
                 });
+    }
+
+    private void changeReadingLayout(String readingMode, boolean overridden) {
+        if (session.document() == null || session.progress() == null) return;
+        String mode = ReaderDefaults.normalizeLayout(readingMode);
+        session.progress().readingModeOverride = overridden;
+        session.progress().readingMode = mode;
+        session.database.setReadingMode(session.document().key(), mode, overridden);
+        if (!ComicCanvasView.CONTINUOUS.equals(mode) && session.reader.canvas.isContinuous()) {
+            session.continuous.leaveContinuousSession(mode);
+        } else {
+            session.reader.canvas.setReadingMode(mode);
+            if (ComicCanvasView.CONTINUOUS.equals(mode)) session.continuous.beginContinuousSession();
+        }
+        session.reader.updateMode(session.reader.canvas.readingMode());
+        session.saves.scheduleSave();
+        session.reader.keepChromeAwake();
     }
 
     @Override
@@ -381,6 +396,16 @@ public final class ReaderController implements ReaderScreen.Listener, ComicCanva
                 session.preferences.setVolumeNavigation(options.volumeNavigation());
                 session.preferences.setRememberZoom(options.rememberZoom());
                 session.preferences.setDefaultZoomMode(options.defaultZoom());
+                session.preferences.setDefaultReadingLayout(options.defaultLayout());
+                session.preferences.setDefaultReadingDirection(options.defaultDirection());
+                if (session.readerActive && session.progress() != null && session.document() != null) {
+                    if (!session.progress().readingModeOverride) {
+                        changeReadingLayout(options.defaultLayout(), false);
+                    }
+                    if (!session.progress().readingDirectionOverride) {
+                        applyReadingDirection();
+                    }
+                }
                 session.preferences.setKeepScreenOn(options.keepScreenOn());
                 session.preferences.setAutoHideControls(options.autoHideControls());
                 session.reader.canvas.setTapZones(options.tapZones());
@@ -403,18 +428,30 @@ public final class ReaderController implements ReaderScreen.Listener, ComicCanva
     private void showReadingDirection() {
         if (session.document() == null || session.progress() == null) return;
         ComicDocument selected = session.document();
-        optionsDialog().showReadingDirection(session.progress().readingDirection, direction -> {
+        optionsDialog().showReadingDirection(session.progress().readingDirectionOverride
+                ? session.progress().readingDirection : null, direction -> {
             if (session.document() == selected) setReadingDirection(direction);
         });
     }
 
     private void setReadingDirection(String direction) {
         if (session.document() == null || session.progress() == null) return;
-        String normalized = ReadingDirection.normalize(direction);
+        boolean overridden = direction != null;
+        String normalized = overridden ? ReadingDirection.normalize(direction)
+                : session.preferences.defaultReadingDirection();
         session.progress().readingDirection = normalized;
-        session.database.setReadingDirection(session.document().key(), normalized);
+        session.progress().readingDirectionOverride = overridden;
+        session.database.setReadingDirection(session.document().key(), normalized, overridden);
+        applyReadingDirection();
+    }
+
+    private void applyReadingDirection() {
+        if (session.document() == null || session.progress() == null) return;
         session.reader.setRightToLeft(ReadingDirection.isRightToLeft(
-                normalized, session.document().suggestedRightToLeft()));
+                ReaderDefaults.direction(session.progress().readingDirection,
+                        session.progress().readingDirectionOverride,
+                        session.preferences.defaultReadingDirection()),
+                session.document().suggestedRightToLeft()));
         session.reader.keepChromeAwake();
     }
     private static int clamp(int value, int minimum, int maximum) {

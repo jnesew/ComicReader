@@ -12,6 +12,7 @@ public final class ReadingProgress {
     public float zoom = 1f;
     public boolean zoomGesturesLocked = false;
     public String readingMode = "single";
+    public boolean readingModeOverride = false;
     public long lastOpened = 0L;
     public long addedAt = 0L;
     public String coverPath = "";
@@ -25,6 +26,7 @@ public final class ReadingProgress {
     public String contentFingerprint = "";
     public boolean favorite = false;
     public String readingDirection = ReadingDirection.AUTO;
+    public boolean readingDirectionOverride = false;
     public boolean available = true;
     public long seriesId = 0L;
     public String seriesTitle = "";
