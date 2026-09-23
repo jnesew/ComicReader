@@ -1,8 +1,9 @@
 # F-Droid release preparation
 
 Status: preparation in progress. No F-Droid submission or new release has been made.
-The application ID remains `io.github.jnesew.comicviewer`, schema version remains 8,
-and the source is still versionName 1.1.0/versionCode 3 until a release is selected.
+The application ID remains `io.github.jnesew.comicviewer`. The global reader defaults
+feature migrates the database to schema 9. The source is
+still versionName 1.1.0/versionCode 3 until a release is selected.
 
 ## Prepared
 

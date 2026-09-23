@@ -18,7 +18,7 @@ public final class DatabaseTestRunner extends Instrumentation {
     private LibraryDatabase db;
     private int current;
     private int failed;
-    private static final int TOTAL = 7;
+    private static final int TOTAL = 8;
 
     @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
 
@@ -29,7 +29,8 @@ public final class DatabaseTestRunner extends Instrumentation {
         run("exactDuplicateMergePreservesUserChoices", this::merge);
         run("lostAccessIsNotConfirmedMissing", this::missing);
         run("forgetRollsBackAndNeverDeletesSourceFile", this::forget);
-        run("upgradeVersionOneToEight", this::upgrade);
+        run("readerOverridesSurviveProgressSaves", this::readerDefaults);
+        run("upgradeVersionOneToNine", this::upgrade);
         Bundle result = new Bundle();
         result.putString("stream", "\n" + (TOTAL - failed) + "/" + TOTAL + " database tests passed\n");
         finish(Activity.RESULT_OK, result);
@@ -155,6 +156,23 @@ public final class DatabaseTestRunner extends Instrumentation {
         finally { source.delete(); }
     }
 
+    private void readerDefaults() {
+        db.ensureImported("comic", "Comic", 12, 50);
+        ReadingProgress p = db.get("comic");
+        check(!p.readingModeOverride && !p.readingDirectionOverride);
+        db.setReadingMode("comic", "continuous", true);
+        db.setReadingDirection("comic", "auto", true);
+        db.saveReadingProgress(p);
+        p = db.get("comic");
+        check(p.readingModeOverride && p.readingDirectionOverride);
+        equal("continuous", p.readingMode);
+        equal("auto", p.readingDirection);
+        db.setReadingMode("comic", "spread", false);
+        db.setReadingDirection("comic", "rtl", false);
+        p = db.get("comic");
+        check(!p.readingModeOverride && !p.readingDirectionOverride);
+    }
+
     private void upgrade() {
         db.close(); getTargetContext().deleteDatabase(NAME);
         try (SQLiteDatabase old = getTargetContext().openOrCreateDatabase(NAME, 0, null)) {
@@ -172,9 +190,11 @@ public final class DatabaseTestRunner extends Instrumentation {
         }
         db = new LibraryDatabase(getTargetContext(), NAME);
         ReadingProgress p = db.get("legacy");
-        equal(8, db.getReadableDatabase().getVersion()); equal("Vanha 🦊", p.originalTitle);
+        equal(9, db.getReadableDatabase().getVersion()); equal("Vanha 🦊", p.originalTitle);
         equal(4, p.page); equal(30, p.pageCount); equal(123L, p.addedAt);
-        check(p.manualSource && p.available && !p.titleOverride); check(db.isBookmarked("legacy", 4));
+        check(p.manualSource && p.available && !p.titleOverride);
+        check(p.readingModeOverride && !p.readingDirectionOverride);
+        check(db.isBookmarked("legacy", 4));
         try (Cursor c = db.getReadableDatabase().rawQuery("PRAGMA integrity_check", null)) {
             check(c.moveToFirst()); equal("ok", c.getString(0));
         }

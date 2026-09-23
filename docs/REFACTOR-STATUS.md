@@ -35,6 +35,9 @@ already published release/1.1 README/screenshot commits through 8624230.
   platform-only instrumentation runner and CI packaging check; no new dependencies.
   Database delegate extraction is intentionally pending the actual device baseline.
   Only a named-fixture constructor was added to LibraryDatabase; schema/SQL unchanged.
+- A later feature branch adds title layout/direction inheritance and schema 9. Its
+  additional SQLite regression case is not a substitute for the still-unrun R5
+  device baseline; run the actual harness before extracting R5 delegates.
 - R6: pure ContinuousPageMap owns issue/local/global indexing and anchor restoration.
   All 91 JVM tests pass, including prepend, eviction, index-count changes, unavailable
   one-page issues, missing anchors and boundary round trips.

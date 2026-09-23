@@ -7,6 +7,8 @@ import android.view.KeyEvent;
 
 import io.github.jnesew.comicviewer.R;
 import io.github.jnesew.comicviewer.model.OpeningZoomPolicy;
+import io.github.jnesew.comicviewer.model.ReaderDefaults;
+import io.github.jnesew.comicviewer.model.ReadingDirection;
 
 import java.util.LinkedHashMap;
 
@@ -56,6 +58,24 @@ public final class ReaderPreferences {
             editor.putString("default_zoom_mode", normalized);
         }
         editor.apply();
+    }
+
+    public String defaultReadingLayout() {
+        return ReaderDefaults.normalizeLayout(values.getString(
+                "default_reading_layout", ReaderDefaults.SINGLE));
+    }
+
+    public void setDefaultReadingLayout(String value) {
+        values.edit().putString("default_reading_layout", ReaderDefaults.normalizeLayout(value)).apply();
+    }
+
+    public String defaultReadingDirection() {
+        return ReadingDirection.normalize(values.getString(
+                "default_reading_direction", ReadingDirection.AUTO));
+    }
+
+    public void setDefaultReadingDirection(String value) {
+        values.edit().putString("default_reading_direction", ReadingDirection.normalize(value)).apply();
     }
 
     public boolean keepScreenOn() {

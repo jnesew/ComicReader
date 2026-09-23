@@ -15,6 +15,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 import io.github.jnesew.comicviewer.data.ReaderPreferences;
 import io.github.jnesew.comicviewer.model.OpeningZoomPolicy;
+import io.github.jnesew.comicviewer.model.ReaderDefaults;
 import io.github.jnesew.comicviewer.model.ReadingDirection;
 import io.github.jnesew.comicviewer.util.Ui;
 import java.util.ArrayList;
@@ -26,7 +27,8 @@ import java.util.function.Consumer;
 /** Settings forms emit commands; their caller applies preferences and live reader changes. */
 public final class ReaderOptionsDialog {
     public record Options(boolean tapZones, boolean volumeNavigation, boolean rememberZoom,
-            String defaultZoom, boolean keepScreenOn, boolean autoHideControls) { }
+            String defaultZoom, String defaultLayout, String defaultDirection,
+            boolean keepScreenOn, boolean autoHideControls) { }
     public interface Listener {
         void onOptionsSaved(Options options);
         void onThemeSelected(String key, int color);
@@ -46,16 +48,18 @@ public final class ReaderOptionsDialog {
     }
     public void showReadingDirection(String direction, Consumer<String> onSelected) {
         String[] values = {
+                null,
                 ReadingDirection.AUTO,
                 ReadingDirection.LEFT_TO_RIGHT,
                 ReadingDirection.RIGHT_TO_LEFT
         };
         int[] labels = {
+                R.string.reader_use_global_default,
                 R.string.reading_direction_auto,
                 R.string.reading_direction_left_to_right,
                 R.string.reading_direction_right_to_left
         };
-        String current = ReadingDirection.normalize(direction);
+        String current = direction == null ? null : ReadingDirection.normalize(direction);
 
         LinearLayout content = new LinearLayout(context);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -81,7 +85,7 @@ public final class ReaderOptionsDialog {
                     new int[]{Ui.ACCENT, Ui.TEXT_MUTED}));
             choices.addView(choice, new RadioGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 52)));
-            if (values[index].equals(current)) choice.setChecked(true);
+            if (java.util.Objects.equals(values[index], current)) choice.setChecked(true);
         }
         content.addView(choices);
 
@@ -175,6 +179,27 @@ public final class ReaderOptionsDialog {
         }
         options.addView(defaultZoomChoices);
 
+        String[] layoutValues = {
+                ReaderDefaults.SINGLE, ReaderDefaults.SPREAD, ReaderDefaults.CONTINUOUS
+        };
+        int[] layoutLabels = {
+                R.string.reader_layout_single, R.string.reader_layout_spread,
+                R.string.reader_layout_continuous
+        };
+        RadioGroup layoutChoices = addChoices(options, R.string.option_default_layout,
+                layoutValues, layoutLabels, preferences.defaultReadingLayout());
+
+        String[] directionValues = {
+                ReadingDirection.AUTO, ReadingDirection.LEFT_TO_RIGHT,
+                ReadingDirection.RIGHT_TO_LEFT
+        };
+        int[] directionLabels = {
+                R.string.reading_direction_auto, R.string.reading_direction_left_to_right,
+                R.string.reading_direction_right_to_left
+        };
+        RadioGroup directionChoices = addChoices(options, R.string.option_default_direction,
+                directionValues, directionLabels, preferences.defaultReadingDirection());
+
         TextView backgroundColor = optionsButton(R.string.reader_background_color);
         backgroundColor.setOnClickListener(view -> showCanvasThemes());
         options.addView(backgroundColor);
@@ -197,9 +222,42 @@ public final class ReaderOptionsDialog {
                         }
                     }
                     listener.onOptionsSaved(new Options(tapZones.isChecked(), volume.isChecked(),
-                            remember.isChecked(), zoom, screen.isChecked(), autoHide.isChecked()));
+                            remember.isChecked(), zoom,
+                            selectedChoice(layoutChoices, layoutValues),
+                            selectedChoice(directionChoices, directionValues),
+                            screen.isChecked(), autoHide.isChecked()));
                 })
                 .show();
+    }
+
+    private RadioGroup addChoices(LinearLayout options, int title,
+            String[] values, int[] labels, String selected) {
+        TextView heading = Ui.text(context, context.getString(title), 15, Ui.TEXT);
+        heading.setPadding(0, Ui.dp(context, 12), 0, Ui.dp(context, 2));
+        options.addView(heading);
+        RadioGroup group = new RadioGroup(context);
+        for (int index = 0; index < values.length; index++) {
+            RadioButton choice = new RadioButton(context);
+            choice.setId(View.generateViewId());
+            choice.setTag(values[index]);
+            choice.setText(labels[index]);
+            choice.setTextColor(Ui.TEXT);
+            choice.setTextSize(15);
+            choice.setMinHeight(Ui.dp(context, 44));
+            choice.setButtonTintList(new ColorStateList(
+                    new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
+                    new int[]{Ui.ACCENT, Ui.TEXT_MUTED}));
+            group.addView(choice, new RadioGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 44)));
+            if (values[index].equals(selected)) choice.setChecked(true);
+        }
+        options.addView(group);
+        return group;
+    }
+
+    private static String selectedChoice(RadioGroup group, String[] values) {
+        View selected = group.findViewById(group.getCheckedRadioButtonId());
+        return selected != null ? (String) selected.getTag() : values[0];
     }
 
     private TextView optionsButton(int text) {

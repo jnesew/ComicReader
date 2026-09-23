@@ -44,7 +44,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
     public static final int METADATA_FAILED = -1;
 
     private static final String NAME = "comicviewer.sqlite3";
-    private static final int VERSION = 8;
+    private static final int VERSION = 9;
     private static final String PROGRESS_WITH_SERIES =
             "SELECT p.*, COALESCE(s.name, '') AS series_title FROM progress p " +
                     "LEFT JOIN series s ON s.id = p.series_id";
@@ -73,6 +73,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                 "zoom REAL NOT NULL DEFAULT 1," +
                 "zoom_gestures_locked INTEGER NOT NULL DEFAULT 0," +
                 "reading_mode TEXT NOT NULL DEFAULT 'single'," +
+                "reading_mode_override INTEGER NOT NULL DEFAULT 0," +
                 "last_opened INTEGER NOT NULL DEFAULT 0," +
                 "added_at INTEGER NOT NULL DEFAULT 0," +
                 "cover_path TEXT NOT NULL DEFAULT ''," +
@@ -86,6 +87,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                 "content_fingerprint TEXT NOT NULL DEFAULT ''," +
                 "favorite INTEGER NOT NULL DEFAULT 0," +
                 "reading_direction TEXT NOT NULL DEFAULT 'auto'," +
+                "reading_direction_override INTEGER NOT NULL DEFAULT 0," +
                 "available INTEGER NOT NULL DEFAULT 1," +
                 "series_id INTEGER NOT NULL DEFAULT 0," +
                 "series_number TEXT NOT NULL DEFAULT ''," +
@@ -159,6 +161,17 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                     "INTEGER NOT NULL DEFAULT 0");
             db.execSQL("UPDATE progress SET original_title=title " +
                     "WHERE original_title=''");
+        }
+        if (oldVersion < 9) {
+            db.execSQL("ALTER TABLE progress ADD COLUMN reading_mode_override " +
+                    "INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("ALTER TABLE progress ADD COLUMN reading_direction_override " +
+                    "INTEGER NOT NULL DEFAULT 0");
+            // A visited title's saved layout may reflect a user's old choice. An unvisited
+            // title has only the old built-in default and should inherit the new setting.
+            db.execSQL("UPDATE progress SET reading_mode_override=1 WHERE last_opened>0");
+            db.execSQL("UPDATE progress SET reading_direction_override=1 " +
+                    "WHERE reading_direction IN ('ltr','rtl')");
         }
         createIndexes(db);
     }
@@ -351,6 +364,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         values.put("zoom", progress.zoom);
         values.put("zoom_gestures_locked", progress.zoomGesturesLocked ? 1 : 0);
         values.put("reading_mode", progress.readingMode);
+        values.put("reading_mode_override", progress.readingModeOverride ? 1 : 0);
         values.put("last_opened", progress.lastOpened);
         values.put("added_at", progress.addedAt);
         values.put("cover_path", progress.coverPath);
@@ -364,6 +378,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         values.put("content_fingerprint", progress.contentFingerprint);
         values.put("favorite", progress.favorite ? 1 : 0);
         values.put("reading_direction", ReadingDirection.normalize(progress.readingDirection));
+        values.put("reading_direction_override", progress.readingDirectionOverride ? 1 : 0);
         values.put("available", progress.available ? 1 : 0);
         values.put("series_id", progress.seriesId);
         values.put("series_number", InputLimits.normalizeText(
@@ -390,7 +405,8 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         values.put("zoom_mode", progress.zoomMode);
         values.put("zoom", progress.zoom);
         values.put("zoom_gestures_locked", progress.zoomGesturesLocked ? 1 : 0);
-        values.put("reading_mode", progress.readingMode);
+        // Layout choices have their own mutation. Continuous traversal and old in-memory
+        // snapshots must not turn an inherited choice into a per-title setting.
         values.put("last_opened", progress.lastOpened);
         int updated = getWritableDatabase().update(
                 "progress", values, "uri=?", new String[]{progress.uri});
@@ -658,14 +674,27 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
     }
 
     public void setReadingDirection(String uri, String direction) {
+        setReadingDirection(uri, direction, true);
+    }
+
+    public void setReadingDirection(String uri, String direction, boolean overridden) {
         ContentValues values = new ContentValues();
         values.put("reading_direction", ReadingDirection.normalize(direction));
+        values.put("reading_direction_override", overridden ? 1 : 0);
+        getWritableDatabase().update("progress", values, "uri=?", new String[]{uri});
+    }
+
+    public void setReadingMode(String uri, String mode, boolean overridden) {
+        ContentValues values = new ContentValues();
+        values.put("reading_mode", io.github.jnesew.comicviewer.model.ReaderDefaults.normalizeLayout(mode));
+        values.put("reading_mode_override", overridden ? 1 : 0);
         getWritableDatabase().update("progress", values, "uri=?", new String[]{uri});
     }
 
     public void migrateLegacyRightToLeftTitles() {
         ContentValues values = new ContentValues();
         values.put("reading_direction", ReadingDirection.RIGHT_TO_LEFT);
+        values.put("reading_direction_override", 1);
         getWritableDatabase().update(
                 "progress", values, "reading_direction=?",
                 new String[]{ReadingDirection.AUTO});
@@ -859,8 +888,12 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                 merged.put("scroll_ratio", duplicate.scrollRatio);
                 merged.put("zoom_mode", duplicate.zoomMode);
                 merged.put("zoom", duplicate.zoom);
-                merged.put("reading_mode", duplicate.readingMode);
+                if (!canonical.readingModeOverride) merged.put("reading_mode", duplicate.readingMode);
                 merged.put("last_opened", duplicate.lastOpened);
+            }
+            if (!canonical.readingModeOverride && duplicate.readingModeOverride) {
+                merged.put("reading_mode", duplicate.readingMode);
+                merged.put("reading_mode_override", 1);
             }
             merged.put("page_count", Math.max(canonical.pageCount, duplicate.pageCount));
             merged.put("favorite", canonical.favorite || duplicate.favorite ? 1 : 0);
@@ -872,10 +905,10 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
             if (canonical.documentSize < 0L && duplicate.documentSize >= 0L) {
                 merged.put("document_size", duplicate.documentSize);
             }
-            if (ReadingDirection.AUTO.equals(canonical.readingDirection) &&
-                    !ReadingDirection.AUTO.equals(duplicate.readingDirection)) {
+            if (!canonical.readingDirectionOverride && duplicate.readingDirectionOverride) {
                 merged.put("reading_direction",
                         ReadingDirection.normalize(duplicate.readingDirection));
+                merged.put("reading_direction_override", 1);
             }
 
             boolean canonicalCover = canonical.coverState == COVER_READY &&
@@ -1256,6 +1289,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         result.zoom = real(cursor, "zoom");
         result.zoomGesturesLocked = integer(cursor, "zoom_gestures_locked") != 0;
         result.readingMode = string(cursor, "reading_mode");
+        result.readingModeOverride = integer(cursor, "reading_mode_override") != 0;
         result.lastOpened = longValue(cursor, "last_opened");
         result.addedAt = longValue(cursor, "added_at");
         result.coverPath = string(cursor, "cover_path");
@@ -1269,6 +1303,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         result.contentFingerprint = string(cursor, "content_fingerprint");
         result.favorite = integer(cursor, "favorite") != 0;
         result.readingDirection = ReadingDirection.normalize(string(cursor, "reading_direction"));
+        result.readingDirectionOverride = integer(cursor, "reading_direction_override") != 0;
         result.available = integer(cursor, "available") != 0;
         result.seriesId = longValue(cursor, "series_id");
         result.seriesTitle = string(cursor, "series_title");

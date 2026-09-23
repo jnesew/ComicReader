@@ -177,6 +177,7 @@
     <string name="reader_hardware_shortcuts">Näppäinoikotiet</string>
     <string name="reader_hide_controls">Piilota säätimet</string>
     <string name="reader_reading_direction">Lukusuunta</string>
+    <string name="reader_use_global_default">Käytä yleistä oletusta</string>
     <string name="reading_direction_message">Automaattinen seuraa EPUB-tiedoston metatietoja ja käyttää CBZ-, ZIP- ja PDF-tiedostoissa suuntaa vasemmalta oikealle.</string>
     <string name="reading_direction_auto">Automaattinen</string>
     <string name="reading_direction_left_to_right">Vasemmalta oikealle</string>
@@ -203,6 +204,8 @@
     <string name="option_default_zoom">Oletuszoomaus</string>
     <string name="option_default_zoom_description">Käytetään, kun sarjakuvalla ei ole muistettua zoomausta tai sarjakuvakohtainen zoomausmuisti on pois käytöstä. Jatkuva vieritys sovitetaan leveyteen.</string>
     <string name="option_default_zoom_app">Sovelluksen oletus (sovita leveyteen)</string>
+    <string name="option_default_layout">Sivuasettelun oletus</string>
+    <string name="option_default_direction">Lukusuunnan oletus</string>
     <string name="option_keep_screen_awake">Pidä näyttö päällä lukemisen aikana</string>
     <string name="option_auto_hide_controls">Piilota lukijan säätimet automaattisesti</string>
     <string name="shortcuts_instruction">Napauta toimintoa ja paina sitten ulkoisen näppäimistön näppäintä.</string>
