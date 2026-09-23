@@ -142,6 +142,7 @@ public final class MainActivity extends Activity implements
         }
         imports.startCoverBackfill();
         imports.startMetadataBackfill();
+        imports.startFingerprintBackfill();
         mainHandler.postDelayed(() -> scans.maybeScanLibraryFolder(false), 300L);
     }
 

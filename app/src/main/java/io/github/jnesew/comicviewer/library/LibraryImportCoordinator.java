@@ -115,6 +115,42 @@ public final class LibraryImportCoordinator implements AutoCloseable {
         });
     }
 
+    /** Hash a few legacy imports per launch without delaying library presentation. */
+    public void startFingerprintBackfill() {
+        libraryWorker.execute(() -> {
+            long remainingBytes = 128L * 1024L * 1024L;
+            int remainingFiles = 4;
+            for (ReadingProgress item : database.manualFingerprintBackfill(16)) {
+                if (destroyed || Thread.currentThread().isInterrupted()) return;
+                if (remainingFiles == 0 || item.documentSize > remainingBytes) continue;
+                if (!libraryJobs.add(item.uri)) continue;
+                remainingFiles--;
+                remainingBytes -= item.documentSize;
+                try {
+                    Uri uri = Uri.parse(item.uri);
+                    DocumentInfo current = ComicDocumentFactory.describe(context, uri);
+                    if (current.size != item.documentSize ||
+                            current.modified != item.documentModified) continue;
+                    String sample = ContentFingerprint.sample(context, uri, current.size);
+                    if (!item.sampleSignature.isEmpty() &&
+                            !item.sampleSignature.equals(sample)) continue;
+                    String full = ContentFingerprint.full(context, uri);
+                    if (!sample.equals(ContentFingerprint.sample(context, uri, current.size)) ||
+                            destroyed || Thread.currentThread().isInterrupted()) continue;
+                    DocumentInfo after = ComicDocumentFactory.describe(context, uri);
+                    if (after.size == current.size && after.modified == current.modified) {
+                        database.retainManualFingerprint(item.uri, current.size,
+                                current.modified, sample, full);
+                    }
+                } catch (IOException | RuntimeException ignored) {
+                    // Missing grants and short-lived providers leave the existing entry intact.
+                } finally {
+                    libraryJobs.remove(item.uri);
+                }
+            }
+        });
+    }
+
     boolean processLibraryItem(Uri uri, boolean buildFullIndex) {
         return processLibraryItem(uri, buildFullIndex, null, false);
     }
@@ -182,6 +218,22 @@ public final class LibraryImportCoordinator implements AutoCloseable {
             mainHandler.post(() -> {
                 if (!destroyed) notifyChanged();
             });
+            // Imported files are hashed on this worker so a later move can be recognized.
+            // Bound the extra pass for large archives; a missing hash never guesses identity.
+            if (manualImport && !sample.isEmpty() && document.size >= 0 &&
+                    document.size <= 128L * 1024L * 1024L &&
+                    !destroyed && !Thread.currentThread().isInterrupted()) {
+                try {
+                    String full = ContentFingerprint.full(context, uri);
+                    if (sample.equals(ContentFingerprint.sample(context, uri, document.size)) &&
+                            !destroyed && !Thread.currentThread().isInterrupted()) {
+                        database.retainManualFingerprint(key, document.size,
+                                document.modified, sample, full);
+                    }
+                } catch (IOException | RuntimeException ignored) {
+                    // Import remains usable if the provider cannot be hashed.
+                }
+            }
             return true;
         } catch (IOException | RuntimeException error) {
             if (created) {

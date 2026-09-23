@@ -19,9 +19,10 @@ still versionName 1.1.0/versionCode 3 until a release is selected.
 
 1. Run the actual Android database harness before extracting database delegates:
    `./gradlew --dependency-verification strict connectedDebugAndroidTest`.
-   It reports seven production-helper tests using a separate fixture database: metadata,
-   index rollback, relinking, duplicate merge, missing-source policy, atomic forgetting,
-   and schema 1 to 8 upgrade. The existing Python SQL script is supplementary.
+   The production-helper suite now contains eleven cases, including title overrides,
+   explicit read status, verified reconnection and stale-hash rejection. Packaging the
+   instrumentation APK does not execute those cases. The existing Python SQL script
+   is supplementary.
 2. Finish R5 delegates after that baseline passes; run the identical harness afterward.
 3. Run unit tests, release lint/build, clean-checkout reproducibility and device regression
    checks. The local direct SDK build is compilation evidence, not the canonical release.

@@ -40,6 +40,10 @@ already published release/1.1 README/screenshot commits through 8624230.
   device baseline; run the actual harness before extracting R5 delegates.
 - Explicit read status adds schema 10 and another SQLite case. These additions still
   require the actual connected instrumentation run before R5 extraction and release.
+- Automatic file reconnection uses cached full hashes for verified moves whose old
+  URI is inaccessible. New and existing sources are fingerprinted on bounded workers;
+  the SQLite harness now includes two cases for atomic recovery and stale/missing hashes.
+  The 11-case production Android suite still requires a connected device run.
 - R6: pure ContinuousPageMap owns issue/local/global indexing and anchor restoration.
   All 91 JVM tests pass, including prepend, eviction, index-count changes, unavailable
   one-page issues, missing anchors and boundary round trips.

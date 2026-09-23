@@ -18,7 +18,7 @@ public final class DatabaseTestRunner extends Instrumentation {
     private LibraryDatabase db;
     private int current;
     private int failed;
-    private static final int TOTAL = 9;
+    private static final int TOTAL = 11;
 
     @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
 
@@ -31,6 +31,8 @@ public final class DatabaseTestRunner extends Instrumentation {
         run("forgetRollsBackAndNeverDeletesSourceFile", this::forget);
         run("readerOverridesSurviveProgressSaves", this::readerDefaults);
         run("explicitReadAndNewSeriesIssues", this::readStatus);
+        run("verifiedReconnectionPreservesState", this::verifiedReconnection);
+        run("staleOrUnverifiedHashNeverRelinks", this::unverifiedReconnection);
         run("upgradeVersionOneToTen", this::upgrade);
         Bundle result = new Bundle();
         result.putString("stream", "\n" + (TOTAL - failed) + "/" + TOTAL + " database tests passed\n");
@@ -211,6 +213,64 @@ public final class DatabaseTestRunner extends Instrumentation {
                 LibraryDatabase.FILTER_READING).size());
     }
 
+    private void verifiedReconnection() {
+        seed("old", 10);
+        db.setComicMetadata("old", "Edited", LibraryDatabase.SERIES_MANUAL, "My Series", "3");
+        db.setReadingMode("old", "continuous", true);
+        db.setReadingDirection("old", "rtl", true);
+        db.toggleFavorite("old");
+        db.toggleBookmark("old", 2);
+        db.setReadStatus("old", true);
+        db.replacePageIndex("old", List.of(new PageInfo("page.png", 12, 18)));
+        ReadingProgress progress = db.get("old");
+        progress.page = 2; progress.lastOpened = 123;
+        db.saveReadingProgress(progress);
+        LibraryDatabase.ScannedFile original = db.scannedFile("old-source");
+        original.documentSize = 100; original.documentModified = 200;
+        db.upsertScannedFile(original);
+        check(db.retainScannedFingerprint(original, "prefix", "entire-archive"));
+        original = db.scannedFile("old-source");
+        db.finishFolderScan("tree", 20);
+        check(!db.get("old").available);
+        LibraryDatabase.ScannedFile replacement = source("new", 30);
+        replacement.documentSize = 100; replacement.documentModified = 200;
+        replacement.sampleSignature = "prefix";
+        replacement.contentFingerprint = "entire-archive";
+        check(db.reconnectByFingerprint("old", original, replacement));
+        db.finishFolderScan("tree", 30);
+        check(db.get("old").uri.isEmpty());
+        progress = db.get("new");
+        equal("Edited", progress.title); equal("My Series", progress.seriesTitle);
+        equal(2, progress.page); equal(123L, progress.lastOpened);
+        check(progress.favorite && progress.read && progress.available);
+        check(progress.readingModeOverride && progress.readingDirectionOverride);
+        equal("continuous", progress.readingMode); equal("rtl", progress.readingDirection);
+        check(db.isBookmarked("new", 2)); equal(1, db.pageIndex("new").size());
+        equal("new", db.scannedFile("old-source").canonicalUri);
+        equal(1, db.library("", LibraryDatabase.SORT_RECENT,
+                LibraryDatabase.FILTER_COMPLETED).size());
+    }
+
+    private void unverifiedReconnection() {
+        seed("old", 10);
+        LibraryDatabase.ScannedFile original = db.scannedFile("old-source");
+        original.documentSize = 100; original.documentModified = 200;
+        db.upsertScannedFile(original);
+        LibraryDatabase.ScannedFile replacement = source("new", 30);
+        replacement.contentFingerprint = "entire-archive";
+        check(!db.reconnectByFingerprint("old", original, replacement));
+        check(db.retainScannedFingerprint(original, "prefix", "entire-archive"));
+        replacement.contentFingerprint = "different-content";
+        check(!db.reconnectByFingerprint("old", original, replacement));
+        replacement.contentFingerprint = "entire-archive";
+        original = db.scannedFile("old-source");
+        db.ensureImported("new", "Other book", 100, 200);
+        check(!db.reconnectByFingerprint("old", original, replacement));
+        check(!db.get("old").uri.isEmpty());
+        db.forget("old");
+        check(!db.retainScannedFingerprint(original, "prefix", "entire-archive"));
+    }
+
     private void upgrade() {
         db.close(); getTargetContext().deleteDatabase(NAME);
         try (SQLiteDatabase old = getTargetContext().openOrCreateDatabase(NAME, 0, null)) {
@@ -245,10 +305,13 @@ public final class DatabaseTestRunner extends Instrumentation {
 
     private void seed(String uri, long seen) {
         db.ensureImported(uri, "Comic", 100, 200);
+        db.upsertScannedFile(source(uri, seen));
+    }
+    private static LibraryDatabase.ScannedFile source(String uri, long seen) {
         LibraryDatabase.ScannedFile f = new LibraryDatabase.ScannedFile();
         f.sourceIdentity = uri + "-source"; f.treeUri = "tree"; f.documentId = uri;
         f.documentUri = uri; f.canonicalUri = uri; f.lastSeen = seen;
-        db.upsertScannedFile(f);
+        return f;
     }
     private static void check(boolean value) { if (!value) throw new AssertionError("Condition failed"); }
     private static void equal(Object expected, Object actual) {

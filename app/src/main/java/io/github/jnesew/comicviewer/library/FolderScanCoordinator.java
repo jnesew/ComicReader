@@ -141,6 +141,7 @@ public final class FolderScanCoordinator implements AutoCloseable {
 
         folderScanTask = scanWorker.submit(() -> {
             ScanCounts counts = new ScanCounts();
+            FingerprintBudget fingerprintBudget = new FingerprintBudget();
             long scanStarted = System.currentTimeMillis();
             LibraryFolderScanner.Summary traversal = null;
             try {
@@ -150,7 +151,8 @@ public final class FolderScanCoordinator implements AutoCloseable {
                                 scanGeneration != folderScanGeneration ||
                                 !preferences.libraryFolderUri().equals(treeUri.toString()),
                         entry -> processScannedEntry(
-                                entry, scanStarted, counts, scanGeneration));
+                                entry, scanStarted, counts, scanGeneration,
+                                fingerprintBudget));
                 if (!destroyed && scanGeneration == folderScanGeneration && traversal.complete() && !readerBusy.getAsBoolean() &&
                         preferences.libraryFolderUri().equals(treeUri.toString())) {
                     database.finishFolderScan(treeUri.toString(), scanStarted);
@@ -186,7 +188,8 @@ public final class FolderScanCoordinator implements AutoCloseable {
             LibraryFolderScanner.Entry entry,
             long scanStarted,
             ScanCounts counts,
-            int scanGeneration) {
+            int scanGeneration,
+            FingerprintBudget fingerprintBudget) {
         if (destroyed || Thread.currentThread().isInterrupted()) return;
         if (!scanStillConfigured(entry, scanGeneration)) return;
         String identity = entry.sourceIdentity();
@@ -238,6 +241,10 @@ public final class FolderScanCoordinator implements AutoCloseable {
             database.touchScannedFile(
                     identity, entry.uri.toString(), entry.relativePath,
                     entry.size, entry.modified, scanStarted);
+            if (existing.contentFingerprint.isEmpty() &&
+                    fingerprintBudget.reserve(entry.size)) {
+                retainFingerprint(entry, database.scannedFile(identity), scanGeneration);
+            }
             updateRenamedTitle(existing, entry);
             reapplyFolderSeries(existing.canonicalUri, entry);
             counts.unchanged++;
@@ -258,6 +265,11 @@ public final class FolderScanCoordinator implements AutoCloseable {
         if (probe.sample.isEmpty()) probe.sample = imports.sampleContent(entry.uri, entry.size);
 
         if (existing == null && !probe.sample.isEmpty()) {
+            if (!readerBusy.getAsBoolean() &&
+                    reconnectMissingManual(entry, probe, scanStarted, scanGeneration)) {
+                counts.updated++;
+                return;
+            }
             for (LibraryDatabase.ScannedFile candidate : database.duplicateCandidates(
                     identity, entry.size, probe.sample)) {
                 if (database.get(candidate.canonicalUri).uri.isEmpty()) continue;
@@ -280,7 +292,31 @@ public final class FolderScanCoordinator implements AutoCloseable {
                     counts.duplicates++;
                     return;
                 } catch (IOException | RuntimeException ignored) {
-                    // An inaccessible candidate is not sufficient evidence to suppress context item.
+                    // A retained full hash can establish identity after the old URI disappears.
+                    if (candidate.canonicalUri.equals(candidate.documentUri) &&
+                            !candidate.contentFingerprint.isEmpty() &&
+                            !readerBusy.getAsBoolean() &&
+                            scanStillConfigured(entry, scanGeneration)) {
+                        try {
+                            if (probe.fullFingerprint.isEmpty()) {
+                                probe.fullFingerprint = ContentFingerprint.full(context, entry.uri);
+                            }
+                            if (probe.fullFingerprint.equals(candidate.contentFingerprint) &&
+                                    probe.sample.equals(imports.sampleContent(entry.uri, entry.size)) &&
+                                    scanStillConfigured(entry, scanGeneration) &&
+                                    !readerBusy.getAsBoolean() &&
+                                    database.reconnectByFingerprint(candidate.canonicalUri,
+                                            candidate, scannedFile(entry, documentUri,
+                                                    probe.sample, probe.fullFingerprint,
+                                                    scanStarted))) {
+                                reapplyFolderSeries(documentUri, entry);
+                                counts.updated++;
+                                return;
+                            }
+                        } catch (IOException | RuntimeException ignoredAgain) {
+                            // A failed hash never authorizes a move.
+                        }
+                    }
                 }
             }
         }
@@ -297,8 +333,24 @@ public final class FolderScanCoordinator implements AutoCloseable {
             }
             return;
         }
+        if (probe.fullFingerprint.isEmpty() && !probe.sample.isEmpty() &&
+                fingerprintBudget.reserve(entry.size)) {
+            try {
+                probe.fullFingerprint = ContentFingerprint.full(context, entry.uri);
+                if (!probe.sample.equals(imports.sampleContent(entry.uri, entry.size))) {
+                    probe.fullFingerprint = "";
+                }
+            } catch (IOException | RuntimeException ignored) {
+                probe.fullFingerprint = "";
+            }
+        }
+        if (!scanStillConfigured(entry, scanGeneration)) return;
         database.upsertScannedFile(scannedFile(
                 entry, documentUri, probe.sample, probe.fullFingerprint, scanStarted));
+        if (!probe.fullFingerprint.isEmpty()) {
+            LibraryDatabase.ScannedFile saved = database.scannedFile(identity);
+            database.retainScannedFingerprint(saved, probe.sample, probe.fullFingerprint);
+        }
         if (previouslyImported) counts.updated++;
         else counts.imported++;
     }
@@ -368,6 +420,51 @@ public final class FolderScanCoordinator implements AutoCloseable {
             }
         }
         return null;
+    }
+
+    private boolean reconnectMissingManual(LibraryFolderScanner.Entry entry,
+            FingerprintProbe probe, long scanStarted, int scanGeneration) {
+        for (ReadingProgress candidate : database.manualDuplicateCandidates(
+                entry.size, entry.uri.toString())) {
+            if (candidate.contentFingerprint.isEmpty() ||
+                    !probe.sample.equals(candidate.sampleSignature) ||
+                    imports.isProcessing(candidate.uri) ||
+                    !imports.sampleContent(Uri.parse(candidate.uri), candidate.documentSize)
+                            .isEmpty()) continue;
+            try {
+                if (probe.fullFingerprint.isEmpty()) {
+                    probe.fullFingerprint = ContentFingerprint.full(context, entry.uri);
+                }
+                if (!probe.fullFingerprint.equals(candidate.contentFingerprint) ||
+                        !probe.sample.equals(imports.sampleContent(entry.uri, entry.size)) ||
+                        !scanStillConfigured(entry, scanGeneration) ||
+                        readerBusy.getAsBoolean()) continue;
+                if (database.reconnectByFingerprint(candidate.uri, null,
+                        scannedFile(entry, entry.uri.toString(), probe.sample,
+                                probe.fullFingerprint, scanStarted))) {
+                    reapplyFolderSeries(entry.uri.toString(), entry);
+                    return true;
+                }
+            } catch (IOException | RuntimeException ignored) {
+                // Keep the old item if either content read or the database changed.
+            }
+        }
+        return false;
+    }
+
+    private void retainFingerprint(LibraryFolderScanner.Entry entry,
+            LibraryDatabase.ScannedFile source, int scanGeneration) {
+        String before = imports.sampleContent(entry.uri, entry.size);
+        if (before.isEmpty() || (!source.sampleSignature.isEmpty() &&
+                !source.sampleSignature.equals(before))) return;
+        try {
+            String full = ContentFingerprint.full(context, entry.uri);
+            if (!scanStillConfigured(entry, scanGeneration) ||
+                    !before.equals(imports.sampleContent(entry.uri, entry.size))) return;
+            database.retainScannedFingerprint(source, before, full);
+        } catch (IOException | RuntimeException ignored) {
+            // Future scans can retry while the source is still accessible.
+        }
     }
 
     private static LibraryDatabase.ScannedFile scannedFile(
@@ -451,5 +548,19 @@ public final class FolderScanCoordinator implements AutoCloseable {
     private static final class FingerprintProbe {
         private String sample = "";
         private String fullFingerprint = "";
+    }
+
+    /** Spread legacy backfills across scans instead of rereading an entire library at once. */
+    private static final class FingerprintBudget {
+        private static final long MAX_BYTES = 128L * 1024L * 1024L;
+        private int remainingFiles = 4;
+        private long remainingBytes = MAX_BYTES;
+
+        private boolean reserve(long size) {
+            if (remainingFiles <= 0 || size < 0 || size > remainingBytes) return false;
+            remainingFiles--;
+            remainingBytes -= size;
+            return true;
+        }
     }
 }
