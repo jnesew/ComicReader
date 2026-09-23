@@ -118,9 +118,14 @@ final class LibraryGridAdapter extends BaseAdapter {
                     R.string.comic_accessibility_progress,
                     standalone.title, standalone.percent()));
         } else {
-            holder.root.setContentDescription(context.getResources().getQuantityString(
+            String seriesDescription = context.getResources().getQuantityString(
                     R.plurals.series_accessibility_issues, group.issues.size(),
-                    group.title, group.issues.size()));
+                    group.title, group.issues.size());
+            String readingStatus = group.isCaughtUp()
+                    ? context.getString(R.string.series_caught_up)
+                    : context.getResources().getQuantityString(R.plurals.series_unread_issue_count,
+                            group.unreadIssueCount(), group.unreadIssueCount());
+            holder.root.setContentDescription(seriesDescription + ", " + readingStatus);
         }
         holder.root.setOnClickListener(view -> onSeries.accept(group));
         holder.root.setOnLongClickListener(view -> {
@@ -144,28 +149,30 @@ final class LibraryGridAdapter extends BaseAdapter {
         holder.progress.setProgress(group.percent);
         if (standalone != null) {
             bindTitleDetails(holder.details, standalone);
-        } else if (group.isUnavailable()) {
-            holder.details.setText(R.string.comic_status_unavailable);
-        } else if (group.unavailableIssueCount() > 0) {
+        } else {
             String total = context.getResources().getQuantityString(
                     R.plurals.series_issue_count, group.issues.size(), group.issues.size());
-            String unavailable = context.getResources().getQuantityString(
-                    R.plurals.series_unavailable_issue_count, group.unavailableIssueCount(),
-                    group.unavailableIssueCount());
-            holder.details.setText(total + " · " + unavailable);
-        } else {
-            holder.details.setText(context.getResources().getQuantityString(
-                    R.plurals.series_issue_count, group.issues.size(), group.issues.size()));
+            String status = group.isCaughtUp()
+                    ? context.getString(R.string.series_caught_up)
+                    : context.getResources().getQuantityString(R.plurals.series_unread_issue_count,
+                            group.unreadIssueCount(), group.unreadIssueCount());
+            if (group.unavailableIssueCount() > 0) {
+                String unavailable = context.getResources().getQuantityString(
+                        R.plurals.series_unavailable_issue_count, group.unavailableIssueCount(),
+                        group.unavailableIssueCount());
+                status += " · " + unavailable;
+            }
+            holder.details.setText(total + " · " + status);
         }
     }
 
     private void bindTitleDetails(TextView details, ReadingProgress item) {
         if (!item.available) {
             details.setText(R.string.comic_status_unavailable);
-        } else if (item.isNew()) {
-            details.setText(R.string.comic_status_new);
         } else if (item.isCompleted()) {
             details.setText(R.string.comic_status_completed);
+        } else if (item.isNew()) {
+            details.setText(R.string.comic_status_new);
         } else if (item.pageCount > 0) {
             details.setText(context.getResources().getString(
                     R.string.comic_page_progress,
@@ -177,6 +184,11 @@ final class LibraryGridAdapter extends BaseAdapter {
 
     private void showComicMenu(View anchor, ReadingProgress item) {
         PopupMenu menu = new PopupMenu(context, anchor);
+        menu.getMenu().add(item.isCompleted() ? R.string.comic_mark_unread : R.string.comic_mark_read)
+                .setOnMenuItemClickListener(selected -> {
+                    listener.onComicReadStatusRequested(item, !item.isCompleted());
+                    return true;
+                });
         menu.getMenu().add(item.favorite ? R.string.title_remove_favorite : R.string.title_add_favorite)
                 .setOnMenuItemClickListener(selected -> {
                     toggleFavorite(item);
@@ -195,6 +207,14 @@ final class LibraryGridAdapter extends BaseAdapter {
 
     private void showSeriesMenu(View anchor, SeriesGroup group) {
         PopupMenu menu = new PopupMenu(context, anchor);
+        menu.getMenu().add(R.string.series_mark_read).setOnMenuItemClickListener(selected -> {
+            listener.onSeriesReadStatusRequested(group, true);
+            return true;
+        });
+        menu.getMenu().add(R.string.series_mark_unread).setOnMenuItemClickListener(selected -> {
+            listener.onSeriesReadStatusRequested(group, false);
+            return true;
+        });
         menu.getMenu().add(R.string.forget_series).setOnMenuItemClickListener(selected -> {
             listener.onSeriesForgetRequested(group);
             return true;

@@ -38,6 +38,8 @@ already published release/1.1 README/screenshot commits through 8624230.
 - A later feature branch adds title layout/direction inheritance and schema 9. Its
   additional SQLite regression case is not a substitute for the still-unrun R5
   device baseline; run the actual harness before extracting R5 delegates.
+- Explicit read status adds schema 10 and another SQLite case. These additions still
+  require the actual connected instrumentation run before R5 extraction and release.
 - R6: pure ContinuousPageMap owns issue/local/global indexing and anchor restoration.
   All 91 JVM tests pass, including prepend, eviction, index-count changes, unavailable
   one-page issues, missing anchors and boundary round trips.

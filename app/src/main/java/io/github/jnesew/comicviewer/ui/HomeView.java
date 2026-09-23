@@ -42,6 +42,8 @@ public final class HomeView extends FrameLayout {
         void onForgetRequested(ReadingProgress progress);
         void onSeriesForgetRequested(SeriesGroup series);
         void onComicEditRequested(ReadingProgress progress);
+        void onComicReadStatusRequested(ReadingProgress progress, boolean read);
+        void onSeriesReadStatusRequested(SeriesGroup series, boolean read);
         void onLibraryMenuRequested(View anchor);
     }
 

@@ -230,6 +230,14 @@ public final class ReaderController implements ReaderScreen.Listener, ComicCanva
             return true;
         });
         if (session.progress() != null) {
+            if (session.document() != null && !session.document().isUnavailable()) {
+                menu.getMenu().add(session.progress().isCompleted()
+                        ? R.string.comic_mark_unread : R.string.comic_mark_read)
+                        .setOnMenuItemClickListener(item -> {
+                            setActiveReadStatus(!session.progress().isCompleted());
+                            return true;
+                        });
+            }
             menu.getMenu().add(session.progress().favorite
                     ? R.string.title_remove_favorite : R.string.title_add_favorite)
                     .setOnMenuItemClickListener(item -> {
@@ -302,6 +310,16 @@ public final class ReaderController implements ReaderScreen.Listener, ComicCanva
     }
 
     @Override
+    public void onContinuousReadingCompleted(String documentKey) {
+        markReadIfAvailable(documentKey);
+    }
+
+    @Override
+    public void onContinuousIssueCrossedByScroll(String previousKey, String nextKey) {
+        if (!previousKey.equals(nextKey)) markReadIfAvailable(previousKey);
+    }
+
+    @Override
     public void onRetryUnavailable() {
         if (session.document() != null && session.document().isUnavailable()) onUnavailableRetry(session.document().key());
     }
@@ -316,10 +334,19 @@ public final class ReaderController implements ReaderScreen.Listener, ComicCanva
         if (session.document() == null || session.comicOpening) return;
         if (session.reader.canvas.isContinuous()) {
             session.saves.saveNow();
-            if (session.reader.canvas.moveContinuousPage(delta)) return;
+            String previousKey = session.document().key();
+            if (session.reader.canvas.moveContinuousPage(delta)) {
+                if (delta > 0 && !previousKey.equals(session.document().key())) {
+                    markReadIfAvailable(previousKey);
+                }
+                return;
+            }
         }
         int target = session.reader.canvas.navigationTarget(delta);
         if (target == session.reader.canvas.page()) {
+            if (delta > 0 && session.reader.canvas.isAtDocumentEnd()) {
+                markReadIfAvailable(session.document().key());
+            }
             if (delta > 0 && session.reader.canvas.isAtDocumentEnd() && openAdjacentSeriesIssue(1)) return;
             if (delta < 0 && session.reader.canvas.isAtDocumentStart() && openAdjacentSeriesIssue(-1)) return;
             Toast.makeText(context,
@@ -329,6 +356,30 @@ public final class ReaderController implements ReaderScreen.Listener, ComicCanva
         }
         session.saves.saveNow();
         session.reader.canvas.showPage(target, 0f);
+    }
+
+    private void setActiveReadStatus(boolean read) {
+        if (session.document() == null || session.document().isUnavailable() ||
+                session.progress() == null) return;
+        if (session.database.setReadStatus(session.document().key(), read)) {
+            session.progress().read = read;
+            session.progress().readStatusChangedAt = System.currentTimeMillis();
+        }
+    }
+
+    private void markReadIfAvailable(String key) {
+        if (key == null || key.isEmpty()) return;
+        ReadingProgress progress = session.progress();
+        if (progress != null && key.equals(progress.uri)) {
+            if (!progress.read) setActiveReadStatus(true);
+            return;
+        }
+        ReadingProgress previous = session.database.get(key);
+        if (!previous.uri.isEmpty() && previous.available && !previous.read &&
+                session.database.setReadStatus(key, true)) {
+            DocumentResources retained = session.continuous.continuousResources.get(key);
+            if (retained != null) retained.progress.read = true;
+        }
     }
 
     private boolean openAdjacentSeriesIssue(int direction) {

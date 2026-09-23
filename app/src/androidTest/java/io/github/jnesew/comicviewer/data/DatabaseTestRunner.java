@@ -18,7 +18,7 @@ public final class DatabaseTestRunner extends Instrumentation {
     private LibraryDatabase db;
     private int current;
     private int failed;
-    private static final int TOTAL = 8;
+    private static final int TOTAL = 9;
 
     @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
 
@@ -30,7 +30,8 @@ public final class DatabaseTestRunner extends Instrumentation {
         run("lostAccessIsNotConfirmedMissing", this::missing);
         run("forgetRollsBackAndNeverDeletesSourceFile", this::forget);
         run("readerOverridesSurviveProgressSaves", this::readerDefaults);
-        run("upgradeVersionOneToNine", this::upgrade);
+        run("explicitReadAndNewSeriesIssues", this::readStatus);
+        run("upgradeVersionOneToTen", this::upgrade);
         Bundle result = new Bundle();
         result.putString("stream", "\n" + (TOTAL - failed) + "/" + TOTAL + " database tests passed\n");
         finish(Activity.RESULT_OK, result);
@@ -116,9 +117,15 @@ public final class DatabaseTestRunner extends Instrumentation {
         seed("duplicate", 10);
         ReadingProgress p = db.get("duplicate"); p.page = 5; p.pageCount = 10; p.lastOpened = 99;
         db.saveReadingProgress(p); db.toggleFavorite("duplicate"); db.toggleBookmark("duplicate", 4);
+        db.setReadStatus("canonical", true);
+        db.setReadStatus("duplicate", false);
+        db.getWritableDatabase().execSQL("UPDATE progress SET read_status_changed_at=1 " +
+                "WHERE uri='canonical'");
+        db.getWritableDatabase().execSQL("UPDATE progress SET read_status_changed_at=2 " +
+                "WHERE uri='duplicate'");
         check(db.mergeExactDuplicate("canonical", "duplicate", "sample", "full").merged);
         p = db.get("canonical"); equal("My title", p.title); equal("Mine", p.seriesTitle);
-        equal(5, p.page); check(p.favorite && p.manualSource);
+        equal(5, p.page); check(p.favorite && p.manualSource && !p.read);
         equal(List.of(1, 4), db.bookmarks("canonical"));
         check(db.get("duplicate").uri.isEmpty());
         equal("canonical", db.scannedFile("duplicate-source").canonicalUri);
@@ -173,6 +180,37 @@ public final class DatabaseTestRunner extends Instrumentation {
         check(!p.readingModeOverride && !p.readingDirectionOverride);
     }
 
+    private void readStatus() {
+        db.ensureImported("a", "Issue A", 12, 50);
+        db.ensureImported("b", "Issue B", 12, 50);
+        db.applyDetectedSeries("a", "Series", "1", "", "");
+        db.applyDetectedSeries("b", "Series", "2", "", "");
+        ReadingProgress stale = db.get("a");
+        stale.page = 9; stale.pageCount = 10; stale.lastOpened = 12;
+        db.saveReadingProgress(stale);
+        check(!db.get("a").read);
+        check(db.setReadStatus("a", true));
+        db.saveReadingProgress(stale);
+        check(db.get("a").read); equal(9, db.get("a").page);
+
+        long seriesId = db.get("a").seriesId;
+        check(seriesId > 0);
+        equal(2, db.setSeriesReadStatus(seriesId, true));
+        db.ensureImported("c", "Issue C", 12, 50);
+        db.applyDetectedSeries("c", "Series", "0", "", "");
+        check(!db.get("c").read);
+        equal(3, db.seriesIssues(seriesId).size());
+        equal(2, db.library("", LibraryDatabase.SORT_RECENT,
+                LibraryDatabase.FILTER_COMPLETED).size());
+        equal(1, db.library("", LibraryDatabase.SORT_RECENT,
+                LibraryDatabase.FILTER_NEW).size());
+        check(db.setReadStatus("a", false));
+        db.saveReadingProgress(stale);
+        check(!db.get("a").read); equal(9, db.get("a").page);
+        equal(1, db.library("", LibraryDatabase.SORT_RECENT,
+                LibraryDatabase.FILTER_READING).size());
+    }
+
     private void upgrade() {
         db.close(); getTargetContext().deleteDatabase(NAME);
         try (SQLiteDatabase old = getTargetContext().openOrCreateDatabase(NAME, 0, null)) {
@@ -185,15 +223,20 @@ public final class DatabaseTestRunner extends Instrumentation {
                     "created INTEGER NOT NULL,PRIMARY KEY(uri,page))");
             old.execSQL("INSERT INTO progress(uri,title,page,page_count,last_opened) " +
                     "VALUES('legacy','Vanha 🦊',4,30,123)");
+            old.execSQL("INSERT INTO progress(uri,title,page,page_count,last_opened) " +
+                    "VALUES('legacy-read','Read',4,5,123)");
+            old.execSQL("INSERT INTO progress(uri,title,page,page_count,last_opened) " +
+                    "VALUES('legacy-new','New',0,1,0)");
             old.execSQL("INSERT INTO bookmarks VALUES('legacy',4,123)");
             old.setVersion(1);
         }
         db = new LibraryDatabase(getTargetContext(), NAME);
         ReadingProgress p = db.get("legacy");
-        equal(9, db.getReadableDatabase().getVersion()); equal("Vanha 🦊", p.originalTitle);
+        equal(10, db.getReadableDatabase().getVersion()); equal("Vanha 🦊", p.originalTitle);
         equal(4, p.page); equal(30, p.pageCount); equal(123L, p.addedAt);
         check(p.manualSource && p.available && !p.titleOverride);
         check(p.readingModeOverride && !p.readingDirectionOverride);
+        check(!p.read && db.get("legacy-read").read && !db.get("legacy-new").read);
         check(db.isBookmarked("legacy", 4));
         try (Cursor c = db.getReadableDatabase().rawQuery("PRAGMA integrity_check", null)) {
             check(c.moveToFirst()); equal("ok", c.getString(0));

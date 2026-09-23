@@ -14,6 +14,8 @@ public final class ReadingProgress {
     public String readingMode = "single";
     public boolean readingModeOverride = false;
     public long lastOpened = 0L;
+    public boolean read = false;
+    public long readStatusChangedAt = 0L;
     public long addedAt = 0L;
     public String coverPath = "";
     public int coverState = 0;
@@ -43,10 +45,10 @@ public final class ReadingProgress {
     }
 
     public boolean isNew() {
-        return lastOpened <= 0L;
+        return lastOpened <= 0L && !read;
     }
 
     public boolean isCompleted() {
-        return pageCount > 0 && page >= pageCount - 1;
+        return read;
     }
 }

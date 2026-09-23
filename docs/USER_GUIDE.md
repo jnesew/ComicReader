@@ -64,6 +64,14 @@ default direction (Auto, left-to-right, or right-to-left). Changing either affec
 that still use the global default. Titles read before this update retain their previous
 saved layout; unopened titles follow the new default.
 
+Reading position and read status are separate. Use a title's menu to mark it read or
+unread without moving its saved page. A series menu can mark every currently imported
+issue read or unread; any newly imported issue starts unread, so a previously caught-up
+series will show its new unread count. A rediscovered moved issue retains its status.
+Moving forward past the end of an issue marks it read. In continuous mode, scrolling
+through its bottom or forward into the next issue does the same. Jumping straight to
+its last page or previewing it does not mark it read.
+
 ## Controls
 
 | Gesture or control | Result |

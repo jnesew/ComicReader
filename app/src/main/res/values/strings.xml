@@ -58,10 +58,12 @@
     <string name="filter_completed">Completed</string>
     <string name="filter_favorites">Favorites</string>
     <string name="cover_description">Cover of %1$s</string>
-    <string name="comic_accessibility_progress">%1$s, %2$d percent complete</string>
+    <string name="comic_accessibility_progress">%1$s, reading position %2$d percent</string>
     <string name="comic_page_progress">Page %1$d / %2$d</string>
     <string name="comic_status_new">New</string>
     <string name="comic_status_completed">Completed</string>
+    <string name="comic_mark_read">Mark read</string>
+    <string name="comic_mark_unread">Mark unread</string>
     <string name="comic_status_indexing">Indexing…</string>
     <string name="comic_status_unavailable">Source unavailable</string>
     <string name="comic_options">Comic options</string>
@@ -84,6 +86,13 @@
         <item quantity="one">%1$d unavailable</item>
         <item quantity="other">%1$d unavailable</item>
     </plurals>
+    <plurals name="series_unread_issue_count">
+        <item quantity="one">%1$d unread</item>
+        <item quantity="other">%1$d unread</item>
+    </plurals>
+    <string name="series_caught_up">Caught up</string>
+    <string name="series_mark_read">Mark series read</string>
+    <string name="series_mark_unread">Mark series unread</string>
     <string name="series_options">Series options</string>
     <string name="series_edit_assignment">Edit series…</string>
     <string name="comic_edit">Edit comic…</string>
