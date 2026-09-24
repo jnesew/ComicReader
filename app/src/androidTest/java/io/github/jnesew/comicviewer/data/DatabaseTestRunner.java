@@ -252,6 +252,19 @@ public final class DatabaseTestRunner extends Instrumentation {
         equal("new", db.scannedFile("old-source").canonicalUri);
         equal(1, db.library("", LibraryDatabase.SORT_RECENT,
                 LibraryDatabase.FILTER_COMPLETED).size());
+
+        db.ensureImported("manual", "Picked issue", 100, 200);
+        db.markManualSource("manual");
+        db.setLibraryFingerprint("manual", 100, "manual-prefix", "manual-full");
+        db.toggleBookmark("manual", 1);
+        LibraryDatabase.ScannedFile discovered = source("moved-manual", 40);
+        discovered.documentSize = 100; discovered.documentModified = 200;
+        discovered.sampleSignature = "manual-prefix";
+        discovered.contentFingerprint = "manual-full";
+        check(db.reconnectByFingerprint("manual", null, discovered));
+        check(db.get("manual").uri.isEmpty());
+        check(!db.get("moved-manual").manualSource);
+        check(db.isBookmarked("moved-manual", 1));
     }
 
     private void unverifiedReconnection() {
