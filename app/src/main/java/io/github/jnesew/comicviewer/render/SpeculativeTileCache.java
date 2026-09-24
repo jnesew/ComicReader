@@ -7,18 +7,28 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.LongSupplier;
 
 /** One byte ceiling shared by all renderers in a reader session. Entries are evicted before visible tiles. */
 public final class SpeculativeTileCache {
     private final LinkedHashMap<Key, Bitmap> entries = new LinkedHashMap<>(16, .75f, true);
     private final long heapBytes;
+    private final LongSupplier availableHeapBytes;
     private long limitBytes;
     private long usedBytes;
     private final Semaphore decodeSlot = new Semaphore(1);
     private final AtomicInteger visibleWaiting = new AtomicInteger();
 
     public SpeculativeTileCache(long heapBytes, String level) {
+        this(heapBytes, level, () -> {
+            Runtime runtime = Runtime.getRuntime();
+            return runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory());
+        });
+    }
+
+    public SpeculativeTileCache(long heapBytes, String level, LongSupplier availableHeapBytes) {
         this.heapBytes = heapBytes;
+        this.availableHeapBytes = availableHeapBytes;
         setLevel(level);
     }
 
@@ -34,8 +44,9 @@ public final class SpeculativeTileCache {
     public void visibleQueued() { visibleWaiting.incrementAndGet(); }
     public void visibleFinished() { visibleWaiting.decrementAndGet(); }
     public boolean beginSpeculativeDecode() {
-        if (!enabled() || visibleWaiting.get() != 0 || !decodeSlot.tryAcquire()) return false;
-        if (visibleWaiting.get() == 0) return true;
+        if (!enabled() || !hasHeapRoom() || visibleWaiting.get() != 0 ||
+                !decodeSlot.tryAcquire()) return false;
+        if (visibleWaiting.get() == 0 && hasHeapRoom()) return true;
         decodeSlot.release();
         return false;
     }
@@ -53,6 +64,10 @@ public final class SpeculativeTileCache {
 
     public synchronized void put(Object owner, String key, Bitmap bitmap) {
         if (bitmap == null || bitmap.isRecycled() || limitBytes == 0L) return;
+        if (!hasHeapRoom()) {
+            clear();
+            return;
+        }
         long size = bitmap.getAllocationByteCount();
         if (size > limitBytes) return;
         Key id = new Key(owner, key);
@@ -85,6 +100,11 @@ public final class SpeculativeTileCache {
             usedBytes -= entry.getValue().getAllocationByteCount();
             iterator.remove();
         }
+    }
+
+    private boolean hasHeapRoom() {
+        return availableHeapBytes.getAsLong() >=
+                Math.max(16L * 1024L * 1024L, heapBytes / 10L);
     }
 
     private record Key(Object owner, String tile) { }

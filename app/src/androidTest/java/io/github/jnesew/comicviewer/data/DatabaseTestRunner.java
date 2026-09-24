@@ -288,8 +288,10 @@ public final class DatabaseTestRunner extends Instrumentation {
     }
 
     private void speculativeCache() {
+        java.util.concurrent.atomic.AtomicLong availableHeap =
+                new java.util.concurrent.atomic.AtomicLong(Long.MAX_VALUE);
         SpeculativeTileCache cache = new SpeculativeTileCache(512L * 1024L * 1024L,
-                BufferingPolicy.INCREASED);
+                BufferingPolicy.INCREASED, availableHeap::get);
         Object firstOwner = new Object();
         Object secondOwner = new Object();
         android.graphics.Bitmap tile = android.graphics.Bitmap.createBitmap(
@@ -304,6 +306,10 @@ public final class DatabaseTestRunner extends Instrumentation {
             long retained = cache.usedBytes();
             cache.removeOwner(firstOwner);
             check(cache.usedBytes() <= retained);
+            availableHeap.set(0L);
+            check(!cache.beginSpeculativeDecode());
+            cache.put(secondOwner, "under-pressure", tile);
+            equal(0L, cache.usedBytes());
             cache.setLevel(BufferingPolicy.STANDARD);
             equal(0L, cache.usedBytes());
             check(!cache.enabled());
