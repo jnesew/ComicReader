@@ -209,6 +209,10 @@ public final class ReaderOptionsDialog {
         };
         RadioGroup bufferingChoices = addChoices(options, R.string.option_buffering,
                 bufferingValues, bufferingLabels, preferences.bufferingLevel());
+        TextView bufferingHint = Ui.text(context,
+                context.getString(R.string.option_buffering_description), 13, Ui.TEXT_MUTED);
+        bufferingHint.setPadding(0, 0, 0, Ui.dp(context, 6));
+        options.addView(bufferingHint);
 
         TextView backgroundColor = optionsButton(R.string.reader_background_color);
         backgroundColor.setOnClickListener(view -> showCanvasThemes());

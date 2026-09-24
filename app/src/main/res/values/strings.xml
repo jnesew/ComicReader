@@ -216,6 +216,7 @@
     <string name="option_default_layout">Default page layout</string>
     <string name="option_default_direction">Default reading direction</string>
     <string name="option_buffering">Page buffering</string>
+    <string name="option_buffering_description">Higher levels prepare more pages and use more memory.</string>
     <string name="buffering_standard">Standard</string>
     <string name="buffering_increased">Increased</string>
     <string name="buffering_high">High</string>

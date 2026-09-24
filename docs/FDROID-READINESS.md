@@ -26,7 +26,8 @@ still versionName 1.1.0/versionCode 3 until a release is selected.
    is supplementary.
 2. Finish R5 delegates after that baseline passes; run the identical harness afterward.
 3. Run unit tests, release lint/build, clean-checkout reproducibility and device regression
-   checks. The local direct SDK build is compilation evidence, not the canonical release.
+   checks, including the comparison in `BUFFERING-DEVICE-CHECKS.md`. The local direct SDK build
+   is compilation evidence, not the canonical release.
 4. Complete the remaining screenshot-source checks in STORE-ASSETS.md and inspect the
    pinned AGP 8.13.2 POM/NOTICE in the build environment.
 5. Choose the release version/code above all previously distributed versions, finalize

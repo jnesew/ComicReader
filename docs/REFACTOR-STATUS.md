@@ -62,18 +62,20 @@ This validates that script path, not the pending canonical Gradle/signature comp
 
 ## Verification limits
 
-Pinned Gradle 8.14.4 is not cached and network download is unavailable here.
-Direct SDK builds use installed Java 17 compiler modules and Android SDK 36,
-Build Tools 35.0.1. They verify compilation but do not replace lintRelease,
-R8/resource-shrunk release testing, or F-Droid reproducibility.
-No Android device/emulator is attached. Dialog, grid and lifecycle device checks
+Pinned Gradle 8.14.4 and the Android SDK are unavailable in the current workspace.
+GitHub Actions runs pinned unit tests, lint, unsigned release builds, instrumentation
+APK packaging and independent-checkout reproducibility for feature PRs. An earlier
+direct SDK build is historical evidence only; remote CI covers compilation and release
+packaging but not F-Droid's signed candidate comparison.
+No Android device/emulator is attached. The twelve instrumentation cases and reader
+dialog, grid, renderer and lifecycle device checks
 remain required. No release/signing/production branch changes were made.
 
 ## Remaining
 
 - Run the actual Android database baseline, extract the R5 delegates, rerun that suite.
-- Run final pinned Gradle lint/build and instrumentation packaging, plus release-device
-  coverage. The successful remote CI runs above cover R1/R2 only.
+- Run final pinned Gradle lint/build and instrumentation packaging on the integrated
+  release candidate, plus connected instrumentation and release-device coverage.
 - Complete the exact screenshot-source inventory and pinned AGP artifact notice check.
 - Select release version/code, verify the real signing certificate, test the recipe and
   signed candidate against the independent F-Droid rebuild, then submit when authorized.

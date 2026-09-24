@@ -608,14 +608,14 @@ public final class ComicCanvasView extends View {
         float x = (getWidth() - pageWidth) / 2f + continuousPanX;
         java.util.Map<TileRenderer, List<TileRenderer.PageRequest>> nearby =
                 new java.util.LinkedHashMap<>();
-        addOffscreenPages(nearby, Math.min(continuousLayout.documentHeight(),
-                documentScroll + height), end, x, pageWidth,
-                new RectF(0f, height, getWidth(), height * (ahead + 1)));
         if (start < documentScroll) {
             addOffscreenPages(nearby, start, documentScroll, x, pageWidth,
                     new RectF(0f, -height * BufferingPolicy.behindViewports(bufferingLevel),
                             getWidth(), 0f));
         }
+        addOffscreenPages(nearby, Math.min(continuousLayout.documentHeight(),
+                documentScroll + height), end, x, pageWidth,
+                new RectF(0f, height, getWidth(), height * (ahead + 1)));
         long signature = (((long) (documentScroll / Math.max(1f, height / 2f))) << 32) ^
                 Float.floatToIntBits(continuousZoom) ^ (((long) getWidth()) << 16) ^
                 pageMap.size();

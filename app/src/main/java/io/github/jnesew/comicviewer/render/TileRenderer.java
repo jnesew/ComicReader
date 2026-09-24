@@ -314,9 +314,10 @@ public final class TileRenderer implements AutoCloseable {
                     : RASTER_TILE_SIZE * sample;
             for (int tileY = top / sourceTile; tileY <= (bottom - 1) / sourceTile; tileY++) {
                 for (int tileX = left / sourceTile; tileX <= (right - 1) / sourceTile; tileX++) {
-                    if (considered++ >= maxTiles) return;
+                    if (considered >= maxTiles) return;
                     String key = key(request.page, sample, renderScale, tileX, tileY);
                     if (tiles.get(key) != null || speculativeTiles.contains(this, key)) continue;
+                    considered++;
                     int x = tileX * sourceTile;
                     int y = tileY * sourceTile;
                     requestTile(key, request.page, sample, renderScale,
@@ -418,7 +419,6 @@ public final class TileRenderer implements AutoCloseable {
                         if (speculative) {
                             prefetchGeneration.publishIfCurrent(epoch,
                                     () -> speculativeTiles.put(TileRenderer.this, key, decoded));
-                            if (seenVisible) mainHandler.post(invalidator);
                         } else {
                             tiles.put(key, decoded);
                             mainHandler.post(invalidator);
@@ -431,7 +431,6 @@ public final class TileRenderer implements AutoCloseable {
                 if (!speculative) reportError(context.getString(R.string.error_tile_memory));
             } catch (IOException | RuntimeException error) {
                 if (!speculative) reportError(context.getString(R.string.error_render_page, pageIndex + 1));
-                else if (seenVisible) mainHandler.post(invalidator);
             } finally {
                 if (slot) speculativeTiles.endSpeculativeDecode();
                 if (speculative && seenVisible && !closed) mainHandler.post(invalidator);
