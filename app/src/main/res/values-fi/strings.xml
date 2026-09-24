@@ -215,6 +215,11 @@
     <string name="option_default_zoom_app">Sovelluksen oletus (sovita leveyteen)</string>
     <string name="option_default_layout">Sivuasettelun oletus</string>
     <string name="option_default_direction">Lukusuunnan oletus</string>
+    <string name="option_buffering">Sivujen esilataus</string>
+    <string name="option_buffering_description">Suuremmat asetukset valmistelevat lisää sivuja ja käyttävät enemmän muistia.</string>
+    <string name="buffering_standard">Tavallinen</string>
+    <string name="buffering_increased">Lisätty</string>
+    <string name="buffering_high">Suuri</string>
     <string name="option_keep_screen_awake">Pidä näyttö päällä lukemisen aikana</string>
     <string name="option_auto_hide_controls">Piilota lukijan säätimet automaattisesti</string>
     <string name="shortcuts_instruction">Napauta toimintoa ja paina sitten ulkoisen näppäimistön näppäintä.</string>

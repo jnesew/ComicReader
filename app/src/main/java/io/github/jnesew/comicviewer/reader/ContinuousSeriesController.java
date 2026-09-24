@@ -220,7 +220,8 @@ final class ContinuousSeriesController {
                     session.context,
                     readyDocument,
                     session.reader.canvas::postInvalidateOnAnimation,
-                    message -> Toast.makeText(session.context, message, Toast.LENGTH_LONG).show());
+                    message -> Toast.makeText(session.context, message, Toast.LENGTH_LONG).show(),
+                    session.speculativeTiles);
             DocumentResources resource = new DocumentResources(
                     readyDocument, openedRenderer, activated);
             session.mainHandler.post(() -> {
@@ -260,7 +261,8 @@ final class ContinuousSeriesController {
         item.readingMode = ComicCanvasView.CONTINUOUS;
         ComicDocument notice = new io.github.jnesew.comicviewer.document.UnavailableComicDocument(item);
         TileRenderer renderer = new TileRenderer(session.context, notice,
-                session.reader.canvas::postInvalidateOnAnimation, message -> { });
+                session.reader.canvas::postInvalidateOnAnimation, message -> { },
+                session.speculativeTiles);
         continuousResources.put(uriKey, new DocumentResources(notice, renderer, item));
         refreshContinuousDocuments(session.document().key(), session.reader.canvas.page(), session.reader.canvas.pageRatio());
     }

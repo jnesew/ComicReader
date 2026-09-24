@@ -9,6 +9,7 @@ import io.github.jnesew.comicviewer.R;
 import io.github.jnesew.comicviewer.model.OpeningZoomPolicy;
 import io.github.jnesew.comicviewer.model.ReaderDefaults;
 import io.github.jnesew.comicviewer.model.ReadingDirection;
+import io.github.jnesew.comicviewer.render.BufferingPolicy;
 
 import java.util.LinkedHashMap;
 
@@ -76,6 +77,14 @@ public final class ReaderPreferences {
 
     public void setDefaultReadingDirection(String value) {
         values.edit().putString("default_reading_direction", ReadingDirection.normalize(value)).apply();
+    }
+
+    public String bufferingLevel() {
+        return BufferingPolicy.normalize(values.getString("buffering_level", BufferingPolicy.STANDARD));
+    }
+
+    public void setBufferingLevel(String level) {
+        values.edit().putString("buffering_level", BufferingPolicy.normalize(level)).apply();
     }
 
     public boolean keepScreenOn() {

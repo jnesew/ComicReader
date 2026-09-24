@@ -449,6 +449,7 @@ public final class ReaderController implements ReaderScreen.Listener, ComicCanva
                 session.preferences.setDefaultZoomMode(options.defaultZoom());
                 session.preferences.setDefaultReadingLayout(options.defaultLayout());
                 session.preferences.setDefaultReadingDirection(options.defaultDirection());
+                session.setBufferingLevel(options.bufferingLevel());
                 if (session.readerActive && session.progress() != null && session.document() != null) {
                     if (!session.progress().readingModeOverride) {
                         changeReadingLayout(options.defaultLayout(), false);

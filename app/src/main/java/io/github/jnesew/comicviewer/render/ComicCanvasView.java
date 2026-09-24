@@ -92,6 +92,7 @@ public final class ComicCanvasView extends View {
     private boolean spread;
     private boolean tapZones = true;
     private boolean rightToLeft;
+    private String bufferingLevel = BufferingPolicy.STANDARD;
     private int canvasColor = Color.BLACK;
 
     // Paged transform. zoom is a multiplier relative to fit-width.
@@ -138,6 +139,17 @@ public final class ComicCanvasView extends View {
 
     public void setListener(Listener listener) {
         this.listener = listener;
+    }
+
+    public void setBufferingLevel(String level) {
+        String normalized = BufferingPolicy.normalize(level);
+        if (bufferingLevel.equals(normalized)) return;
+        bufferingLevel = normalized;
+        if (renderer != null) renderer.cancelPrefetch();
+        for (ContinuousDocument item : continuousDocuments) {
+            if (item.renderer != null) item.renderer.cancelPrefetch();
+        }
+        postInvalidateOnAnimation();
     }
 
     public void setDocument(TileRenderer renderer, List<PageInfo> pages, ReadingProgress progress) {
@@ -336,6 +348,7 @@ public final class ComicCanvasView extends View {
     }
 
     public void setRightToLeft(boolean enabled) {
+        if (rightToLeft != enabled && renderer != null) renderer.cancelPrefetch();
         rightToLeft = enabled;
         invalidate();
     }
@@ -358,6 +371,8 @@ public final class ComicCanvasView extends View {
             default -> SINGLE;
         };
         if (readingMode().equals(normalized) || pages.isEmpty()) return;
+        if (renderer != null) renderer.cancelPrefetch();
+        for (ContinuousDocument item : continuousDocuments) item.renderer.cancelPrefetch();
         int anchorPage = page;
         float anchorRatio = pageRatio;
         continuous = CONTINUOUS.equals(normalized);
@@ -383,6 +398,7 @@ public final class ComicCanvasView extends View {
 
     public void showPage(int targetPage, float restoreRatio) {
         if (pages.isEmpty()) return;
+        if (renderer != null) renderer.cancelPrefetch();
         page = continuous
                 ? globalPageFor(continuousDocumentKey(), targetPage)
                 : clamp(targetPage, 0, pages.size() - 1);
@@ -487,6 +503,7 @@ public final class ComicCanvasView extends View {
                     singleY + info.height * singleScale);
             renderer.drawPages(canvas, Collections.singletonList(
                     new TileRenderer.PageRequest(page, destination, clip)));
+            prefetchPaged();
             return;
         }
 
@@ -502,6 +519,45 @@ public final class ComicCanvasView extends View {
         destination.set(rightX, singleY, rightX + rightWidth, singleY + height);
         renderer.drawPages(canvas, java.util.Arrays.asList(left,
                 new TileRenderer.PageRequest(rightPage, destination, clip)));
+        prefetchPaged();
+    }
+
+    private void prefetchPaged() {
+        if (BufferingPolicy.lookaheadViewports(bufferingLevel) == 0) return;
+        int next = navigationTarget(1);
+        if (next == page || next < 0 || next >= pages.size()) return;
+        boolean nextSpread = spread && spreadLayout.endFor(next) > next;
+        float sourceHeight = nextSpread
+                ? Math.max(pages.get(next).height,
+                        pages.get(spreadLayout.endFor(next)).height)
+                : pages.get(next).height;
+        int left = nextSpread ? spreadLayout.leftPage(next, rightToLeft) : next;
+        int right = nextSpread ? spreadLayout.rightPage(next, rightToLeft) : next;
+        float leftWidth = nextSpread ? normalizedPageWidth(left, sourceHeight)
+                : pages.get(next).width;
+        float rightWidth = nextSpread ? normalizedPageWidth(right, sourceHeight) : 0f;
+        float widthGap = nextSpread ? pageGap : 0f;
+        float scale = Math.max(1f, getWidth() - widthGap) / (leftWidth + rightWidth);
+        if (FIT_PAGE.equals(zoomMode)) scale = Math.min(scale, getHeight() / sourceHeight);
+        if (MANUAL.equals(zoomMode)) scale *= clamp(zoom, .1f, 12f);
+        ArrayList<TileRenderer.PageRequest> requests = new ArrayList<>();
+        int count = BufferingPolicy.HIGH.equals(bufferingLevel) && nextSpread ? 2 : 1;
+        for (int offset = 0; offset < count; offset++) {
+            int target = offset == 0 ? next : spreadLayout.endFor(next);
+            float displayedWidth = nextSpread
+                    ? normalizedPageWidth(target, sourceHeight) * scale
+                    : pages.get(target).width * scale;
+            float x = target == right && nextSpread ? leftWidth * scale + widthGap : 0f;
+            RectF future = new RectF(x, 0f, x + displayedWidth, sourceHeight * scale);
+            requests.add(new TileRenderer.PageRequest(target, future,
+                    new RectF(0f, 0f, getWidth(), getHeight())));
+        }
+        renderer.prefetchPages(requests,
+                (((long) page) << 32) ^ Float.floatToIntBits(zoom) ^
+                        (((long) getWidth()) << 16) ^ getHeight() ^
+                        (rightToLeft ? 0x512L : 0L) ^ (spread ? 0x924L : 0L) ^
+                        zoomMode.hashCode(),
+                BufferingPolicy.queuedTiles(bufferingLevel));
     }
 
     private void drawContinuous(Canvas canvas) {
@@ -536,6 +592,56 @@ public final class ComicCanvasView extends View {
         for (java.util.Map.Entry<TileRenderer, List<TileRenderer.PageRequest>> entry :
                 requests.entrySet()) {
             entry.getKey().drawPages(canvas, entry.getValue());
+        }
+        prefetchContinuous();
+    }
+
+    private void prefetchContinuous() {
+        int ahead = BufferingPolicy.lookaheadViewports(bufferingLevel);
+        if (ahead == 0) return;
+        float height = getHeight();
+        float end = Math.min(continuousLayout.documentHeight(),
+                documentScroll + height * (1f + ahead));
+        float start = Math.max(0f,
+                documentScroll - height * BufferingPolicy.behindViewports(bufferingLevel));
+        float pageWidth = contentWidth() * continuousZoom;
+        float x = (getWidth() - pageWidth) / 2f + continuousPanX;
+        java.util.Map<TileRenderer, List<TileRenderer.PageRequest>> nearby =
+                new java.util.LinkedHashMap<>();
+        if (start < documentScroll) {
+            addOffscreenPages(nearby, start, documentScroll, x, pageWidth,
+                    new RectF(0f, -height * BufferingPolicy.behindViewports(bufferingLevel),
+                            getWidth(), 0f));
+        }
+        addOffscreenPages(nearby, Math.min(continuousLayout.documentHeight(),
+                documentScroll + height), end, x, pageWidth,
+                new RectF(0f, height, getWidth(), height * (ahead + 1)));
+        long signature = (((long) (documentScroll / Math.max(1f, height / 2f))) << 32) ^
+                Float.floatToIntBits(continuousZoom) ^ (((long) getWidth()) << 16) ^
+                pageMap.size();
+        for (java.util.Map.Entry<TileRenderer, List<TileRenderer.PageRequest>> item :
+                nearby.entrySet()) {
+            item.getKey().prefetchPages(item.getValue(), signature,
+                    BufferingPolicy.queuedTiles(bufferingLevel));
+        }
+    }
+
+    private void addOffscreenPages(
+            java.util.Map<TileRenderer, List<TileRenderer.PageRequest>> requests,
+            float start, float end, float x, float width, RectF requestedClip) {
+        if (end <= start || continuousLayout.size() == 0) return;
+        int first = continuousLayout.pageAt(start);
+        int last = continuousLayout.pageAt(end);
+        for (int index = first; index <= last; index++) {
+            TileRenderer pageRenderer = rendererForPage(index);
+            if (pageRenderer == null || pageRenderer.isUnavailable()) continue;
+            float top = continuousLayout.top(index) - documentScroll;
+            RectF future = new RectF(x, top, x + width,
+                    top + continuousLayout.height(index));
+            requests.computeIfAbsent(pageRenderer, key -> new ArrayList<>()).add(
+                    new TileRenderer.PageRequest(
+                            index < pageMap.size() ? pageMap.localPageFor(index) : index,
+                            future, requestedClip));
         }
     }
 
