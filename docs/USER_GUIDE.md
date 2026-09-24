@@ -49,6 +49,11 @@ pages alone, pairs subsequent portrait pages, and reverses their visible sides f
 is intended for tall strips: width is constrained while the page retains its full scrollable
 height.
 
+**Reader options → Page buffering** offers Standard (the original behavior), Increased (roughly
+one screen ahead), and High (up to three screens ahead with some behind). Extra decoding and
+memory use depend on available heap; on memory-limited devices, higher settings may prepare fewer
+tiles or behave like Standard. The setting never changes saved reading position or read status.
+
 In paged modes, advancing beyond the final page or spread opens the next issue, while moving back
 from the first page opens the final page or spread of the previous issue. Android's system Back
 action still returns to the library. Continuous mode buffers the adjacent issues and ordinary

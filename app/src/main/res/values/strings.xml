@@ -215,6 +215,10 @@
     <string name="option_default_zoom_app">App default (Fit width)</string>
     <string name="option_default_layout">Default page layout</string>
     <string name="option_default_direction">Default reading direction</string>
+    <string name="option_buffering">Page buffering</string>
+    <string name="buffering_standard">Standard</string>
+    <string name="buffering_increased">Increased</string>
+    <string name="buffering_high">High</string>
     <string name="option_keep_screen_awake">Keep screen awake while reading</string>
     <string name="option_auto_hide_controls">Auto-hide reader controls</string>
     <string name="shortcuts_instruction">Tap an action, then press a key on an attached keyboard.</string>

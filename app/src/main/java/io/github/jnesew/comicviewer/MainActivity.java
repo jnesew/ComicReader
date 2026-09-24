@@ -186,6 +186,7 @@ public final class MainActivity extends Activity implements
     @Override
     protected void onPause() {
         session.saveNow();
+        session.pauseSpeculative();
         super.onPause();
     }
 

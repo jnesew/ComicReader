@@ -17,6 +17,7 @@ import io.github.jnesew.comicviewer.data.ReaderPreferences;
 import io.github.jnesew.comicviewer.model.OpeningZoomPolicy;
 import io.github.jnesew.comicviewer.model.ReaderDefaults;
 import io.github.jnesew.comicviewer.model.ReadingDirection;
+import io.github.jnesew.comicviewer.render.BufferingPolicy;
 import io.github.jnesew.comicviewer.util.Ui;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -27,7 +28,7 @@ import java.util.function.Consumer;
 /** Settings forms emit commands; their caller applies preferences and live reader changes. */
 public final class ReaderOptionsDialog {
     public record Options(boolean tapZones, boolean volumeNavigation, boolean rememberZoom,
-            String defaultZoom, String defaultLayout, String defaultDirection,
+            String defaultZoom, String defaultLayout, String defaultDirection, String bufferingLevel,
             boolean keepScreenOn, boolean autoHideControls) { }
     public interface Listener {
         void onOptionsSaved(Options options);
@@ -200,6 +201,15 @@ public final class ReaderOptionsDialog {
         RadioGroup directionChoices = addChoices(options, R.string.option_default_direction,
                 directionValues, directionLabels, preferences.defaultReadingDirection());
 
+        String[] bufferingValues = {
+                BufferingPolicy.STANDARD, BufferingPolicy.INCREASED, BufferingPolicy.HIGH
+        };
+        int[] bufferingLabels = {
+                R.string.buffering_standard, R.string.buffering_increased, R.string.buffering_high
+        };
+        RadioGroup bufferingChoices = addChoices(options, R.string.option_buffering,
+                bufferingValues, bufferingLabels, preferences.bufferingLevel());
+
         TextView backgroundColor = optionsButton(R.string.reader_background_color);
         backgroundColor.setOnClickListener(view -> showCanvasThemes());
         options.addView(backgroundColor);
@@ -225,6 +235,7 @@ public final class ReaderOptionsDialog {
                             remember.isChecked(), zoom,
                             selectedChoice(layoutChoices, layoutValues),
                             selectedChoice(directionChoices, directionValues),
+                            selectedChoice(bufferingChoices, bufferingValues),
                             screen.isChecked(), autoHide.isChecked()));
                 })
                 .show();

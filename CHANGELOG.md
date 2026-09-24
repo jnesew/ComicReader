@@ -20,6 +20,8 @@ All notable public changes to ComicViewer for Android are recorded here.
 
 ### Reader
 
+- Added Standard, Increased, and High page buffering settings. Higher levels prepare bounded
+  offscreen tiles; visible pages keep their existing resolution and tile cache budget.
 - Added global default layout and direction with per-title overrides and an automatic option.
 - Completion now follows deliberate forward navigation past the issue end or an explicit read
   action, rather than simply visiting its final page.
