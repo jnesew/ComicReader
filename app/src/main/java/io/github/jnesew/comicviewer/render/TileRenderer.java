@@ -63,8 +63,7 @@ public final class TileRenderer implements AutoCloseable {
     private final SpeculativeTileCache speculativeTiles;
     private final Map<String, TileTask> pending = new HashMap<>();
     private int speculativeQueued;
-    private volatile long prefetchEpoch;
-    private long viewportSignature = Long.MIN_VALUE;
+    private final PrefetchGeneration prefetchGeneration = new PrefetchGeneration();
     private float visibleRenderScale = Float.NaN;
     private final LinkedHashMap<Integer, DecoderHolder> decoders =
             new LinkedHashMap<>(8, 0.75f, true);
@@ -269,6 +268,7 @@ public final class TileRenderer implements AutoCloseable {
     public synchronized void close() {
         if (closed) return;
         closed = true;
+        prefetchGeneration.close();
         cancelPrefetch();
         executor.shutdownNow();
         tiles.evictAll();
@@ -285,10 +285,7 @@ public final class TileRenderer implements AutoCloseable {
     public void prefetchPages(java.util.List<PageRequest> requests, long signature, int maxTiles) {
         if (closed || archive.isUnavailable() || speculativeTiles == null ||
                 !speculativeTiles.enabled() || maxTiles <= 0) return;
-        if (viewportSignature != signature) {
-            cancelPrefetch();
-            viewportSignature = signature;
-        }
+        if (prefetchGeneration.begin(signature)) dropQueuedPrefetch();
         int considered = 0;
         for (PageRequest request : requests) {
             if (considered >= maxTiles || request.destination.width() <= 0f ||
@@ -331,9 +328,12 @@ public final class TileRenderer implements AutoCloseable {
     }
 
     public void cancelPrefetch() {
+        prefetchGeneration.cancel();
+        dropQueuedPrefetch();
+    }
+
+    private void dropQueuedPrefetch() {
         synchronized (pending) {
-            ++prefetchEpoch;
-            viewportSignature = Long.MIN_VALUE;
             for (TileTask task : new ArrayList<>(pending.values())) {
                 if (task.speculative && executor.remove(task)) completeTask(task);
             }
@@ -353,7 +353,7 @@ public final class TileRenderer implements AutoCloseable {
                 } else return;
             }
             TileTask task = new TileTask(key, pageIndex, sample,
-                    renderScale, new Rect(source), speculative, prefetchEpoch,
+                    renderScale, new Rect(source), speculative, prefetchGeneration.current(),
                     taskOrder.incrementAndGet());
             pending.put(key, task);
             if (speculative) speculativeQueued++;
@@ -408,14 +408,16 @@ public final class TileRenderer implements AutoCloseable {
             try {
                 if (closed) return;
                 if (speculative) {
-                    if (epoch != prefetchEpoch || !speculativeTiles.beginSpeculativeDecode()) return;
+                    if (!prefetchGeneration.isCurrent(epoch) ||
+                            !speculativeTiles.beginSpeculativeDecode()) return;
                     slot = true;
                 }
                 Bitmap decoded = decodeTile(pageIndex, sample, renderScale, source);
                 synchronized (TileRenderer.this) {
                     if (decoded != null && !closed) {
                         if (speculative) {
-                            if (epoch == prefetchEpoch) speculativeTiles.put(TileRenderer.this, key, decoded);
+                            prefetchGeneration.publishIfCurrent(epoch,
+                                    () -> speculativeTiles.put(TileRenderer.this, key, decoded));
                             if (seenVisible) mainHandler.post(invalidator);
                         } else {
                             tiles.put(key, decoded);
@@ -475,7 +477,10 @@ public final class TileRenderer implements AutoCloseable {
                 left + 1, holder.fallback.getWidth());
         int bottom = clamp((source.bottom + fallbackSample - 1) / fallbackSample,
                 top + 1, holder.fallback.getHeight());
-        return Bitmap.createBitmap(holder.fallback, left, top, right - left, bottom - top);
+        Bitmap tile = Bitmap.createBitmap(holder.fallback, left, top, right - left, bottom - top);
+        // Android can return the source bitmap for a full-region crop. The decoder holder
+        // recycles its fallback later, so cached tiles must own independent pixels.
+        return tile == holder.fallback ? tile.copy(Bitmap.Config.ARGB_8888, false) : tile;
     }
 
     private DecoderHolder decoderFor(int pageIndex) throws IOException {

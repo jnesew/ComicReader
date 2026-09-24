@@ -8,6 +8,8 @@ import android.os.Bundle;
 import android.util.Log;
 import io.github.jnesew.comicviewer.model.PageInfo;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
+import io.github.jnesew.comicviewer.render.SpeculativeTileCache;
+import io.github.jnesew.comicviewer.render.BufferingPolicy;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -18,7 +20,7 @@ public final class DatabaseTestRunner extends Instrumentation {
     private LibraryDatabase db;
     private int current;
     private int failed;
-    private static final int TOTAL = 11;
+    private static final int TOTAL = 12;
 
     @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
 
@@ -33,6 +35,7 @@ public final class DatabaseTestRunner extends Instrumentation {
         run("explicitReadAndNewSeriesIssues", this::readStatus);
         run("verifiedReconnectionPreservesState", this::verifiedReconnection);
         run("staleOrUnverifiedHashNeverRelinks", this::unverifiedReconnection);
+        run("speculativeCacheEnforcesSharedCeilingAndPromotion", this::speculativeCache);
         run("upgradeVersionOneToTen", this::upgrade);
         Bundle result = new Bundle();
         result.putString("stream", "\n" + (TOTAL - failed) + "/" + TOTAL + " database tests passed\n");
@@ -269,6 +272,32 @@ public final class DatabaseTestRunner extends Instrumentation {
         check(!db.get("old").uri.isEmpty());
         db.forget("old");
         check(!db.retainScannedFingerprint(original, "prefix", "entire-archive"));
+    }
+
+    private void speculativeCache() {
+        SpeculativeTileCache cache = new SpeculativeTileCache(512L * 1024L * 1024L,
+                BufferingPolicy.INCREASED);
+        Object firstOwner = new Object();
+        Object secondOwner = new Object();
+        android.graphics.Bitmap tile = android.graphics.Bitmap.createBitmap(
+                1024, 1024, android.graphics.Bitmap.Config.ARGB_8888);
+        try {
+            for (int i = 0; i < 9; i++) {
+                cache.put(i < 5 ? firstOwner : secondOwner, "tile-" + i, tile);
+                check(cache.usedBytes() <= cache.limitBytes());
+            }
+            check(cache.take(firstOwner, "tile-0") == null);
+            check(cache.take(secondOwner, "tile-8") == tile);
+            long retained = cache.usedBytes();
+            cache.removeOwner(firstOwner);
+            check(cache.usedBytes() <= retained);
+            cache.setLevel(BufferingPolicy.STANDARD);
+            equal(0L, cache.usedBytes());
+            check(!cache.enabled());
+        } finally {
+            cache.clear();
+            tile.recycle();
+        }
     }
 
     private void upgrade() {

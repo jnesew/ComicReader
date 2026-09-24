@@ -43,10 +43,11 @@ already published release/1.1 README/screenshot commits through 8624230.
 - Automatic file reconnection uses cached full hashes for verified moves whose old
   URI is inaccessible. New and existing sources are fingerprinted on bounded workers;
   the SQLite harness now includes two cases for atomic recovery and stale/missing hashes.
-  The 11-case production Android suite still requires a connected device run.
+  The production Android suite still requires a connected device run.
 - Three buffering levels retain Standard's visible tile cache, with a shared speculative
   cache and prioritized per-renderer decode work for the higher levels. Physical-device
   measurements of visual quality, loading flashes and peak memory remain outstanding.
+  A twelfth instrumentation case checks speculative cache eviction and promotion.
 - R6: pure ContinuousPageMap owns issue/local/global indexing and anchor restoration.
   All 91 JVM tests pass, including prepend, eviction, index-count changes, unavailable
   one-page issues, missing anchors and boundary round trips.

@@ -348,6 +348,7 @@ public final class ComicCanvasView extends View {
     }
 
     public void setRightToLeft(boolean enabled) {
+        if (rightToLeft != enabled && renderer != null) renderer.cancelPrefetch();
         rightToLeft = enabled;
         invalidate();
     }
@@ -370,6 +371,8 @@ public final class ComicCanvasView extends View {
             default -> SINGLE;
         };
         if (readingMode().equals(normalized) || pages.isEmpty()) return;
+        if (renderer != null) renderer.cancelPrefetch();
+        for (ContinuousDocument item : continuousDocuments) item.renderer.cancelPrefetch();
         int anchorPage = page;
         float anchorRatio = pageRatio;
         continuous = CONTINUOUS.equals(normalized);
@@ -395,6 +398,7 @@ public final class ComicCanvasView extends View {
 
     public void showPage(int targetPage, float restoreRatio) {
         if (pages.isEmpty()) return;
+        if (renderer != null) renderer.cancelPrefetch();
         page = continuous
                 ? globalPageFor(continuousDocumentKey(), targetPage)
                 : clamp(targetPage, 0, pages.size() - 1);
@@ -522,20 +526,37 @@ public final class ComicCanvasView extends View {
         if (BufferingPolicy.lookaheadViewports(bufferingLevel) == 0) return;
         int next = navigationTarget(1);
         if (next == page || next < 0 || next >= pages.size()) return;
-        int count = BufferingPolicy.HIGH.equals(bufferingLevel) && spread
-                ? 1 + spreadLayout.endFor(next) - next : 1;
+        boolean nextSpread = spread && spreadLayout.endFor(next) > next;
+        float sourceHeight = nextSpread
+                ? Math.max(pages.get(next).height,
+                        pages.get(spreadLayout.endFor(next)).height)
+                : pages.get(next).height;
+        int left = nextSpread ? spreadLayout.leftPage(next, rightToLeft) : next;
+        int right = nextSpread ? spreadLayout.rightPage(next, rightToLeft) : next;
+        float leftWidth = nextSpread ? normalizedPageWidth(left, sourceHeight)
+                : pages.get(next).width;
+        float rightWidth = nextSpread ? normalizedPageWidth(right, sourceHeight) : 0f;
+        float widthGap = nextSpread ? pageGap : 0f;
+        float scale = Math.max(1f, getWidth() - widthGap) / (leftWidth + rightWidth);
+        if (FIT_PAGE.equals(zoomMode)) scale = Math.min(scale, getHeight() / sourceHeight);
+        if (MANUAL.equals(zoomMode)) scale *= clamp(zoom, .1f, 12f);
         ArrayList<TileRenderer.PageRequest> requests = new ArrayList<>();
-        for (int offset = 0; offset < count && next + offset < pages.size(); offset++) {
-            PageInfo info = pages.get(next + offset);
-            float width = Math.max(1f, contentWidth() * zoom);
-            RectF future = new RectF(0f, 0f, width,
-                    Math.max(1f, width * info.height / info.width));
-            requests.add(new TileRenderer.PageRequest(next + offset, future,
+        int count = BufferingPolicy.HIGH.equals(bufferingLevel) && nextSpread ? 2 : 1;
+        for (int offset = 0; offset < count; offset++) {
+            int target = offset == 0 ? next : spreadLayout.endFor(next);
+            float displayedWidth = nextSpread
+                    ? normalizedPageWidth(target, sourceHeight) * scale
+                    : pages.get(target).width * scale;
+            float x = target == right && nextSpread ? leftWidth * scale + widthGap : 0f;
+            RectF future = new RectF(x, 0f, x + displayedWidth, sourceHeight * scale);
+            requests.add(new TileRenderer.PageRequest(target, future,
                     new RectF(0f, 0f, getWidth(), getHeight())));
         }
         renderer.prefetchPages(requests,
                 (((long) page) << 32) ^ Float.floatToIntBits(zoom) ^
-                        (((long) getWidth()) << 16) ^ getHeight(),
+                        (((long) getWidth()) << 16) ^ getHeight() ^
+                        (rightToLeft ? 0x512L : 0L) ^ (spread ? 0x924L : 0L) ^
+                        zoomMode.hashCode(),
                 BufferingPolicy.queuedTiles(bufferingLevel));
     }
 

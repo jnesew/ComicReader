@@ -19,8 +19,9 @@ still versionName 1.1.0/versionCode 3 until a release is selected.
 
 1. Run the actual Android database harness before extracting database delegates:
    `./gradlew --dependency-verification strict connectedDebugAndroidTest`.
-   The production-helper suite now contains eleven cases, including title overrides,
-   explicit read status, verified reconnection and stale-hash rejection. Packaging the
+   The production instrumentation suite now contains twelve cases, including title overrides,
+   explicit read status, verified reconnection, stale-hash rejection and speculative cache
+   eviction. Packaging the
    instrumentation APK does not execute those cases. The existing Python SQL script
    is supplementary.
 2. Finish R5 delegates after that baseline passes; run the identical harness afterward.

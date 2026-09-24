@@ -28,6 +28,8 @@ public final class SpeculativeTileCache {
     }
 
     public synchronized boolean enabled() { return limitBytes > 0L; }
+    public synchronized long usedBytes() { return usedBytes; }
+    public synchronized long limitBytes() { return limitBytes; }
 
     public void visibleQueued() { visibleWaiting.incrementAndGet(); }
     public void visibleFinished() { visibleWaiting.decrementAndGet(); }

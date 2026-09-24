@@ -133,6 +133,9 @@ public final class ReaderSession implements AutoCloseable {
         cancelSpeculative();
         speculativeTiles.clear();
     }
+    public void resumeSpeculative() {
+        if (readerActive && reader != null) reader.canvas.postInvalidateOnAnimation();
+    }
     private void cancelSpeculative() {
         if (active != null && active.renderer != null) active.renderer.cancelPrefetch();
         for (DocumentResources resource : continuous.continuousResources.values()) {

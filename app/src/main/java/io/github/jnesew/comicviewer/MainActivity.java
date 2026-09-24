@@ -193,6 +193,7 @@ public final class MainActivity extends Activity implements
     @Override
     protected void onResume() {
         super.onResume();
+        session.resumeSpeculative();
         if (database != null && !session.isActive()) {
             mainHandler.postDelayed(() -> scans.maybeScanLibraryFolder(false), 350L);
         }
