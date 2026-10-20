@@ -34,18 +34,3 @@ cover match alone never authorizes recovery; files without a retained identity k
 The ownership refactor separates library imports, folder scans, reader controls and open documents,
 with stronger cancellation and stale-result handling. English and Finnish store metadata and
 build-verification tools are prepared for F-Droid.
-
-## Upgrade and validation notes
-
-The application ID remains `io.github.jnesew.comicviewer`. Use the existing signing key to upgrade
-an installed release and retain settings, library state and document grants. This candidate uses
-database schema 10; upgrading from 1.1.0 preserves legacy completion once and existing layout choices.
-
-The user reported a major usability benefit from higher buffering on Pixel 8a. This observation
-does not establish equivalent CPU performance or memory behavior on every 8 GB device. The default
-uses RAM class, with heap budgets and runtime safeguards separately limiting actual work. Android
-low-RAM, low-memory and native-allocation pressure checks remain active for every buffering selection.
-
-Connected Android instrumentation, broader device comparisons and the R5 database baseline remain
-outstanding. R5 delegate extraction and F-Droid signing/recipe/submission checks are separate gates;
-their completion is not claimed by these release notes.
