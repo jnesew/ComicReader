@@ -50,9 +50,11 @@ is intended for tall strips: width is constrained while the page retains its ful
 height.
 
 **Reader options → Page buffering** offers Standard (the original behavior), Increased (roughly
-one screen ahead), and High (up to three screens ahead with some behind). Extra decoding and
-memory use depend on available heap; on memory-limited devices, higher settings may prepare fewer
-tiles or behave like Standard. The setting never changes saved reading position or read status.
+one screen ahead), and High (up to three screens ahead with some behind). **Device default** uses
+High on capable 8 GB-class devices and Standard on smaller devices. An explicit saved choice
+always takes priority; choose Device default to restore automatic selection. Extra preparation
+pauses under memory pressure and while the app is backgrounded. Higher settings may prepare
+fewer tiles on memory-limited devices. Buffering never changes saved position or read status.
 
 In paged modes, advancing beyond the final page or spread opens the next issue, while moving back
 from the first page opens the final page or spread of the previous issue. Android's system Back

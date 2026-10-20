@@ -20,7 +20,7 @@ public final class DatabaseTestRunner extends Instrumentation {
     private LibraryDatabase db;
     private int current;
     private int failed;
-    private static final int TOTAL = 12;
+    private static final int TOTAL = 13;
 
     @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
 
@@ -36,6 +36,7 @@ public final class DatabaseTestRunner extends Instrumentation {
         run("verifiedReconnectionPreservesState", this::verifiedReconnection);
         run("staleOrUnverifiedHashNeverRelinks", this::unverifiedReconnection);
         run("speculativeCacheEnforcesSharedCeilingAndPromotion", this::speculativeCache);
+        run("deviceBufferingDefaultPreservesExplicitChoices", this::bufferingPreferences);
         run("upgradeVersionOneToTen", this::upgrade);
         Bundle result = new Bundle();
         result.putString("stream", "\n" + (TOTAL - failed) + "/" + TOTAL + " database tests passed\n");
@@ -285,6 +286,29 @@ public final class DatabaseTestRunner extends Instrumentation {
         check(!db.get("old").uri.isEmpty());
         db.forget("old");
         check(!db.retainScannedFingerprint(original, "prefix", "entire-archive"));
+    }
+
+    private void bufferingPreferences() {
+        String file = "buffering-preference-instrumentation";
+        android.content.Context context = getTargetContext();
+        context.deleteSharedPreferences(file);
+        try {
+            ReaderPreferences capable = new ReaderPreferences(context, file, BufferingPolicy.HIGH);
+            equal(BufferingPolicy.DEVICE_DEFAULT, capable.bufferingChoice());
+            equal(BufferingPolicy.HIGH, capable.bufferingLevel());
+            capable.setBufferingLevel(BufferingPolicy.STANDARD);
+            equal(BufferingPolicy.STANDARD,
+                    new ReaderPreferences(context, file, BufferingPolicy.HIGH).bufferingLevel());
+            capable.setBufferingLevel(BufferingPolicy.INCREASED);
+            equal(BufferingPolicy.INCREASED,
+                    new ReaderPreferences(context, file, BufferingPolicy.STANDARD).bufferingLevel());
+            capable.setBufferingLevel(BufferingPolicy.DEVICE_DEFAULT);
+            equal(BufferingPolicy.HIGH, capable.bufferingLevel());
+            equal(BufferingPolicy.STANDARD,
+                    new ReaderPreferences(context, file, BufferingPolicy.STANDARD).bufferingLevel());
+        } finally {
+            context.deleteSharedPreferences(file);
+        }
     }
 
     private void speculativeCache() {

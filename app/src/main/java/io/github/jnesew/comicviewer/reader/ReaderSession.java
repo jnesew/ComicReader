@@ -75,7 +75,7 @@ public final class ReaderSession implements AutoCloseable {
         this.database = database;
         this.preferences = preferences;
         this.speculativeTiles = new SpeculativeTileCache(
-                Runtime.getRuntime().maxMemory(), preferences.bufferingLevel());
+                context, Runtime.getRuntime().maxMemory(), preferences.bufferingLevel());
         this.imports = imports;
         this.host = host;
     }
@@ -119,21 +119,27 @@ public final class ReaderSession implements AutoCloseable {
         indexing.awaitStopped();
     }
     public void trimMemory() {
-        pauseSpeculative();
+        trimSpeculativeMemory();
         if (pagePreviewLoader != null) pagePreviewLoader.trimMemory();
         trimReaderMemory();
     }
+    public void trimSpeculativeMemory() {
+        cancelSpeculative();
+        speculativeTiles.onMemoryPressure();
+    }
     public void setBufferingLevel(String level) {
         preferences.setBufferingLevel(level);
-        speculativeTiles.setLevel(level);
+        String resolved = preferences.bufferingLevel();
+        speculativeTiles.setLevel(resolved);
         cancelSpeculative();
-        if (reader != null) reader.canvas.setBufferingLevel(level);
+        if (reader != null) reader.canvas.setBufferingLevel(resolved);
     }
     public void pauseSpeculative() {
+        speculativeTiles.setForeground(false);
         cancelSpeculative();
-        speculativeTiles.clear();
     }
     public void resumeSpeculative() {
+        speculativeTiles.setForeground(true);
         if (readerActive && reader != null) reader.canvas.postInvalidateOnAnimation();
     }
     private void cancelSpeculative() {

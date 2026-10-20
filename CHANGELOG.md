@@ -2,15 +2,38 @@
 
 All notable public changes to ComicViewer for Android are recorded here.
 
-## Unreleased
+## 1.2.0 - Unreleased
+
+### Reader
+
+- Added Standard, Increased and High page buffering. Device default selects High on non-low-RAM
+  devices in the 8 GB memory class with at least a 256 MiB app heap, based on Pixel 8a user testing.
+  Smaller devices use Standard; explicit saved choices take priority.
+- Added a Device default option to restore automatic buffering selection. Backgrounding suspends
+  speculative work; Java heap, native allocation and system pressure checks limit extra decoding.
+- Added global layout and reading-direction defaults, with per-title overrides and inheritance.
+- Completion follows deliberate forward navigation beyond an issue or an explicit read action,
+  independently of the saved page position.
 
 ### Library
 
-- Rescans can automatically reconnect an unavailable issue after a verified full-content match,
-  retaining saved position, read status, bookmarks, favorites and metadata edits. Small existing
-  imports gain fingerprints gradually through bounded background work.
-- Added explicit read/unread actions for issues and complete series, with unread and caught-up
-  series counts. New issues in an already-read series remain unread.
+- Added read/unread actions for individual issues and complete series, with unread and caught-up
+  counts. Newly imported issues remain unread in an already-read series.
+- Rescans can reconnect moved, unavailable comics after a verified full-content match, preserving
+  positions, read status, bookmarks, favorites and metadata edits. Fingerprints for accessible
+  imports up to 128 MiB are retained through bounded background work.
+
+### Maintenance
+
+- Separated library imports/scans, reader controls, indexing and open-document ownership, with
+  cancellation and stale-completion checks. Database delegate extraction remains a separate
+  follow-up pending the connected Android baseline.
+- Prepared English/Finnish store metadata, release notes and build-verification tools for F-Droid.
+
+## 1.1.0 - 2026-09-08
+
+### Library
+
 - Added consistent forget actions for unavailable titles and complete series, including explicit
   confirmation that comic files are never deleted.
 - Added a review-and-remove flow for entries proven missing by a complete folder scan. Titles made
@@ -20,11 +43,6 @@ All notable public changes to ComicViewer for Android are recorded here.
 
 ### Reader
 
-- Added Standard, Increased, and High page buffering settings. Higher levels prepare bounded
-  offscreen tiles; visible pages keep their existing resolution and tile cache budget.
-- Added global default layout and direction with per-title overrides and an automatic option.
-- Completion now follows deliberate forward navigation past the issue end or an explicit read
-  action, rather than simply visiting its final page.
 - Failed opening/retry attempts preserve saved titles, grouping, availability, and page indexes.
 - Extend visible-frame tile budgeting to CBZ/raster images and avoid offscreen high-resolution
   tile requests that compete with currently visible pages.

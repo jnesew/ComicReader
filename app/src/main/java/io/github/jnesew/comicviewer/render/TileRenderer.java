@@ -426,7 +426,7 @@ public final class TileRenderer implements AutoCloseable {
                     }
                 }
             } catch (OutOfMemoryError error) {
-                if (speculativeTiles != null) speculativeTiles.clear();
+                if (speculativeTiles != null) speculativeTiles.onMemoryPressure();
                 tiles.evictAll();
                 if (!speculative) reportError(context.getString(R.string.error_tile_memory));
             } catch (IOException | RuntimeException error) {

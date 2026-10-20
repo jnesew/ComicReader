@@ -28,6 +28,6 @@ Pepper & Carrot episode 10 (David Revoy et al., CC BY 4.0), and the original Sig
 the Rain sample (CC0). They are not bundled as comics or added to this store selection.
 
 The [F-Droid metadata guide](https://f-droid.org/en/docs/All_About_Descriptions_Graphics_and_Screenshots/)
-describes the locale directory layout. Add the final release notes as
-`<locale>/changelogs/<versionCode>.txt` before tagging; do not label this unreleased
-refactor as versionCode 3, which belongs to the already released v1.1.0.
+describes the locale directory layout. The 1.2.0 candidate now includes localized
+`<locale>/changelogs/4.txt` entries. Review them before tagging; code 3 belongs to the
+already released v1.1.0.

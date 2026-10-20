@@ -232,9 +232,15 @@ public final class MainActivity extends Activity implements
     @Override
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
+        if (level == ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            session.pauseSpeculative();
+            return;
+        }
         if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
             home.trimCoverCache();
             session.trimMemory();
+        } else if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE) {
+            session.trimSpeculativeMemory();
         }
     }
 

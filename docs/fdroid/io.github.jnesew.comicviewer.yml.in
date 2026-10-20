@@ -15,8 +15,8 @@ AllowedAPKSigningKeys:
   - REPLACE_WITH_VERIFIED_CERTIFICATE_SHA256
 
 Builds:
-  - versionName: REPLACE_WITH_VERSION_NAME
-    versionCode: REPLACE_WITH_VERSION_CODE
+  - versionName: 1.2.0
+    versionCode: 4
     commit: REPLACE_WITH_FULL_COMMIT_SHA
     subdir: app
     gradle:
@@ -27,5 +27,5 @@ Builds:
 AutoUpdateMode: Version v%v
 UpdateCheckMode: Tags ^v[0-9]+\.[0-9]+\.[0-9]+$
 UpdateCheckData: 'gradle.properties|comicViewerVersionCode=(\d+)|.|comicViewerVersionName=([0-9.]+)'
-CurrentVersion: REPLACE_WITH_VERSION_NAME
-CurrentVersionCode: REPLACE_WITH_VERSION_CODE
+CurrentVersion: 1.2.0
+CurrentVersionCode: 4

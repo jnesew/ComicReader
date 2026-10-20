@@ -13,9 +13,13 @@ accounts, ads, analytics, subscriptions, network access, or broad storage permis
 - Single-page, cover-aware two-page spread, and memory-conscious continuous-scroll reading
 - Fit width, fit page, actual size, pinch zoom, double-tap zoom, and tiled rendering
 - Per-title progress, custom titles, zoom, scroll position, reading direction, bookmarks, and favorites
+- Read/unread actions and series unread counts, including newly imported issues
+- Selectable page buffering with a High device default on capable 8 GB-class phones
+- Global layout and direction defaults with per-title overrides
 - Seamless continuous scrolling and symmetric first/last-page navigation across series issues
 - Searchable cover library with filters, sorting, configurable density, and cached covers
 - Optional recursive scanning of one user-selected library folder
+- Verified automatic reconnection of moved comics when their full content identity was retained
 - Series grouping from conservative metadata or folder structure, with per-comic correction
 - Page previews while scrubbing, natural page ordering, and direct “open with” support
 - English and Finnish interface resources

@@ -216,7 +216,8 @@
     <string name="option_default_layout">Default page layout</string>
     <string name="option_default_direction">Default reading direction</string>
     <string name="option_buffering">Page buffering</string>
-    <string name="option_buffering_description">Higher levels prepare more pages and use more memory.</string>
+    <string name="option_buffering_description">Device default uses High on capable 8 GB-class devices and Standard on smaller devices. Extra page preparation pauses when memory is low.</string>
+    <string name="buffering_device_default">Device default</string>
     <string name="buffering_standard">Standard</string>
     <string name="buffering_increased">Increased</string>
     <string name="buffering_high">High</string>

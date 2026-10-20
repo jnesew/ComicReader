@@ -48,6 +48,11 @@ already published release/1.1 README/screenshot commits through 8624230.
   cache and prioritized per-renderer decode work for the higher levels. Physical-device
   measurements of visual quality, loading flashes and peak memory remain outstanding.
   A twelfth instrumentation case checks speculative cache eviction and promotion.
+- The user reports a major benefit from higher buffering on Pixel 8a. High is now the device
+  default for non-low-RAM devices in the 8 GB class with an app heap of at least 256 MiB;
+  saved overrides remain intact. Added native/system pressure guards, background suspension,
+  a pressure cooldown and tests for preference persistence and pressure recovery.
+- Prepared version 1.2.0/code 4 and localized release notes; no release has been published.
 - R6: pure ContinuousPageMap owns issue/local/global indexing and anchor restoration.
   All 91 JVM tests pass, including prepend, eviction, index-count changes, unavailable
   one-page issues, missing anchors and boundary round trips.
@@ -67,7 +72,7 @@ GitHub Actions runs pinned unit tests, lint, unsigned release builds, instrument
 APK packaging and independent-checkout reproducibility for feature PRs. An earlier
 direct SDK build is historical evidence only; remote CI covers compilation and release
 packaging but not F-Droid's signed candidate comparison.
-No Android device/emulator is attached. The twelve instrumentation cases and reader
+No Android device/emulator is attached. The thirteen instrumentation cases and reader
 dialog, grid, renderer and lifecycle device checks
 remain required. No release/signing/production branch changes were made.
 
@@ -77,7 +82,7 @@ remain required. No release/signing/production branch changes were made.
 - Run final pinned Gradle lint/build and instrumentation packaging on the integrated
   release candidate, plus connected instrumentation and release-device coverage.
 - Complete the exact screenshot-source inventory and pinned AGP artifact notice check.
-- Select release version/code, verify the real signing certificate, test the recipe and
+- Confirm candidate 1.2.0/code 4, verify the real signing certificate, test the recipe and
   signed candidate against the independent F-Droid rebuild, then submit when authorized.
 - The user explicitly authorized uploading the refactor commits to
   jnesew/ComicReader on refactor/reader-library-ownership after the initial automatic

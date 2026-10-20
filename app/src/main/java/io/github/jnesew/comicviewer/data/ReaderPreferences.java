@@ -10,15 +10,22 @@ import io.github.jnesew.comicviewer.model.OpeningZoomPolicy;
 import io.github.jnesew.comicviewer.model.ReaderDefaults;
 import io.github.jnesew.comicviewer.model.ReadingDirection;
 import io.github.jnesew.comicviewer.render.BufferingPolicy;
+import io.github.jnesew.comicviewer.render.AndroidBufferingMemory;
 
 import java.util.LinkedHashMap;
 
 public final class ReaderPreferences {
     private static final String FILE = "reader_preferences";
     private final SharedPreferences values;
+    private final String deviceBufferingDefault;
 
     public ReaderPreferences(Context context) {
-        values = context.getSharedPreferences(FILE, Context.MODE_PRIVATE);
+        this(context, FILE, AndroidBufferingMemory.deviceDefault(context));
+    }
+
+    ReaderPreferences(Context context, String preferenceFile, String deviceBufferingDefault) {
+        values = context.getSharedPreferences(preferenceFile, Context.MODE_PRIVATE);
+        this.deviceBufferingDefault = BufferingPolicy.normalize(deviceBufferingDefault);
     }
 
     public boolean tapZones() {
@@ -80,11 +87,19 @@ public final class ReaderPreferences {
     }
 
     public String bufferingLevel() {
-        return BufferingPolicy.normalize(values.getString("buffering_level", BufferingPolicy.STANDARD));
+        return BufferingPolicy.resolvePreference(bufferingChoice(), deviceBufferingDefault);
+    }
+
+    public String bufferingChoice() {
+        return BufferingPolicy.preferenceChoice(values.getString("buffering_level", null));
     }
 
     public void setBufferingLevel(String level) {
-        values.edit().putString("buffering_level", BufferingPolicy.normalize(level)).apply();
+        String choice = BufferingPolicy.preferenceChoice(level);
+        SharedPreferences.Editor editor = values.edit();
+        if (BufferingPolicy.DEVICE_DEFAULT.equals(choice)) editor.remove("buffering_level");
+        else editor.putString("buffering_level", choice);
+        editor.apply();
     }
 
     public boolean keepScreenOn() {
