@@ -202,13 +202,15 @@ public final class ReaderOptionsDialog {
                 directionValues, directionLabels, preferences.defaultReadingDirection());
 
         String[] bufferingValues = {
-                BufferingPolicy.STANDARD, BufferingPolicy.INCREASED, BufferingPolicy.HIGH
+                BufferingPolicy.DEVICE_DEFAULT, BufferingPolicy.STANDARD,
+                BufferingPolicy.INCREASED, BufferingPolicy.HIGH
         };
         int[] bufferingLabels = {
-                R.string.buffering_standard, R.string.buffering_increased, R.string.buffering_high
+                R.string.buffering_device_default, R.string.buffering_standard,
+                R.string.buffering_increased, R.string.buffering_high
         };
         RadioGroup bufferingChoices = addChoices(options, R.string.option_buffering,
-                bufferingValues, bufferingLabels, preferences.bufferingLevel());
+                bufferingValues, bufferingLabels, preferences.bufferingChoice());
         TextView bufferingHint = Ui.text(context,
                 context.getString(R.string.option_buffering_description), 13, Ui.TEXT_MUTED);
         bufferingHint.setPadding(0, 0, 0, Ui.dp(context, 6));

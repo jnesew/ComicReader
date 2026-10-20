@@ -2,12 +2,49 @@ package io.github.jnesew.comicviewer.render;
 
 /** Session-wide limits for speculative decoding. Visible tile limits stay unchanged. */
 public final class BufferingPolicy {
+    public static final String DEVICE_DEFAULT = "device_default";
     public static final String STANDARD = "standard";
     public static final String INCREASED = "increased";
     public static final String HIGH = "high";
     private static final long MIB = 1024L * 1024L;
 
     private BufferingPolicy() { }
+
+    /** 8 GB class allows kernel-reserved RAM; the tested Pixel 8a belongs to this tier. */
+    public static String deviceDefault(long totalMemoryBytes, long heapBytes, boolean lowRam) {
+        return !lowRam && totalMemoryBytes >= 6800L * MIB && heapBytes >= 256L * MIB
+                ? HIGH : STANDARD;
+    }
+
+    public static String preferenceChoice(String saved) {
+        return STANDARD.equals(saved) || INCREASED.equals(saved) || HIGH.equals(saved)
+                ? saved : DEVICE_DEFAULT;
+    }
+
+    public static String resolvePreference(String saved, String deviceDefault) {
+        String choice = preferenceChoice(saved);
+        return DEVICE_DEFAULT.equals(choice) ? normalize(deviceDefault) : choice;
+    }
+
+    /** Native bitmap buffers are outside the Java heap on every supported Android version. */
+    public static boolean hasMemoryRoom(long heapBytes, long availableHeapBytes,
+            long nativeAllocatedBytes, long totalMemoryBytes, long availableMemoryBytes,
+            long systemThresholdBytes, boolean lowMemory, boolean lowRam) {
+        if (lowMemory || lowRam || heapBytes <= 0L || totalMemoryBytes <= 0L ||
+                availableHeapBytes < Math.max(16L * MIB, heapBytes / 10L)) return false;
+        long systemReserve = Math.max(0L, systemThresholdBytes) +
+                Math.max(256L * MIB, totalMemoryBytes / 20L);
+        if (availableMemoryBytes < systemReserve) return false;
+        long javaUsed = Math.max(0L, heapBytes - availableHeapBytes);
+        // Bound estimated Java + native allocations and leave room for one bounded fallback
+        // decode (InputLimits.MAX_FALLBACK_BITMAP_PIXELS * 4), not just the cached output tile.
+        long allocationCeiling = Math.min(512L * MIB,
+                Math.min(heapBytes * 2L, totalMemoryBytes / 8L));
+        long decodeReserve = 128L * MIB;
+        return nativeAllocatedBytes >= 0L && allocationCeiling >= decodeReserve &&
+                javaUsed <= allocationCeiling - decodeReserve &&
+                nativeAllocatedBytes <= allocationCeiling - decodeReserve - javaUsed;
+    }
 
     public static String normalize(String value) {
         return INCREASED.equals(value) || HIGH.equals(value) ? value : STANDARD;

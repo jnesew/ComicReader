@@ -2,8 +2,8 @@
 
 Status: preparation in progress. No F-Droid submission or new release has been made.
 The application ID remains `io.github.jnesew.comicviewer`. The global reader defaults
-and explicit read status features migrate the database to schema 10. The source is
-still versionName 1.1.0/versionCode 3 until a release is selected.
+and explicit read status features migrate the database to schema 10. The prepared release
+candidate is versionName 1.2.0/versionCode 4, above the published 1.1.0/code 3.
 
 ## Prepared
 
@@ -14,15 +14,16 @@ still versionName 1.1.0/versionCode 3 until a release is selected.
   including Git metadata, rather than two `git archive` exports.
 - Signature-aware verifier: `scripts/verify-release-apk.sh`.
 - Platform-only Android SQLite test harness, with no new runtime or test library dependencies.
+- Version 1.2.0 release notes and English/Finnish `changelogs/4.txt` entries (under 500 characters).
 
 ## Gates still required
 
 1. Run the actual Android database harness before extracting database delegates:
    `./gradlew --dependency-verification strict connectedDebugAndroidTest`.
-   The production instrumentation suite now contains twelve cases, including title overrides,
+   The production instrumentation suite now contains thirteen cases, including title overrides,
    explicit read status, verified reconnection, stale-hash rejection and speculative cache
-   eviction. Packaging the
-   instrumentation APK does not execute those cases. The existing Python SQL script
+   eviction and device-default preference persistence. Packaging the instrumentation APK
+   does not execute those cases. The existing Python SQL script
    is supplementary.
 2. Finish R5 delegates after that baseline passes; run the identical harness afterward.
 3. Run unit tests, release lint/build, clean-checkout reproducibility and device regression
@@ -30,8 +31,8 @@ still versionName 1.1.0/versionCode 3 until a release is selected.
    is compilation evidence, not the canonical release.
 4. Complete the remaining screenshot-source checks in STORE-ASSETS.md and inspect the
    pinned AGP 8.13.2 POM/NOTICE in the build environment.
-5. Choose the release version/code above all previously distributed versions, finalize
-   the release-note drafts and copy them to both locale `changelogs/<code>.txt` files.
+5. Confirm candidate version 1.2.0/code 4 is still above every distributed APK at signing time,
+   and review `RELEASE-NOTES-1.2.0.md` and both localized `changelogs/4.txt` entries.
 6. Verify the existing signing certificate from an actual installed/published APK. The
    prior release notes report `2b1a3a161ca63ffc15718f5be8897597dc33d3fce663634e219cef8950b8c80f`;
    do not populate the recipe from this report alone.

@@ -1,6 +1,8 @@
 package io.github.jnesew.comicviewer.render;
 
 import android.graphics.Bitmap;
+import android.content.Context;
+import android.os.SystemClock;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -8,27 +10,39 @@ import java.util.Map;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongSupplier;
+import java.util.function.BooleanSupplier;
 
 /** One byte ceiling shared by all renderers in a reader session. Entries are evicted before visible tiles. */
 public final class SpeculativeTileCache {
     private final LinkedHashMap<Key, Bitmap> entries = new LinkedHashMap<>(16, .75f, true);
     private final long heapBytes;
-    private final LongSupplier availableHeapBytes;
+    private final BooleanSupplier memoryAvailable;
+    private final LongSupplier clock;
     private long limitBytes;
     private long usedBytes;
+    private boolean foreground = true;
+    private long pressureUntil;
     private final Semaphore decodeSlot = new Semaphore(1);
     private final AtomicInteger visibleWaiting = new AtomicInteger();
 
-    public SpeculativeTileCache(long heapBytes, String level) {
-        this(heapBytes, level, () -> {
-            Runtime runtime = Runtime.getRuntime();
-            return runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory());
-        });
+    public SpeculativeTileCache(Context context, long heapBytes, String level) {
+        this(heapBytes, level, new AndroidBufferingMemory(context, heapBytes),
+                SystemClock::elapsedRealtime);
     }
 
+    /** Instrumentation seam; production uses the Android system/native monitor above. */
     public SpeculativeTileCache(long heapBytes, String level, LongSupplier availableHeapBytes) {
+        this(heapBytes, level,
+                () -> availableHeapBytes.getAsLong() >=
+                        Math.max(16L * 1024L * 1024L, heapBytes / 10L),
+                SystemClock::elapsedRealtime);
+    }
+
+    public SpeculativeTileCache(long heapBytes, String level,
+            BooleanSupplier memoryAvailable, LongSupplier clock) {
         this.heapBytes = heapBytes;
-        this.availableHeapBytes = availableHeapBytes;
+        this.memoryAvailable = memoryAvailable;
+        this.clock = clock;
         setLevel(level);
     }
 
@@ -37,16 +51,28 @@ public final class SpeculativeTileCache {
         evictToLimit();
     }
 
-    public synchronized boolean enabled() { return limitBytes > 0L; }
+    public synchronized boolean enabled() {
+        return limitBytes > 0L && foreground && clock.getAsLong() >= pressureUntil;
+    }
     public synchronized long usedBytes() { return usedBytes; }
     public synchronized long limitBytes() { return limitBytes; }
+
+    public synchronized void setForeground(boolean foreground) {
+        this.foreground = foreground;
+        if (!foreground) clear();
+    }
+
+    public synchronized void onMemoryPressure() {
+        pressureUntil = clock.getAsLong() + 30_000L;
+        clear();
+    }
 
     public void visibleQueued() { visibleWaiting.incrementAndGet(); }
     public void visibleFinished() { visibleWaiting.decrementAndGet(); }
     public boolean beginSpeculativeDecode() {
-        if (!enabled() || !hasHeapRoom() || visibleWaiting.get() != 0 ||
+        if (!hasMemoryRoom() || visibleWaiting.get() != 0 ||
                 !decodeSlot.tryAcquire()) return false;
-        if (visibleWaiting.get() == 0 && hasHeapRoom()) return true;
+        if (visibleWaiting.get() == 0 && hasMemoryRoom()) return true;
         decodeSlot.release();
         return false;
     }
@@ -63,11 +89,7 @@ public final class SpeculativeTileCache {
     }
 
     public synchronized void put(Object owner, String key, Bitmap bitmap) {
-        if (bitmap == null || bitmap.isRecycled() || limitBytes == 0L) return;
-        if (!hasHeapRoom()) {
-            clear();
-            return;
-        }
+        if (bitmap == null || bitmap.isRecycled() || !hasMemoryRoom()) return;
         long size = bitmap.getAllocationByteCount();
         if (size > limitBytes) return;
         Key id = new Key(owner, key);
@@ -102,9 +124,15 @@ public final class SpeculativeTileCache {
         }
     }
 
-    private boolean hasHeapRoom() {
-        return availableHeapBytes.getAsLong() >=
-                Math.max(16L * 1024L * 1024L, heapBytes / 10L);
+    private synchronized boolean hasMemoryRoom() {
+        if (!enabled()) return false;
+        try {
+            if (memoryAvailable.getAsBoolean()) return true;
+        } catch (RuntimeException ignored) {
+            // A failed sample cannot authorize speculative allocations.
+        }
+        clear();
+        return false;
     }
 
     private record Key(Object owner, String tile) { }
