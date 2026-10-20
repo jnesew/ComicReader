@@ -6,6 +6,8 @@ All notable public changes to ComicViewer for Android are recorded here.
 
 ### Reader
 
+- Retain recently visible tiles within the existing extra-buffer limit for backward page turns,
+  and reuse cached CBZ/raster pixels while changing sampling levels during scrolling or zooming.
 - Added Standard, Increased and High page buffering. Device default selects Increased for
   the 4 GB RAM class and above, High for 8 GB and above, and Standard below 4 GB. Detection allows
   for kernel-reserved RAM; explicit saved choices take priority. Runtime memory safeguards

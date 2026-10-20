@@ -54,6 +54,10 @@ already published release/1.1 README/screenshot commits through 8624230.
   native/system pressure guards, background suspension and a pressure cooldown still limit
   actual work. Tests cover tier boundaries, preference persistence and pressure recovery.
 - Prepared version 1.2.0/code 4 and localized release notes; no release has been published.
+- A raster-flicker fix retains displaced visible tiles within the same speculative ceiling and
+  draws cached raster pixels across sampling-level transitions. The 1988 x 3056 policy transition
+  is reproduced locally. Two real decoder/canvas regression cases compile with the Android suite;
+  connected execution and retesting the reported archive remain outstanding.
 - R6: pure ContinuousPageMap owns issue/local/global indexing and anchor restoration.
   All 91 JVM tests pass, including prepend, eviction, index-count changes, unavailable
   one-page issues, missing anchors and boundary round trips.
@@ -73,7 +77,7 @@ GitHub Actions runs pinned unit tests, lint, unsigned release builds, instrument
 APK packaging and independent-checkout reproducibility for feature PRs. An earlier
 direct SDK build is historical evidence only; remote CI covers compilation and release
 packaging but not F-Droid's signed candidate comparison.
-No Android device/emulator is attached. The thirteen instrumentation cases and reader
+No Android device/emulator is attached. The fifteen instrumentation cases and reader
 dialog, grid, renderer and lifecycle device checks
 remain required. No release/signing/production branch changes were made.
 

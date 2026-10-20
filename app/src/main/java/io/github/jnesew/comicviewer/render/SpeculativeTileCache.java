@@ -78,17 +78,17 @@ public final class SpeculativeTileCache {
     }
     public void endSpeculativeDecode() { decodeSlot.release(); }
 
-    public synchronized boolean contains(Object owner, String key) {
+    public synchronized boolean contains(Object owner, TileKey key) {
         return entries.containsKey(new Key(owner, key));
     }
 
-    public synchronized Bitmap take(Object owner, String key) {
+    public synchronized Bitmap take(Object owner, TileKey key) {
         Bitmap bitmap = entries.remove(new Key(owner, key));
         if (bitmap != null) usedBytes -= bitmap.getAllocationByteCount();
         return bitmap;
     }
 
-    public synchronized void put(Object owner, String key, Bitmap bitmap) {
+    public synchronized void put(Object owner, TileKey key, Bitmap bitmap) {
         if (bitmap == null || bitmap.isRecycled() || !hasMemoryRoom()) return;
         long size = bitmap.getAllocationByteCount();
         if (size > limitBytes) return;
@@ -97,6 +97,17 @@ public final class SpeculativeTileCache {
         if (previous != null) usedBytes -= previous.getAllocationByteCount();
         usedBytes += size;
         evictToLimit();
+    }
+
+    /** Borrowed references for drawing only; fallback use does not enlarge the visible cache. */
+    synchronized Map<TileKey, Bitmap> snapshot(Object owner) {
+        Map<TileKey, Bitmap> result = new LinkedHashMap<>();
+        for (Map.Entry<Key, Bitmap> entry : entries.entrySet()) {
+            if (entry.getKey().owner == owner) {
+                result.put(entry.getKey().tile, entry.getValue());
+            }
+        }
+        return result;
     }
 
     public synchronized void removeOwner(Object owner) {
@@ -135,5 +146,5 @@ public final class SpeculativeTileCache {
         return false;
     }
 
-    private record Key(Object owner, String tile) { }
+    private record Key(Object owner, TileKey tile) { }
 }

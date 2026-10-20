@@ -27,6 +27,19 @@ one bounded fallback decode. This estimate is not complete process PSS or graphi
 Memory callbacks clear speculative tiles and pause extra work for 30 seconds. Backgrounding
 suspends it until resume; resuming cannot bypass a still-active pressure cooldown.
 
+Recently visible tiles displaced by the visible LRU may enter the same speculative cache, sharing
+its existing ceiling with ahead-of-reader tiles. Explicit trimming, closure and OOM discard tiles
+without retaining them. Raster fallback draws borrowed cached pixels from other sampling levels,
+clipped to the requested tile; it does not add decoding or promote fallback tiles into the visible LRU.
+
+The reported 1988 x 3056 CBZ pages occupy about 23.18 MiB at sample 1. With a 32 MiB visible cache,
+two such pages cannot remain in the visible LRU, explaining why forward prefetch can mask a load
+that backward navigation reveals. With its 24 MiB frame budget, the production policy also changes
+the first page from sample 1 to sample 2 when a second page enters the viewport. Cached raster
+fallback covers both sampling directions. These are reproduced cache/policy mechanisms, not a
+confirmed device reproduction of the user's private archive. Retest the reported file in single,
+spread and continuous modes, at Standard/Increased/High, including rapid reversal and memory trim.
+
 ## Remaining comparison
 
 Use the same comics and device settings for **Standard**, **Increased** and **High**. Include a
@@ -49,5 +62,5 @@ wait without excessive memory or frame delays. Do not treat an APK build as this
 
 For the outstanding R5 gate, run
 `./gradlew --dependency-verification strict connectedDebugAndroidTest` on an attached device,
-record all 13 production instrumentation cases,
+record all 15 production instrumentation cases (including two raster rendering cases),
 then perform the database delegate extraction separately and rerun the same cases.

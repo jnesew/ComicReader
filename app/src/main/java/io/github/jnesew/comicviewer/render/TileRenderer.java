@@ -59,9 +59,10 @@ public final class TileRenderer implements AutoCloseable {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable invalidator;
     private final ErrorListener errorListener;
-    private final LruCache<String, Bitmap> tiles;
+    private final LruCache<TileKey, Bitmap> tiles;
     private final SpeculativeTileCache speculativeTiles;
-    private final Map<String, TileTask> pending = new HashMap<>();
+    private final Map<TileKey, TileTask> pending = new HashMap<>();
+    private volatile boolean retainEvictedTiles = true;
     private int speculativeQueued;
     private final PrefetchGeneration prefetchGeneration = new PrefetchGeneration();
     private float visibleRenderScale = Float.NaN;
@@ -159,6 +160,14 @@ public final class TileRenderer implements AutoCloseable {
             Runnable invalidator,
             ErrorListener errorListener,
             SpeculativeTileCache speculativeTiles) {
+        this(context, archive, invalidator, errorListener, speculativeTiles,
+                (int) (BufferingPolicy.visibleBytesPerRenderer(
+                        Runtime.getRuntime().maxMemory()) / 1024L));
+    }
+
+    /** Deterministic cache-size seam for real Android rendering regression tests. */
+    TileRenderer(Context context, ComicDocument archive, Runnable invalidator,
+            ErrorListener errorListener, SpeculativeTileCache speculativeTiles, int cacheKb) {
         this.archive = archive;
         this.context = context.getApplicationContext();
         this.invalidator = invalidator;
@@ -171,12 +180,20 @@ public final class TileRenderer implements AutoCloseable {
         }
         placeholderPaint.setColor(Color.rgb(24, 26, 31));
 
-        int cacheKb = (int) (BufferingPolicy.visibleBytesPerRenderer(
-                Runtime.getRuntime().maxMemory()) / 1024L);
         tiles = new LruCache<>(cacheKb) {
             @Override
-            protected int sizeOf(String key, Bitmap bitmap) {
+            protected int sizeOf(TileKey key, Bitmap bitmap) {
                 return Math.max(1, bitmap.getAllocationByteCount() / 1024);
+            }
+
+            @Override
+            protected void entryRemoved(boolean evicted, TileKey key, Bitmap oldValue,
+                    Bitmap newValue) {
+                // Recently visible pages compete with ahead-of-reader tiles within the same
+                // existing speculative ceiling, rather than disappearing on a backward turn.
+                if (evicted && retainEvictedTiles && !closed && speculativeTiles != null) {
+                    speculativeTiles.put(TileRenderer.this, key, oldValue);
+                }
             }
         };
     }
@@ -217,6 +234,7 @@ public final class TileRenderer implements AutoCloseable {
         int lastX = Math.max(firstX, (visibleRight - 1) / sourceTile);
         int firstY = visibleTop / sourceTile;
         int lastY = Math.max(firstY, (visibleBottom - 1) / sourceTile);
+        java.util.List<Map.Entry<TileKey, Bitmap>> rasterFallbacks = null;
 
         for (int tileY = firstY; tileY <= lastY; tileY++) {
             for (int tileX = firstX; tileX <= lastX; tileX++) {
@@ -232,7 +250,7 @@ public final class TileRenderer implements AutoCloseable {
                         destination.top + source.top * scale,
                         destination.left + source.right * scale,
                         destination.top + source.bottom * scale);
-                String key = key(pageIndex, sample, renderScale, tileX, tileY);
+                TileKey key = key(pageIndex, sample, renderScale, tileX, tileY);
                 Bitmap bitmap = tiles.get(key);
                 if (bitmap == null && speculativeTiles != null) {
                     bitmap = speculativeTiles.take(this, key);
@@ -244,6 +262,12 @@ public final class TileRenderer implements AutoCloseable {
                     if (rendered) {
                         drawRenderedFallback(
                                 canvas, pageIndex, page, source, tileDestination, renderScale);
+                    } else {
+                        if (rasterFallbacks == null) {
+                            rasterFallbacks = rasterFallbacks(pageIndex, sample);
+                        }
+                        drawRasterFallback(canvas, page, destination, visible,
+                                tileDestination, rasterFallbacks);
                     }
                     requestTile(key, pageIndex, sample, renderScale, source, false);
                 }
@@ -259,7 +283,7 @@ public final class TileRenderer implements AutoCloseable {
         if (closed) return;
         cancelPrefetch();
         if (speculativeTiles != null) speculativeTiles.removeOwner(this);
-        tiles.evictAll();
+        discardVisibleTiles();
         for (DecoderHolder holder : decoders.values()) holder.close();
         decoders.clear();
     }
@@ -271,7 +295,7 @@ public final class TileRenderer implements AutoCloseable {
         prefetchGeneration.close();
         cancelPrefetch();
         executor.shutdownNow();
-        tiles.evictAll();
+        discardVisibleTiles();
         synchronized (pending) {
             for (TileTask task : new ArrayList<>(pending.values())) completeTask(task);
         }
@@ -315,7 +339,7 @@ public final class TileRenderer implements AutoCloseable {
             for (int tileY = top / sourceTile; tileY <= (bottom - 1) / sourceTile; tileY++) {
                 for (int tileX = left / sourceTile; tileX <= (right - 1) / sourceTile; tileX++) {
                     if (considered >= maxTiles) return;
-                    String key = key(request.page, sample, renderScale, tileX, tileY);
+                    TileKey key = key(request.page, sample, renderScale, tileX, tileY);
                     if (tiles.get(key) != null || speculativeTiles.contains(this, key)) continue;
                     considered++;
                     int x = tileX * sourceTile;
@@ -341,7 +365,7 @@ public final class TileRenderer implements AutoCloseable {
         }
     }
 
-    private void requestTile(String key, int pageIndex, int sample,
+    private void requestTile(TileKey key, int pageIndex, int sample,
             float renderScale, Rect source, boolean speculative) {
         synchronized (pending) {
             if (closed || (speculative && speculativeQueued >= 16)) return;
@@ -377,7 +401,7 @@ public final class TileRenderer implements AutoCloseable {
     }
 
     private final class TileTask implements Runnable, Comparable<TileTask> {
-        final String key;
+        final TileKey key;
         final int pageIndex;
         final int sample;
         final float renderScale;
@@ -388,7 +412,7 @@ public final class TileRenderer implements AutoCloseable {
         final AtomicBoolean finished = new AtomicBoolean();
         volatile boolean seenVisible;
 
-        TileTask(String key, int pageIndex, int sample, float renderScale,
+        TileTask(TileKey key, int pageIndex, int sample, float renderScale,
                 Rect source, boolean speculative, long epoch, long order) {
             this.key = key;
             this.pageIndex = pageIndex;
@@ -427,7 +451,7 @@ public final class TileRenderer implements AutoCloseable {
                 }
             } catch (OutOfMemoryError error) {
                 if (speculativeTiles != null) speculativeTiles.onMemoryPressure();
-                tiles.evictAll();
+                discardVisibleTiles();
                 if (!speculative) reportError(context.getString(R.string.error_tile_memory));
             } catch (IOException | RuntimeException error) {
                 if (!speculative) reportError(context.getString(R.string.error_render_page, pageIndex + 1));
@@ -519,6 +543,55 @@ public final class TileRenderer implements AutoCloseable {
         mainHandler.post(() -> errorListener.onRenderError(message));
     }
 
+    private synchronized void discardVisibleTiles() {
+        // Trimming/closure/OOM must release pixels, not transfer them to another cache.
+        retainEvictedTiles = false;
+        try {
+            tiles.evictAll();
+        } finally {
+            retainEvictedTiles = true;
+        }
+    }
+
+    private java.util.List<Map.Entry<TileKey, Bitmap>> rasterFallbacks(int page, int sample) {
+        Map<TileKey, Bitmap> cached = speculativeTiles == null
+                ? new LinkedHashMap<>() : speculativeTiles.snapshot(this);
+        cached.putAll(tiles.snapshot());
+        java.util.List<Map.Entry<TileKey, Bitmap>> result = new ArrayList<>();
+        for (Map.Entry<TileKey, Bitmap> entry : cached.entrySet()) {
+            if (entry.getKey().page() == page && entry.getKey().sample() != sample &&
+                    !entry.getValue().isRecycled()) result.add(entry);
+        }
+        // Coarse pixels fill gaps first; finer cached tiles can then replace them.
+        result.sort((first, second) ->
+                Integer.compare(second.getKey().sample(), first.getKey().sample()));
+        return result;
+    }
+
+    private void drawRasterFallback(Canvas canvas, PageInfo page, RectF pageDestination,
+            RectF visible, RectF requestedDestination,
+            java.util.List<Map.Entry<TileKey, Bitmap>> cached) {
+        if (cached.isEmpty()) return;
+        int saved = canvas.save();
+        canvas.clipRect(visible);
+        canvas.clipRect(requestedDestination);
+        float scale = pageDestination.width() / page.width;
+        for (Map.Entry<TileKey, Bitmap> entry : cached) {
+            TileKey address = entry.getKey();
+            int edge = RASTER_TILE_SIZE * address.sample();
+            int left = address.x() * edge;
+            int top = address.y() * edge;
+            RectF target = new RectF(pageDestination.left + left * scale,
+                    pageDestination.top + top * scale,
+                    pageDestination.left + Math.min(page.width, left + edge) * scale,
+                    pageDestination.top + Math.min(page.height, top + edge) * scale);
+            if (RectF.intersects(target, requestedDestination) && RectF.intersects(target, visible)) {
+                canvas.drawBitmap(entry.getValue(), null, target, imagePaint);
+            }
+        }
+        canvas.restoreToCount(saved);
+    }
+
     private void drawRenderedFallback(
             Canvas canvas,
             int pageIndex,
@@ -573,9 +646,8 @@ public final class TileRenderer implements AutoCloseable {
         return new Rect(left, top, right, bottom);
     }
 
-    private static String key(int page, int sample, float renderScale, int x, int y) {
-        return page + ":" + sample + ":" + Float.floatToIntBits(renderScale) +
-                ":" + x + ":" + y;
+    private static TileKey key(int page, int sample, float renderScale, int x, int y) {
+        return new TileKey(page, sample, renderScale, x, y);
     }
 
     private static String extension(String name) {

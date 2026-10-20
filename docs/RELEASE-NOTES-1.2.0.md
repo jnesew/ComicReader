@@ -11,6 +11,8 @@ Device default to restore automatic selection.
 
 Extra decoding pauses when the app is backgrounded or memory is under pressure. Buffering checks
 Java heap headroom, native allocations and system memory while keeping visible pages prioritized.
+Recently visible tiles can use the same extra-buffer budget for backward turns. Raster pages reuse
+cached pixels while a new sampling level loads, reducing dark flashes near frame-budget boundaries.
 
 ## Reader preferences and read status
 
