@@ -233,7 +233,8 @@ public final class MainActivity extends Activity implements
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
         if (level == ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
-            session.pauseSpeculative();
+            home.trimCoverCache();
+            session.trimBackgroundMemory();
             return;
         }
         if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {

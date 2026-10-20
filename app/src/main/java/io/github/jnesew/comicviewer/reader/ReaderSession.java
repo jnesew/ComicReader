@@ -138,6 +138,11 @@ public final class ReaderSession implements AutoCloseable {
         speculativeTiles.setForeground(false);
         cancelSpeculative();
     }
+    public void trimBackgroundMemory() {
+        pauseSpeculative();
+        if (pagePreviewLoader != null) pagePreviewLoader.trimMemory();
+        trimReaderMemory();
+    }
     public void resumeSpeculative() {
         speculativeTiles.setForeground(true);
         if (readerActive && reader != null) reader.canvas.postInvalidateOnAnimation();
