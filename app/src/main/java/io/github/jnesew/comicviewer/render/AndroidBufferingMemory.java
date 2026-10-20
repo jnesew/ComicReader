@@ -28,8 +28,7 @@ public final class AndroidBufferingMemory implements BooleanSupplier {
             if (manager == null) return BufferingPolicy.STANDARD;
             ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
             manager.getMemoryInfo(info);
-            return BufferingPolicy.deviceDefault(info.totalMem,
-                    Runtime.getRuntime().maxMemory(), manager.isLowRamDevice());
+            return BufferingPolicy.deviceDefault(info.totalMem);
         } catch (RuntimeException ignored) {
             return BufferingPolicy.STANDARD;
         }

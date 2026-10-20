@@ -9,36 +9,44 @@ import org.junit.Test;
 public class BufferingPolicyTest {
     private static final long MIB = 1024L * 1024L;
 
-    @Test public void highDefaultUsesTestedMemoryTierAndPreservesSmallerDeviceFallback() {
+    @Test public void deviceDefaultFollowsFourAndEightGbMemoryClasses() {
         assertEquals(BufferingPolicy.HIGH,
-                BufferingPolicy.deviceDefault(7680L * MIB, 256L * MIB, false));
+                BufferingPolicy.deviceDefault(7680L * MIB));
         assertEquals(BufferingPolicy.HIGH,
-                BufferingPolicy.deviceDefault(12L * 1024L * MIB, 512L * MIB, false));
+                BufferingPolicy.deviceDefault(12L * 1024L * MIB));
         assertEquals(BufferingPolicy.HIGH,
-                BufferingPolicy.deviceDefault(6800L * MIB, 256L * MIB, false));
+                BufferingPolicy.deviceDefault(8L * 1024L * MIB));
+        assertEquals(BufferingPolicy.HIGH, BufferingPolicy.deviceDefault(6800L * MIB));
+        assertEquals(BufferingPolicy.INCREASED, BufferingPolicy.deviceDefault(6800L * MIB - 1));
+        assertEquals(BufferingPolicy.INCREASED,
+                BufferingPolicy.deviceDefault(6L * 1024L * MIB));
+        assertEquals(BufferingPolicy.INCREASED,
+                BufferingPolicy.deviceDefault(4L * 1024L * MIB));
+        assertEquals(BufferingPolicy.INCREASED, BufferingPolicy.deviceDefault(3400L * MIB));
+        assertEquals(BufferingPolicy.STANDARD, BufferingPolicy.deviceDefault(3400L * MIB - 1));
         assertEquals(BufferingPolicy.STANDARD,
-                BufferingPolicy.deviceDefault(6799L * MIB, 256L * MIB, false));
-        assertEquals(BufferingPolicy.STANDARD,
-                BufferingPolicy.deviceDefault(6L * 1024L * MIB, 512L * MIB, false));
-        assertEquals(BufferingPolicy.STANDARD,
-                BufferingPolicy.deviceDefault(8L * 1024L * MIB, 128L * MIB, false));
-        assertEquals(BufferingPolicy.STANDARD,
-                BufferingPolicy.deviceDefault(8L * 1024L * MIB, 512L * MIB, true));
-        assertEquals(BufferingPolicy.STANDARD, BufferingPolicy.deviceDefault(0, 0, false));
+                BufferingPolicy.deviceDefault(3L * 1024L * MIB));
+        assertEquals(BufferingPolicy.STANDARD, BufferingPolicy.deviceDefault(0));
+        assertEquals(BufferingPolicy.STANDARD, BufferingPolicy.deviceDefault(-1));
     }
 
     @Test public void explicitChoicesSurviveDefaultChangesAndAutoCanBeRestored() {
         assertEquals(BufferingPolicy.HIGH,
                 BufferingPolicy.resolvePreference(null, BufferingPolicy.HIGH));
+        assertEquals(BufferingPolicy.INCREASED,
+                BufferingPolicy.resolvePreference(null, BufferingPolicy.INCREASED));
         assertEquals(BufferingPolicy.STANDARD,
                 BufferingPolicy.resolvePreference(null, BufferingPolicy.STANDARD));
         for (String choice : new String[]{BufferingPolicy.STANDARD, BufferingPolicy.INCREASED,
                 BufferingPolicy.HIGH}) {
             assertEquals(choice, BufferingPolicy.resolvePreference(choice, BufferingPolicy.HIGH));
+            assertEquals(choice, BufferingPolicy.resolvePreference(choice, BufferingPolicy.INCREASED));
             assertEquals(choice, BufferingPolicy.resolvePreference(choice, BufferingPolicy.STANDARD));
         }
         assertEquals(BufferingPolicy.HIGH, BufferingPolicy.resolvePreference(
                 BufferingPolicy.DEVICE_DEFAULT, BufferingPolicy.HIGH));
+        assertEquals(BufferingPolicy.INCREASED, BufferingPolicy.resolvePreference(
+                BufferingPolicy.DEVICE_DEFAULT, BufferingPolicy.INCREASED));
         assertEquals(BufferingPolicy.DEVICE_DEFAULT, BufferingPolicy.preferenceChoice("invalid"));
     }
 
