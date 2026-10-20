@@ -6,9 +6,10 @@ All notable public changes to ComicViewer for Android are recorded here.
 
 ### Reader
 
-- Added Standard, Increased and High page buffering. Device default selects High on non-low-RAM
-  devices in the 8 GB memory class with at least a 256 MiB app heap, based on Pixel 8a user testing.
-  Smaller devices use Standard; explicit saved choices take priority.
+- Added Standard, Increased and High page buffering. Device default selects Increased for
+  the 4 GB RAM class and above, High for 8 GB and above, and Standard below 4 GB. Detection allows
+  for kernel-reserved RAM; explicit saved choices take priority. Runtime memory safeguards
+  remain active regardless of the selected tier.
 - Added a Device default option to restore automatic buffering selection. Backgrounding suspends
   speculative work; Java heap, native allocation and system pressure checks limit extra decoding.
 - Added global layout and reading-direction defaults, with per-title overrides and inheritance.

@@ -51,7 +51,7 @@ height.
 
 **Reader options → Page buffering** offers Standard (the original behavior), Increased (roughly
 one screen ahead), and High (up to three screens ahead with some behind). **Device default** uses
-High on capable 8 GB-class devices and Standard on smaller devices. An explicit saved choice
+Standard below the 4 GB RAM class, Increased from 4 GB, and High from 8 GB. An explicit saved choice
 always takes priority; choose Device default to restore automatic selection. Extra preparation
 pauses under memory pressure and while the app is backgrounded. Higher settings may prepare
 fewer tiles on memory-limited devices. Buffering never changes saved position or read status.

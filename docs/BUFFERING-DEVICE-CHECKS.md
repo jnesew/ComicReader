@@ -10,11 +10,14 @@ On 2026-10-20, the user reported that higher buffering works on Pixel 8a and bri
 usability benefit. This is qualitative on-device evidence; no automated instrumentation result,
 peak allocation measurement or CPU-equivalence claim is implied.
 
-The default uses the tested device's memory class: non-low-RAM, at least 6800 MiB of kernel-visible
-RAM (allowing reservations on an 8 GB device), and at least a 256 MiB app heap select High. Other
-devices select Standard. Explicit saved choices remain unchanged. This is a memory capability
-rule rather than a model/SoC whitelist or benchmark ranking. Google lists Pixel 8a with
-[8 GB RAM and Tensor G3](https://support.google.com/pixelphone/answer/7158570?hl=en).
+The default follows RAM class: Standard below 4 GB, Increased from 4 GB, and High from 8 GB.
+Android reports kernel-visible RAM, so the class floors are 3400 MiB and 6800 MiB to allow
+for reservations on nominal 4 GB and 8 GB devices. Unknown RAM falls back to Standard. Explicit
+saved choices remain unchanged. The selected default is independent of the app heap limit;
+actual cache budgets still shrink with the heap, and Android low-RAM devices cannot start
+speculative decoding. This is a RAM rule rather than a model/SoC whitelist or benchmark ranking.
+Google lists Pixel 8a with [8 GB RAM and Tensor G3](https://support.google.com/pixelphone/answer/7158570?hl=en).
+The 4 GB Increased tier is a policy choice; a physical-device result for that tier is still pending.
 
 Before each speculative decode, the app checks Java heap headroom and native heap allocations.
 System pressure is sampled opportunistically at most once per five seconds, with Android memory

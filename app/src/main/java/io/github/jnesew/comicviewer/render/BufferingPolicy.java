@@ -10,10 +10,11 @@ public final class BufferingPolicy {
 
     private BufferingPolicy() { }
 
-    /** 8 GB class allows kernel-reserved RAM; the tested Pixel 8a belongs to this tier. */
-    public static String deviceDefault(long totalMemoryBytes, long heapBytes, boolean lowRam) {
-        return !lowRam && totalMemoryBytes >= 6800L * MIB && heapBytes >= 256L * MIB
-                ? HIGH : STANDARD;
+    /** RAM classes allow kernel reservations; runtime guards separately limit actual work. */
+    public static String deviceDefault(long totalMemoryBytes) {
+        if (totalMemoryBytes >= 6800L * MIB) return HIGH;
+        if (totalMemoryBytes >= 3400L * MIB) return INCREASED;
+        return STANDARD;
     }
 
     public static String preferenceChoice(String saved) {

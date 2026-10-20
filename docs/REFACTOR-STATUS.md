@@ -48,10 +48,11 @@ already published release/1.1 README/screenshot commits through 8624230.
   cache and prioritized per-renderer decode work for the higher levels. Physical-device
   measurements of visual quality, loading flashes and peak memory remain outstanding.
   A twelfth instrumentation case checks speculative cache eviction and promotion.
-- The user reports a major benefit from higher buffering on Pixel 8a. High is now the device
-  default for non-low-RAM devices in the 8 GB class with an app heap of at least 256 MiB;
-  saved overrides remain intact. Added native/system pressure guards, background suspension,
-  a pressure cooldown and tests for preference persistence and pressure recovery.
+- The user reports a major benefit from higher buffering on Pixel 8a. Device default now
+  follows RAM class: Standard below 4 GB, Increased from 4 GB, High from 8 GB, allowing for
+  kernel-reserved RAM. Saved overrides remain intact. Heap budgets, Android low-RAM checks,
+  native/system pressure guards, background suspension and a pressure cooldown still limit
+  actual work. Tests cover tier boundaries, preference persistence and pressure recovery.
 - Prepared version 1.2.0/code 4 and localized release notes; no release has been published.
 - R6: pure ContinuousPageMap owns issue/local/global indexing and anchor restoration.
   All 91 JVM tests pass, including prepend, eviction, index-count changes, unavailable

@@ -4,10 +4,10 @@ Release candidate: versionName `1.2.0`, versionCode `4`. No release has been pub
 
 ## Smoother reading
 
-Page buffering offers Standard, Increased and High. Device default selects High on capable
-8 GB-class devices, using the Pixel 8a as the user-tested memory baseline. Smaller devices keep
-Standard. Your saved Standard, Increased or High selection takes priority; choose Device default
-to restore automatic selection.
+Page buffering offers Standard, Increased and High. Device default selects Increased for
+the 4 GB RAM class and above, High for 8 GB and above, and Standard below 4 GB. Detection allows
+for kernel-reserved RAM. Your saved Standard, Increased or High selection takes priority; choose
+Device default to restore automatic selection.
 
 Extra decoding pauses when the app is backgrounded or memory is under pressure. Buffering checks
 Java heap headroom, native allocations and system memory while keeping visible pages prioritized.
@@ -41,8 +41,8 @@ database schema 10; upgrading from 1.1.0 preserves legacy completion once and ex
 
 The user reported a major usability benefit from higher buffering on Pixel 8a. This observation
 does not establish equivalent CPU performance or memory behavior on every 8 GB device. The default
-uses a memory capability rule, not a device/SoC benchmark ranking. Low-memory and native-allocation
-pressure checks remain active for every buffering selection.
+uses RAM class, with heap budgets and runtime safeguards separately limiting actual work. Android
+low-RAM, low-memory and native-allocation pressure checks remain active for every buffering selection.
 
 Connected Android instrumentation, broader device comparisons and the R5 database baseline remain
 outstanding. R5 delegate extraction and F-Droid signing/recipe/submission checks are separate gates;
