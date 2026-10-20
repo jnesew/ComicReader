@@ -7,6 +7,24 @@ import static org.junit.Assert.assertTrue;
 
 public class RenderedTilePolicyTest {
     @Test
+    public void reportedRasterDimensionsChangeSamplingAcrossContinuousViewport() {
+        long budget = 24L * 1024 * 1024;
+        float displayScale = 1080f / 1988f;
+        RenderedTilePolicy.Region full = new RenderedTilePolicy.Region(
+                0, 0, 1988, 3056, 1988, 3056, displayScale);
+        RenderedTilePolicy.Region next = new RenderedTilePolicy.Region(
+                0, 0, 1988, 788, 1988, 3056, displayScale);
+        assertEquals(1f, RenderedTilePolicy.rasterFrameScales(
+                java.util.List.of(full), budget)[0], 0f);
+        float[] split = RenderedTilePolicy.rasterFrameScales(
+                java.util.List.of(full, next), budget);
+        assertEquals(.5f, split[0], 0f);
+        assertEquals(1f, split[1], 0f);
+        assertTrue(RenderedTilePolicy.rasterTileBytes(full, split[0]) +
+                RenderedTilePolicy.rasterTileBytes(next, split[1]) <= budget);
+    }
+
+    @Test
     public void tallCbzPagesFitTogetherAcrossReportedZoomRange() {
         long budget = 18L * 1024 * 1024;
         boolean reduced = false;

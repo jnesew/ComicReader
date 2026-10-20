@@ -10,6 +10,8 @@ import io.github.jnesew.comicviewer.model.PageInfo;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
 import io.github.jnesew.comicviewer.render.SpeculativeTileCache;
 import io.github.jnesew.comicviewer.render.BufferingPolicy;
+import io.github.jnesew.comicviewer.render.TileKey;
+import io.github.jnesew.comicviewer.render.RasterRenderingTests;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -20,7 +22,7 @@ public final class DatabaseTestRunner extends Instrumentation {
     private LibraryDatabase db;
     private int current;
     private int failed;
-    private static final int TOTAL = 13;
+    private static final int TOTAL = 15;
 
     @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
 
@@ -37,6 +39,10 @@ public final class DatabaseTestRunner extends Instrumentation {
         run("staleOrUnverifiedHashNeverRelinks", this::unverifiedReconnection);
         run("speculativeCacheEnforcesSharedCeilingAndPromotion", this::speculativeCache);
         run("deviceBufferingDefaultPreservesExplicitChoices", this::bufferingPreferences);
+        run("rasterBackwardTurnRetainsDisplacedTiles",
+                () -> RasterRenderingTests.backwardTurn(this));
+        run("rasterSamplingTransitionsKeepCachedCoverage",
+                () -> RasterRenderingTests.samplingTransitions(this));
         run("upgradeVersionOneToTen", this::upgrade);
         Bundle result = new Bundle();
         result.putString("stream", "\n" + (TOTAL - failed) + "/" + TOTAL + " database tests passed\n");
@@ -322,17 +328,17 @@ public final class DatabaseTestRunner extends Instrumentation {
                 1024, 1024, android.graphics.Bitmap.Config.ARGB_8888);
         try {
             for (int i = 0; i < 9; i++) {
-                cache.put(i < 5 ? firstOwner : secondOwner, "tile-" + i, tile);
+                cache.put(i < 5 ? firstOwner : secondOwner, new TileKey(i, 1, 1f, 0, 0), tile);
                 check(cache.usedBytes() <= cache.limitBytes());
             }
-            check(cache.take(firstOwner, "tile-0") == null);
-            check(cache.take(secondOwner, "tile-8") == tile);
+            check(cache.take(firstOwner, new TileKey(0, 1, 1f, 0, 0)) == null);
+            check(cache.take(secondOwner, new TileKey(8, 1, 1f, 0, 0)) == tile);
             long retained = cache.usedBytes();
             cache.removeOwner(firstOwner);
             check(cache.usedBytes() <= retained);
             availableHeap.set(0L);
             check(!cache.beginSpeculativeDecode());
-            cache.put(secondOwner, "under-pressure", tile);
+            cache.put(secondOwner, new TileKey(9, 1, 1f, 0, 0), tile);
             equal(0L, cache.usedBytes());
             cache.setLevel(BufferingPolicy.STANDARD);
             equal(0L, cache.usedBytes());
