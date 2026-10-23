@@ -20,8 +20,8 @@ ComicViewer's source tree or APK.
 The Android Gradle Plugin is AOSP build tooling; see the
 [upstream Gradle task source license](https://android.googlesource.com/platform/tools/base/+/studio-master-dev/build-system/gradle-core/src/main/java/com/android/build/gradle/internal/TaskManager.java).
 SDK package distribution terms are distinct from the licenses of their individual components.
-The pinned AGP artifact's POM/NOTICE should also be checked in the final build environment;
-it could not be retrieved during this preparation pass.
+The pinned AGP artifact's POM/NOTICE was unavailable during the preparation review, so
+artifact-specific notice verification remains incomplete.
 
 ## Visual assets
 

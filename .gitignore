@@ -6,6 +6,9 @@ captures/
 .cxx/
 .kotlin/
 
+# Local personal notes, device checks, and historical planning
+/private/
+
 # IDE, editor, and operating-system files
 .idea/
 .vscode/

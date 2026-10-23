@@ -14,4 +14,4 @@ mkdir -p dist
 output="dist/ComicViewer-Android-v${version_name}-unsigned.apk"
 cp app/build/outputs/apk/release/app-release-unsigned.apk "$output"
 sha256sum "$output"
-echo 'Unsigned Gradle release candidate. Follow docs/FDROID-READINESS.md for signing and verification.'
+echo 'Unsigned Gradle release candidate. Follow docs/BUILDING.md for signing and verification.'

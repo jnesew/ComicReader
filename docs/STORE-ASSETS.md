@@ -17,17 +17,15 @@ are catalogued as public domain by Wikimedia Commons. These source records ident
 McCay (died 1934) and the original newspaper artwork. The screenshots show scaled
 renderings inside ComicViewer; the underlying comic art is not relicensed as MIT.
 
-Before submission, finish matching every background thumbnail in the editor capture
-and the 22 October page to its exact source record. The reader pages have been visually
-identified; the original archive download manifest was not available in this checkout.
-This listing is preparation, not a completed asset-rights audit. Additional library-grid
-screenshots can be included after their individual comic sources are recorded here.
+Exact source-record matching is incomplete for the editor capture's background thumbnails
+and the 22 October page. The reader pages have been visually identified; the original
+archive download manifest was unavailable during review. This inventory is not a completed
+asset-rights audit.
 
 Other documentation screenshots retain their existing notices in THIRD_PARTY_NOTICES.md:
 Pepper & Carrot episode 10 (David Revoy et al., CC BY 4.0), and the original Signal in
 the Rain sample (CC0). They are not bundled as comics or added to this store selection.
 
 The [F-Droid metadata guide](https://f-droid.org/en/docs/All_About_Descriptions_Graphics_and_Screenshots/)
-describes the locale directory layout. The 1.2.0 candidate now includes localized
-`<locale>/changelogs/4.txt` entries. Review them before tagging; code 3 belongs to the
-already released v1.1.0.
+describes the locale directory layout. Version 1.2.0 uses localized
+`<locale>/changelogs/4.txt` entries; code 3 belongs to v1.1.0.

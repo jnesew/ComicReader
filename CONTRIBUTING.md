@@ -27,7 +27,12 @@ issues.
 
 ## Development setup
 
-See [docs/BUILDING.md](docs/BUILDING.md). Before submitting a change, run:
+Develop and verify changes in a local checkout; see [docs/BUILDING.md](docs/BUILDING.md).
+Keep personal checklists, device results, and local work notes in the root `private/` folder,
+which is excluded from Git. Public build tools and documentation must work without that folder.
+Repository instructions for AI agents are maintained in [AGENTS.md](AGENTS.md).
+
+Before submitting an application change, run:
 
 ```bash
 scripts/verify-source-security.sh
@@ -37,7 +42,8 @@ scripts/verify-reproducible-build.sh
 ```
 
 Add or update focused tests for behavior changes. Keep user-visible strings in resources and update
-both English and Finnish resources when practical.
+both English and Finnish resources when practical. For documentation-only changes, check references
+and review the diff; an Android rebuild is not required.
 
 ## Pull requests
 

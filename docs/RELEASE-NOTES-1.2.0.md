@@ -1,7 +1,5 @@
 # ComicViewer 1.2.0
 
-Release candidate: versionName `1.2.0`, versionCode `4`. No release has been published.
-
 ## Smoother reading
 
 Page buffering offers Standard, Increased and High. Device default selects Increased for
