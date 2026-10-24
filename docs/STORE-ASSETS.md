@@ -29,3 +29,27 @@ the Rain sample (CC0). They are not bundled as comics or added to this store sel
 The [F-Droid metadata guide](https://f-droid.org/en/docs/All_About_Descriptions_Graphics_and_Screenshots/)
 describes the locale directory layout. Version 1.3.0 uses localized
 `<locale>/changelogs/5.txt` entries; code 4 belongs to v1.2.0 and code 3 to v1.1.0.
+
+## Refreshed library captures
+
+`docs/screenshots/series-library.png` and `library-folders.png` are unedited
+1080 × 2400 PNG captures of ComicViewer v1.3.0 on an Android 16 (API 36) emulator.
+The library uses Compact cover size with three columns. These replace the README's
+series capture and add the multiple-folder dialog; the store selection above is unchanged.
+
+The four classic covers below are matched to the supplied sample library's source
+manifest and per-archive provenance. The manifest labels them public domain.
+
+| Cover and source record | Creator | Source designation |
+| --- | --- | --- |
+| [Little Nemo in Slumberland — 1905-10-15](https://commons.wikimedia.org/wiki/File:Little_Nemo_1905-10-15.jpg) | Winsor McCay | Public domain |
+| [Dream of the Rarebit Fiend — 1904-09-10](https://commons.wikimedia.org/wiki/File:Dream_of_the_Rarebit_Fiend_1904-09-10.png) | Winsor McCay | Public domain |
+| [Little Sammy Sneeze — 1905-05-28](https://commons.wikimedia.org/wiki/File:Little_Sammy_Sneeze_1905-05-28.jpg) | Winsor McCay | Public domain |
+| [The Upside Downs of Little Lady Lovekins and Old Man Muffaroo — 1904-03-27](https://commons.wikimedia.org/wiki/File:Ambigrams_by_Gustave_Verbeek_(1904)_-_comics_The_Upside_Downs_of_Little_Lady_Lovekins_and_Old_Man_Muffaroo_-_The_bad_snake_and_the_good_wizard.jpg) | Gustave Verbeek | Public domain |
+
+The remaining covers are *Pepper & Carrot — Episode 10: Summer Special*
+(art, scenario, and Hereva universe by David Revoy; English translation by Alex Gryson;
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/),
+[episode source](https://www.peppercarrot.com/en/webcomic-sources/ep10_Summer-Special.html))
+and “Signal in the Rain,” an original CC0 test sample. ComicViewer scales and crops
+the artwork to its cover cards. Artwork retains its original licensing.

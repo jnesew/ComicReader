@@ -28,28 +28,31 @@ accounts, ads, analytics, subscriptions, network access, or broad storage permis
 ## Screenshots
 
 Browse grouped libraries, read traditional pages or long strips, and tune the reader to match your device.
+Click any screenshot to view it at full size. The series and folder captures show v1.3.0;
+the library uses Compact cover size with three columns.
 
 <table>
   <tr>
-    <td align="center"><img src="docs/screenshots/series-library.jpg" alt="Series library with grouped comic collections" width="260"><br><sub>Series grouping</sub></td>
-    <td align="center"><img src="docs/screenshots/title-library.jpg" alt="Searchable title library with cover artwork" width="260"><br><sub>Title library</sub></td>
-    <td align="center"><img src="docs/screenshots/paged-reading.jpg" alt="Full-color comic in paged reading mode" width="260"><br><sub>Paged reading</sub></td>
+    <td align="center"><a href="docs/screenshots/series-library.png"><img src="docs/screenshots/series-library.png" alt="Series library with grouped comic collections" width="260"></a><br><sub>Series grouping</sub></td>
+    <td align="center"><a href="docs/screenshots/title-library.jpg"><img src="docs/screenshots/title-library.jpg" alt="Searchable title library with cover artwork" width="260"></a><br><sub>Title library</sub></td>
+    <td align="center"><a href="docs/screenshots/paged-reading.jpg"><img src="docs/screenshots/paged-reading.jpg" alt="Full-color comic in paged reading mode" width="260"></a><br><sub>Paged reading</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/continuous-scroll.jpg" alt="Long-strip webtoon in continuous-scroll mode with zoom controls" width="260"><br><sub>Continuous scrolling</sub></td>
-    <td align="center"><img src="docs/screenshots/immersive-continuous-reading.jpg" alt="Distraction-free immersive view of a long-strip webtoon" width="260"><br><sub>Immersive continuous reading</sub></td>
-    <td align="center"><img src="docs/screenshots/reader-options.jpg" alt="Reader options for tap zones, volume keys, zoom, and display behavior" width="260"><br><sub>Reader options</sub></td>
+    <td align="center"><a href="docs/screenshots/continuous-scroll.jpg"><img src="docs/screenshots/continuous-scroll.jpg" alt="Long-strip webtoon in continuous-scroll mode with zoom controls" width="260"></a><br><sub>Continuous scrolling</sub></td>
+    <td align="center"><a href="docs/screenshots/immersive-continuous-reading.jpg"><img src="docs/screenshots/immersive-continuous-reading.jpg" alt="Distraction-free immersive view of a long-strip webtoon" width="260"></a><br><sub>Immersive continuous reading</sub></td>
+    <td align="center"><a href="docs/screenshots/reader-options.jpg"><img src="docs/screenshots/reader-options.jpg" alt="Reader options for tap zones, volume keys, zoom, and display behavior" width="260"></a><br><sub>Reader options</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/continuous-series.jpg" alt="Continuous reading across Little Nemo issues with a named issue separator" width="260"><br><sub>Continuous series reading</sub></td>
-    <td align="center"><img src="docs/screenshots/edit-comic.jpg" alt="Edit comic title, series assignment, and issue number" width="260"><br><sub>Edit comic details</sub></td>
+    <td align="center"><a href="docs/screenshots/continuous-series.jpg"><img src="docs/screenshots/continuous-series.jpg" alt="Continuous reading across Little Nemo issues with a named issue separator" width="260"></a><br><sub>Continuous series reading</sub></td>
+    <td align="center"><a href="docs/screenshots/edit-comic.jpg"><img src="docs/screenshots/edit-comic.jpg" alt="Edit comic title, series assignment, and issue number" width="260"></a><br><sub>Edit comic details</sub></td>
+    <td align="center"><a href="docs/screenshots/library-folders.png"><img src="docs/screenshots/library-folders.png" alt="Two local library folders with a shared rescan action" width="260"></a><br><sub>Multiple library folders</sub></td>
   </tr>
   <tr>
-    <td colspan="3" align="center"><img src="docs/screenshots/two-page-spread.png" alt="Pepper and Carrot displayed in an immersive landscape two-page spread" width="800"><br><sub>Two-page spread</sub></td>
+    <td colspan="3" align="center"><a href="docs/screenshots/two-page-spread.png"><img src="docs/screenshots/two-page-spread.png" alt="Pepper and Carrot displayed in an immersive landscape two-page spread" width="800"></a><br><sub>Two-page spread</sub></td>
   </tr>
 </table>
 
-<sub>Sample artwork includes [Pepper & Carrot — Episode 10: Summer Special](https://www.peppercarrot.com/en/webcomic-sources/ep10_Summer-Special.html): art and scenario by David Revoy, English translation by Alex Gryson, and the Hereva universe by David Revoy; licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). “Signal in the Rain” is an original [CC0](https://creativecommons.org/publicdomain/zero/1.0/) test sample.</sub>
+<sub>Sample artwork includes [Pepper & Carrot — Episode 10: Summer Special](https://www.peppercarrot.com/en/webcomic-sources/ep10_Summer-Special.html): art and scenario by David Revoy, English translation by Alex Gryson, and the Hereva universe by David Revoy; licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). “Signal in the Rain” is an original [CC0](https://creativecommons.org/publicdomain/zero/1.0/) test sample. Classic covers are by Winsor McCay and Gustave Verbeek; see [artwork sources](docs/STORE-ASSETS.md#refreshed-library-captures).</sub>
 
 ## Privacy by design
 

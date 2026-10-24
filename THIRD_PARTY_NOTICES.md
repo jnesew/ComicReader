@@ -43,8 +43,11 @@ Promotional screenshots include:
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/);
 - “Signal in the Rain,” an original test sample dedicated under
   [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/); and
-- *Little Nemo in Slumberland* (1905) by Winsor McCay, public-domain newspaper artwork;
-  see [store screenshot provenance](docs/STORE-ASSETS.md) for identified pages and remaining
-  thumbnail provenance checks.
+- *Little Nemo in Slumberland* (1905), *Little Sammy Sneeze* (1905), and
+  *Dream of the Rarebit Fiend* (1904) by Winsor McCay, and *The Upside Downs of
+  Little Lady Lovekins and Old Man Muffaroo* (1904) by Gustave Verbeek, identified
+  as public-domain newspaper artwork in the sample source records. See
+  [screenshot provenance](docs/STORE-ASSETS.md) for source links and the status of
+  older captures.
 
 These sample images appear only inside documentation screenshots and are not included in the APK.
