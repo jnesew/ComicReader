@@ -2,6 +2,10 @@
 
 All notable public changes to ComicViewer for Android are recorded here.
 
+## 1.4.0 - 2026-10-25
+
+- TODO: Summarize changes.
+
 ## 1.3.0 - 2026-10-24
 
 ### Library

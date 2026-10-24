@@ -69,6 +69,17 @@ The fingerprint is public; the private key and passwords remain local.
 
 ## Choose the version explicitly
 
+Use patch releases for backward-compatible fixes and maintenance, minor releases
+for backward-compatible features or substantial improvements, and major releases
+for deliberate breaking changes, such as dropping supported Android versions or
+requiring a library reset. A data-preserving database migration alone does not
+require a major release. An explicitly chosen release target takes precedence.
+
+Choose once for the complete release cycle on its staging branch. Feature and
+bugfix branches targeting that release inherit its version; merging each branch
+does not require another bump. Every newly distributed APK still needs a higher
+Android version code than previously distributed APKs.
+
 Start from a clean checkout containing the intended changes. For example:
 
 ```bash

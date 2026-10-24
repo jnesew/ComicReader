@@ -29,6 +29,35 @@ SDK Platform 36, and Build Tools 35.0.1. Supported Android APIs are 26–36.
 - Record what changed, which checks actually ran, and any verification limits. A successful
   build does not establish device behavior or distribution acceptance.
 
+## Versioning
+
+Use stable `MAJOR.MINOR.PATCH` versions. Choose the bump from the complete planned
+release, not from the number of commits or branches:
+
+| Bump | Use for | Example from 1.3.0 |
+| --- | --- | --- |
+| Patch | Backward-compatible bug fixes, internal cleanup, build tooling, or documentation without a new feature | 1.3.1 |
+| Minor | Backward-compatible features or substantial improvements to existing functionality | 1.4.0 |
+| Major | Deliberate breaking changes, such as dropping supported Android versions or requiring users to reset/reimport data | 2.0.0 |
+
+A schema migration that preserves existing data is not by itself a major change.
+Explicit user requests for a version or bump take precedence over these defaults.
+Ask before choosing a major bump when the task has not already authorized the breaking
+change; a version number does not authorize expanding the task's scope.
+
+Use `scripts/prepare-obtainium-release.sh --bump patch|minor|major` from a clean
+checkout when starting a release cycle. It compares the local and published versions,
+increments the selected component, resets lower components, and sets the Android
+version code one above the highest local/published code for the current application ID.
+`gradle.properties` remains the source of truth. Bump once on the release staging
+branch; feature and bugfix branches targeting it inherit that version. Do not bump
+again for each merged fix. A new externally distributed APK must have a higher code;
+never reuse a published version/code for changed contents.
+
+Keep the matching release notes, CHANGELOG entry, and English/Finnish metadata with
+the bump. Staging notes can remain drafts, but finalize them and the release date
+before public preparation. See [docs/RELEASING.md](docs/RELEASING.md) for the workflow.
+
 ## Product boundaries
 
 - Preserve offline operation and zero requested Android permissions, including network,
