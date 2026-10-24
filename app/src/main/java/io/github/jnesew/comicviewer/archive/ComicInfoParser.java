@@ -2,15 +2,13 @@ package io.github.jnesew.comicviewer.archive;
 
 import io.github.jnesew.comicviewer.model.SeriesMetadata;
 import io.github.jnesew.comicviewer.util.InputLimits;
+import io.github.jnesew.comicviewer.util.SecureXml;
 
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
-import org.xml.sax.ErrorHandler;
-import org.xml.sax.SAXParseException;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Enumeration;
@@ -18,7 +16,6 @@ import java.util.Locale;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
 /** Bounded, XXE-safe reader for the Series and Number fields in ComicInfo.xml. */
@@ -40,40 +37,7 @@ public final class ComicInfoParser {
             InputLimits.validateMetadataEntry(metadata, MAX_XML_BYTES);
             byte[] bytes = InputLimits.readAll(
                     source, MAX_XML_BYTES, InputLimits.Reason.METADATA_BYTES);
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(true);
-            factory.setXIncludeAware(false);
-            factory.setExpandEntityReferences(false);
-            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-            factory.setFeature(
-                    "http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-            try {
-                factory.setAttribute(
-                        "http://javax.xml.XMLConstants/property/accessExternalDTD", "");
-                factory.setAttribute(
-                        "http://javax.xml.XMLConstants/property/accessExternalSchema", "");
-            } catch (IllegalArgumentException ignored) {
-                // Android's parser may not expose these JAXP attributes; the features still apply.
-            }
-            var builder = factory.newDocumentBuilder();
-            builder.setErrorHandler(new ErrorHandler() {
-                @Override
-                public void warning(SAXParseException exception) {
-                }
-
-                @Override
-                public void error(SAXParseException exception) throws SAXException {
-                    throw exception;
-                }
-
-                @Override
-                public void fatalError(SAXParseException exception) throws SAXException {
-                    throw exception;
-                }
-            });
-            Document document = builder.parse(new ByteArrayInputStream(bytes));
+            Document document = SecureXml.parse(bytes, false);
             Element root = document.getDocumentElement();
             if (root == null || !"comicinfo".equalsIgnoreCase(root.getLocalName() == null
                     ? root.getNodeName() : root.getLocalName())) return SeriesMetadata.EMPTY;

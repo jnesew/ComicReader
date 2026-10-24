@@ -74,6 +74,14 @@ pages alone, pairs subsequent portrait pages, and reverses their visible sides f
 is intended for tall strips: width is constrained while the page retains its full scrollable
 height.
 
+Continuous mode fits each page to the available width independently, preserving its aspect ratio.
+Different source widths therefore remain fully visible at Fit width, although a narrow page can
+appear enlarged beside a wider page. Zooming in intentionally shows part of the page; drag
+horizontally to reach either edge and vertically to reach the bottom. Fit page shows a whole
+page or spread at once in paged modes; in Continuous it returns to Fit width. Very tall strips
+can look extremely narrow at Fit page. Manual zoom and Actual size obey the existing zoom bounds,
+so Actual size may be approximate for unusually small or large pages.
+
 **Reader options → Page buffering** offers Standard (the original behavior), Increased (roughly
 one screen ahead), and High (up to three screens ahead with some behind). **Device default** uses
 Standard below the 4 GB RAM class, Increased from 4 GB, and High from 8 GB. An explicit saved choice

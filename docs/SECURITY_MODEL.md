@@ -31,6 +31,17 @@ fail with a controlled I/O error. Temporary archive, PDF, page, and cover writes
 Image dimensions are checked before preview/full-bitmap allocation, and PDF/CBZ counts are checked
 before page-sized arrays are allocated.
 
+Raster formats without region decoding use a sampled full-image backing bitmap. Each renderer
+retains at most one such bitmap, sampled to its existing visible-tile cache byte budget and the
+32-megapixel hard fallback limit. Tile caches and the shared speculative cache keep their existing
+ceilings; memory-pressure trimming also releases decoder backing images. This bounds retained
+application bitmaps, not every temporary allocation inside Android's decoders. File-size limits
+are rejection ceilings rather than a promise that every document below them fits every device.
+
+EPUB and ComicInfo XML is decoded strictly as UTF-8 or UTF-16 before parsing. DTD and entity
+declarations are rejected before the platform DOM parser sees them, and external resolution is
+disabled. EPUB may contain the inert HTML5 doctype without an internal subset or external DTD.
+
 ## Build and release boundary
 
 - Gradle 8.14.4's binary distribution and wrapper JAR have pinned published SHA-256 values.

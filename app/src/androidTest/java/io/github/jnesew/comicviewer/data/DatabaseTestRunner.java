@@ -12,6 +12,8 @@ import io.github.jnesew.comicviewer.render.SpeculativeTileCache;
 import io.github.jnesew.comicviewer.render.BufferingPolicy;
 import io.github.jnesew.comicviewer.render.TileKey;
 import io.github.jnesew.comicviewer.render.RasterRenderingTests;
+import io.github.jnesew.comicviewer.render.ReaderGeometryTests;
+import io.github.jnesew.comicviewer.render.FormatRenderingTests;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -22,11 +24,19 @@ public final class DatabaseTestRunner extends Instrumentation {
     private LibraryDatabase db;
     private int current;
     private int failed;
-    private static final int TOTAL = 30;
+    private static final int TOTAL = 38;
 
     @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
 
     @Override public void onStart() {
+        run("zoomButtonsStartAtFitPageScale", () -> ReaderGeometryTests.zoomFromFitPage(this));
+        run("actualSizeSurvivesRelayout", () -> ReaderGeometryTests.actualSizeRestoresConsistently(this));
+        run("continuousZoomPreservesFocus", () -> ReaderGeometryTests.continuousZoomKeepsFocus(this));
+        run("mixedRasterFormatsKeepEdgesAndBottomVisible", () -> FormatRenderingTests.mixedRasterPages(this));
+        run("maximumHeightPdfPreviewAndBottom", () -> FormatRenderingTests.tallPdfPreview(this));
+        run("platformXmlRejectsDtdAndExternalEntities", FormatRenderingTests::platformXmlSecurity);
+        run("largeContinuousCollectionScrollsPrecisely", () -> ReaderGeometryTests.longCollectionScrollsPrecisely(this));
+        run("latePageDimensionsDoNotStretchCachedTiles", () -> FormatRenderingTests.dimensionsArrivingAfterFirstDraw(this));
         run("unicodeMetadataAndReadingState", this::metadata);
         run("indexReplacementRollsBack", this::indexRollback);
         run("canonicalRelinkMovesDependentRows", this::relink);
@@ -343,17 +353,17 @@ public final class DatabaseTestRunner extends Instrumentation {
                 1024, 1024, android.graphics.Bitmap.Config.ARGB_8888);
         try {
             for (int i = 0; i < 9; i++) {
-                cache.put(i < 5 ? firstOwner : secondOwner, new TileKey(i, 1, 1f, 0, 0), tile);
+                cache.put(i < 5 ? firstOwner : secondOwner, new TileKey(i, 1, 1f, 0, 0, 1000, 1000), tile);
                 check(cache.usedBytes() <= cache.limitBytes());
             }
-            check(cache.take(firstOwner, new TileKey(0, 1, 1f, 0, 0)) == null);
-            check(cache.take(secondOwner, new TileKey(8, 1, 1f, 0, 0)) == tile);
+            check(cache.take(firstOwner, new TileKey(0, 1, 1f, 0, 0, 1000, 1000)) == null);
+            check(cache.take(secondOwner, new TileKey(8, 1, 1f, 0, 0, 1000, 1000)) == tile);
             long retained = cache.usedBytes();
             cache.removeOwner(firstOwner);
             check(cache.usedBytes() <= retained);
             availableHeap.set(0L);
             check(!cache.beginSpeculativeDecode());
-            cache.put(secondOwner, new TileKey(9, 1, 1f, 0, 0), tile);
+            cache.put(secondOwner, new TileKey(9, 1, 1f, 0, 0, 1000, 1000), tile);
             equal(0L, cache.usedBytes());
             cache.setLevel(BufferingPolicy.STANDARD);
             equal(0L, cache.usedBytes());

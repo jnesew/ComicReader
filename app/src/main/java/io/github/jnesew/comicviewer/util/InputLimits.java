@@ -122,9 +122,16 @@ public final class InputLimits {
 
     public static int boundedBitmapSample(int width, int height, int requested)
             throws LimitExceededException {
+        return boundedBitmapSample(width, height, requested, MAX_FALLBACK_BITMAP_PIXELS);
+    }
+
+    /** A renderer can impose its smaller working-set budget without raising the input limit. */
+    public static int boundedBitmapSample(int width, int height, int requested, long pixelBudget)
+            throws LimitExceededException {
         validateImageDimensions(width, height);
+        long maximum = Math.max(1L, Math.min(MAX_FALLBACK_BITMAP_PIXELS, pixelBudget));
         int sample = Math.max(1, requested);
-        while (decodedPixels(width, height, sample) > MAX_FALLBACK_BITMAP_PIXELS) {
+        while (decodedPixels(width, height, sample) > maximum) {
             if (sample > 1 << 28) {
                 throw exceeded(Reason.IMAGE_DIMENSIONS,
                         "The page image cannot be decoded safely.");

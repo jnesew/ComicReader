@@ -104,7 +104,8 @@ public final class ComicCanvasView extends View {
 
     // Continuous transform.
     private float continuousZoom = 1f;
-    private float documentScroll;
+    private double documentScroll;
+    private double flingStartScroll;
     private float continuousPanX;
     private float pinchStartZoom = 1f;
     private final float pageGap;
@@ -257,8 +258,8 @@ public final class ComicCanvasView extends View {
         int issue = issueFor(page);
         if (issue < 0) return false;
         int end = pageMap.end(issue);
-        float bottom = continuousLayout.top(end) + continuousLayout.height(end) + pageGap;
-        float maximum = Math.max(continuousLayout.top(pageMap.start(issue)),
+        double bottom = continuousLayout.top(end) + continuousLayout.height(end) + pageGap;
+        double maximum = Math.max(continuousLayout.top(pageMap.start(issue)),
                 bottom - Math.max(1, getHeight()));
         return documentScroll >= maximum - 1f;
     }
@@ -457,7 +458,7 @@ public final class ComicCanvasView extends View {
         float fit = fitWidthScale();
         zoomMode = MANUAL;
         zoom = clamp(1f / Math.max(0.0001f, fit), 0.1f, 12f);
-        singleScale = 1f;
+        singleScale = fit * zoom;
         centerPagedOnRatio(pageRatio);
         notifyZoom();
         notifyPosition();
@@ -469,7 +470,8 @@ public final class ComicCanvasView extends View {
         if (continuous) {
             applyContinuousZoom(continuousZoom * factor, getWidth() / 2f, getHeight() / 2f);
         } else {
-            applyPagedZoom(zoom * factor, getWidth() / 2f, getHeight() / 2f);
+            applyPagedZoom(singleScale / fitWidthScale() * factor,
+                    getWidth() / 2f, getHeight() / 2f);
         }
     }
 
@@ -575,7 +577,7 @@ public final class ComicCanvasView extends View {
         java.util.Map<TileRenderer, List<TileRenderer.PageRequest>> requests =
                 new java.util.LinkedHashMap<>();
         for (int index = first; index <= last; index++) {
-            float top = continuousLayout.top(index) - documentScroll;
+            float top = (float) (continuousLayout.top(index) - documentScroll);
             destination.set(x, top, x + pageWidth, top + continuousLayout.height(index));
             TileRenderer pageRenderer = rendererForPage(index);
             if (pageRenderer != null) {
@@ -600,9 +602,9 @@ public final class ComicCanvasView extends View {
         int ahead = BufferingPolicy.lookaheadViewports(bufferingLevel);
         if (ahead == 0) return;
         float height = getHeight();
-        float end = Math.min(continuousLayout.documentHeight(),
+        double end = Math.min(continuousLayout.documentHeight(),
                 documentScroll + height * (1f + ahead));
-        float start = Math.max(0f,
+        double start = Math.max(0f,
                 documentScroll - height * BufferingPolicy.behindViewports(bufferingLevel));
         float pageWidth = contentWidth() * continuousZoom;
         float x = (getWidth() - pageWidth) / 2f + continuousPanX;
@@ -628,14 +630,14 @@ public final class ComicCanvasView extends View {
 
     private void addOffscreenPages(
             java.util.Map<TileRenderer, List<TileRenderer.PageRequest>> requests,
-            float start, float end, float x, float width, RectF requestedClip) {
+            double start, double end, float x, float width, RectF requestedClip) {
         if (end <= start || continuousLayout.size() == 0) return;
         int first = continuousLayout.pageAt(start);
         int last = continuousLayout.pageAt(end);
         for (int index = first; index <= last; index++) {
             TileRenderer pageRenderer = rendererForPage(index);
             if (pageRenderer == null || pageRenderer.isUnavailable()) continue;
-            float top = continuousLayout.top(index) - documentScroll;
+            float top = (float) (continuousLayout.top(index) - documentScroll);
             RectF future = new RectF(x, top, x + width,
                     top + continuousLayout.height(index));
             requests.computeIfAbsent(pageRenderer, key -> new ArrayList<>()).add(
@@ -688,8 +690,8 @@ public final class ComicCanvasView extends View {
         if (!scroller.computeScrollOffset()) return;
         if (continuous) {
             String previousKey = continuousDocumentKey();
-            float previousScroll = documentScroll;
-            documentScroll = scroller.getCurrY();
+            double previousScroll = documentScroll;
+            documentScroll = clampScroll(flingStartScroll + scroller.getCurrY());
             updateContinuousPosition();
             notifyUserScrolledForward(previousKey, forwardFling && documentScroll > previousScroll);
         } else {
@@ -775,8 +777,12 @@ public final class ComicCanvasView extends View {
 
     private void applyContinuousZoom(float requestedZoom, float focusX, float focusY) {
         if (pages.isEmpty() || getWidth() <= 0) return;
-        float oldDocumentHeight = Math.max(1f, continuousLayout.documentHeight());
-        float verticalAnchor = (documentScroll + focusY) / oldDocumentHeight;
+        // Gaps and issue separators do not scale. Preserve the page and local position
+        // under the gesture, rather than a fraction of the entire document height.
+        int focusPage = continuousLayout.pageAt(documentScroll + focusY);
+        float focusRatio = continuousLayout.pageRatio(focusPage, documentScroll + focusY);
+        double focusGap = documentScroll + focusY -
+                continuousLayout.positionFor(focusPage, focusRatio);
         float oldWidth = contentWidth() * continuousZoom;
         float oldLeft = (getWidth() - oldWidth) / 2f + continuousPanX;
         float horizontalAnchor = (focusX - oldLeft) / Math.max(1f, oldWidth);
@@ -786,7 +792,7 @@ public final class ComicCanvasView extends View {
         zoomMode = CONTINUOUS;
         calculateContinuousLayout();
         documentScroll = clampScroll(
-                verticalAnchor * continuousLayout.documentHeight() - focusY);
+                continuousLayout.positionFor(focusPage, focusRatio) + focusGap - focusY);
         float newWidth = contentWidth() * continuousZoom;
         continuousPanX = focusX - horizontalAnchor * newWidth - (getWidth() - newWidth) / 2f;
         clampContinuousPan();
@@ -821,8 +827,8 @@ public final class ComicCanvasView extends View {
         continuousPanX = clamp(continuousPanX, -overflow, overflow);
     }
 
-    private float clampScroll(float value) {
-        return clamp(value, 0f, continuousLayout.maximumScroll(getHeight()));
+    private double clampScroll(double value) {
+        return Math.max(0d, Math.min(value, continuousLayout.maximumScroll(getHeight())));
     }
 
     private float currentSingleRatio() {
@@ -955,17 +961,17 @@ public final class ComicCanvasView extends View {
         for (int issue = 1; issue < pageMap.issueCount(); issue++) {
             int start = pageMap.start(issue);
             if (start < first - 1 || start > last + 1) continue;
-            float center = continuousLayout.top(start) - issueSeparatorHeight / 2f - documentScroll;
+            float center = (float) (continuousLayout.top(start) - issueSeparatorHeight / 2f - documentScroll);
             drawSeparatorLabel(canvas, continuousDocuments.get(issue).title, center);
         }
         if (!topBoundaryText.isEmpty() && pageMap.issueCount() > 0) {
-            float center = continuousLayout.top(0) - boundaryHeight / 2f - documentScroll;
+            float center = (float) (continuousLayout.top(0) - boundaryHeight / 2f - documentScroll);
             if (center > -boundaryHeight && center < getHeight() + boundaryHeight) {
                 drawSeparatorLabel(canvas, topBoundaryText, center);
             }
         }
         if (!bottomBoundaryText.isEmpty() && continuousLayout.size() > 0) {
-            float center = continuousLayout.documentHeight() - boundaryHeight / 2f - documentScroll;
+            float center = (float) (continuousLayout.documentHeight() - boundaryHeight / 2f - documentScroll);
             if (center > -boundaryHeight && center < getHeight() + boundaryHeight) {
                 drawSeparatorLabel(canvas, bottomBoundaryText, center);
             }
@@ -989,7 +995,7 @@ public final class ComicCanvasView extends View {
     private void notifyContinuousBoundaries() {
         if (listener == null || !continuous || continuousLayout.size() == 0) return;
         float threshold = Math.max(getHeight() * 1.5f, Ui.dp(getContext(), 480));
-        float maximum = continuousLayout.maximumScroll(getHeight());
+        double maximum = continuousLayout.maximumScroll(getHeight());
         if (documentScroll <= threshold && !topApproachSent) {
             topApproachSent = true;
             listener.onContinuousBoundaryApproached(-1);
@@ -1016,7 +1022,7 @@ public final class ComicCanvasView extends View {
     private void showContinuousIssueEnd(int issue) {
         if (issue < 0 || issue >= pageMap.issueCount()) return;
         int end = pageMap.end(issue);
-        float bottom = continuousLayout.top(end) + continuousLayout.height(end) + pageGap;
+        double bottom = continuousLayout.top(end) + continuousLayout.height(end) + pageGap;
         scroller.forceFinished(true);
         documentScroll = clampScroll(Math.max(
                 continuousLayout.top(pageMap.start(issue)),
@@ -1059,7 +1065,7 @@ public final class ComicCanvasView extends View {
             if (zoomGestureGate.isScaling()) return true;
             if (continuous) {
                 String previousKey = continuousDocumentKey();
-                float previousScroll = documentScroll;
+                double previousScroll = documentScroll;
                 documentScroll = clampScroll(documentScroll + distanceY);
                 continuousPanX -= distanceX;
                 clampContinuousPan();
@@ -1091,9 +1097,14 @@ public final class ComicCanvasView extends View {
 
             if (continuous) {
                 forwardFling = velocityY < 0f;
-                int maximum = Math.round(continuousLayout.maximumScroll(getHeight()));
-                scroller.fling(0, Math.round(documentScroll), 0, Math.round(-velocityY),
-                        0, 0, 0, maximum);
+                // OverScroller uses integer coordinates. Fling relative to the current anchor
+                // so even a document taller than Integer.MAX_VALUE remains scrollable.
+                flingStartScroll = documentScroll;
+                int minimum = (int) -Math.min(Integer.MAX_VALUE, documentScroll);
+                int maximum = (int) Math.min(Integer.MAX_VALUE,
+                        continuousLayout.maximumScroll(getHeight()) - documentScroll);
+                scroller.fling(0, 0, 0, Math.round(-velocityY),
+                        0, 0, minimum, maximum);
             } else {
                 int maximumX = Math.round(Math.max(
                         0f, pagedDisplayWidth(singleScale) - getWidth()));
@@ -1119,7 +1130,7 @@ public final class ComicCanvasView extends View {
                     float left = continuous
                             ? (getWidth() - contentWidth() * continuousZoom) / 2f + continuousPanX
                             : singleX;
-                    float top = continuous ? continuousLayout.top(hitPage) - documentScroll : singleY;
+                    float top = continuous ? (float) (continuousLayout.top(hitPage) - documentScroll) : singleY;
                     if (TileRenderer.hitsNoticeRetry(
                             (event.getX() - left) / scale, (event.getY() - top) / scale)) {
                         if (listener != null) listener.onUnavailableRetry(hitRenderer.documentKey());
@@ -1128,7 +1139,7 @@ public final class ComicCanvasView extends View {
                 }
             }
             if (continuous && continuousLayout.size() > 0) {
-                float documentY = documentScroll + event.getY();
+                double documentY = documentScroll + event.getY();
                 if (topBoundaryRetry && documentY < continuousLayout.top(0)) {
                     if (listener != null) listener.onContinuousBoundaryRetry(-1);
                     return true;

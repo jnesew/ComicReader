@@ -23,6 +23,20 @@ import static org.junit.Assert.fail;
 
 public final class InputLimitsTest {
     @Test
+    public void fallbackSamplingRespectsRendererBudgetAndHardInputLimit() throws Exception {
+        for (long budget : new long[]{1L, 24L * 1024 * 1024 / 4, 64L * 1024 * 1024 / 4, Long.MAX_VALUE}) {
+            for (int[] size : new int[][]{{8192, 4096}, {1024, 262144}, {262144, 1024}}) {
+                int sample = InputLimits.boundedBitmapSample(size[0], size[1], 1, budget);
+                long decoded = ((size[0] + (long) sample - 1) / sample) *
+                        ((size[1] + (long) sample - 1) / sample);
+                assertTrue(decoded <= Math.min(InputLimits.MAX_FALLBACK_BITMAP_PIXELS, budget));
+                assertEquals(0, sample & (sample - 1));
+            }
+        }
+        assertEquals(4, InputLimits.boundedBitmapSample(8192, 4096, 1, 24L * 1024 * 1024 / 4));
+    }
+
+    @Test
     public void archiveWithTooManyEntriesIsRejected() throws Exception {
         File archive = Files.createTempFile("comicviewer-entry-limit-", ".zip").toFile();
         try {

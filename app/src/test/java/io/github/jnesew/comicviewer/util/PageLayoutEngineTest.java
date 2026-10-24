@@ -10,6 +10,20 @@ import static org.junit.Assert.assertEquals;
 
 public class PageLayoutEngineTest {
     @Test
+    public void largeStripCollectionRetainsShortPagesAndSmallScrolls() {
+        java.util.ArrayList<PageInfo> pages = new java.util.ArrayList<>();
+        for (int i = 0; i < 19_998; i++) pages.add(new PageInfo("strip", 1024, 262_144));
+        pages.add(new PageInfo("short", 800, 1));
+        pages.add(new PageInfo("last", 800, 600));
+        PageLayoutEngine layout = new PageLayoutEngine();
+        layout.calculate(pages, 800, 5, 8);
+        assertEquals(13d, layout.top(19_999) - layout.top(19_998), .001d);
+        double readingY = layout.positionFor(19_999, .5f);
+        assertEquals(.5f, layout.pageRatio(19_999, readingY), .00001f);
+        assertEquals(19_999, layout.pageAt(readingY + 1d));
+    }
+
+    @Test
     public void mapsContinuousPositionToPageAndRatio() {
         PageLayoutEngine layout = new PageLayoutEngine();
         layout.calculate(List.of(
@@ -47,7 +61,7 @@ public class PageLayoutEngineTest {
                 100, 1, 8, new float[]{58, 72}, 58);
 
         // The old bottom-aligned limit leaves issue 1 active, so issue 3 never loads.
-        float oldLimit = Math.max(0f, layout.documentHeight() - 200f);
+        double oldLimit = Math.max(0f, layout.documentHeight() - 200f);
         assertEquals(0, layout.pageAt(oldLimit + 1f));
         assertEquals(1, layout.pageAt(layout.maximumScroll(200f) + 1f));
     }
@@ -70,7 +84,7 @@ public class PageLayoutEngineTest {
                     PageLayoutEngine layout = new PageLayoutEngine();
                     layout.calculate(pages, 100, zoom, 8, separators, 58);
                     int anchor = active - first;
-                    float restored = Math.min(layout.positionFor(anchor, 0f),
+                    double restored = Math.min(layout.positionFor(anchor, 0f),
                             layout.maximumScroll(viewport));
                     assertEquals(anchor, layout.pageAt(restored + 1f));
                     assertEquals(last - first,

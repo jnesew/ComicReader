@@ -326,7 +326,6 @@ public final class PdfComicDocument implements ComicDocument {
             InputLimits.validateImageDimensions(page.getWidth(), page.getHeight());
             float scale = Math.min((float) maxWidth / Math.max(1, page.getWidth()),
                     (float) maxHeight / Math.max(1, page.getHeight()));
-            scale = Math.max(0.01f, scale);
             int width = Math.max(1, Math.round(page.getWidth() * scale));
             int height = Math.max(1, Math.round(page.getHeight() * scale));
             validateBitmapSize(width, height);

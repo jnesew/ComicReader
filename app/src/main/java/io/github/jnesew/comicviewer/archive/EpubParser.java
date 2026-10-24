@@ -1,6 +1,7 @@
 package io.github.jnesew.comicviewer.archive;
 
 import io.github.jnesew.comicviewer.util.InputLimits;
+import io.github.jnesew.comicviewer.util.SecureXml;
 import io.github.jnesew.comicviewer.util.InputLimits.LimitExceededException;
 
 import org.w3c.dom.Document;
@@ -9,11 +10,8 @@ import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
-import org.xml.sax.ErrorHandler;
-import org.xml.sax.SAXParseException;
 
 import java.io.BufferedInputStream;
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -29,19 +27,13 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
 /** Strict, non-rendering parser for the image-page subset of EPUB comics. */
 public final class EpubParser {
-    private static final Pattern INERT_HTML5_DOCTYPE = Pattern.compile(
-            "<!DOCTYPE\\s+html\\s*>", Pattern.CASE_INSENSITIVE);
     private static final Set<String> RASTER_MEDIA_TYPES = Collections.unmodifiableSet(
             new HashSet<>(Arrays.asList(
                     "image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp")));
@@ -392,8 +384,7 @@ public final class EpubParser {
         try (InputStream raw = new BufferedInputStream(zipFile.getInputStream(entry), 32 * 1024)) {
             byte[] bytes = InputLimits.readAll(
                     raw, InputLimits.MAX_XML_BYTES, InputLimits.Reason.METADATA_BYTES);
-            DocumentBuilder builder = secureDocumentBuilder();
-            return builder.parse(new ByteArrayInputStream(stripInertHtml5Doctype(bytes)));
+            return SecureXml.parse(bytes, true);
         } catch (EpubException exception) {
             throw exception;
         } catch (IOException | ParserConfigurationException | SAXException exception) {
@@ -401,54 +392,7 @@ public final class EpubParser {
         }
     }
 
-    /**
-     * XHTML commonly includes the inert HTML5 declaration. Strip only that exact declaration so
-     * the hardened parser can continue rejecting every internal subset, external DTD, and entity.
-     */
-    private static byte[] stripInertHtml5Doctype(byte[] bytes) {
-        String xml = new String(bytes, StandardCharsets.UTF_8);
-        Matcher matcher = INERT_HTML5_DOCTYPE.matcher(xml);
-        if (!matcher.find()) return bytes;
-        return (xml.substring(0, matcher.start()) + xml.substring(matcher.end()))
-                .getBytes(StandardCharsets.UTF_8);
-    }
 
-    private static DocumentBuilder secureDocumentBuilder() throws ParserConfigurationException {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        factory.setNamespaceAware(true);
-        factory.setXIncludeAware(false);
-        factory.setExpandEntityReferences(false);
-        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-        factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-        try {
-            factory.setAttribute(
-                    "http://javax.xml.XMLConstants/property/accessExternalDTD", "");
-            factory.setAttribute(
-                    "http://javax.xml.XMLConstants/property/accessExternalSchema", "");
-        } catch (IllegalArgumentException ignored) {
-            // Android's parser enforces the features above but may not expose JAXP attributes.
-        }
-        DocumentBuilder builder = factory.newDocumentBuilder();
-        builder.setErrorHandler(new ErrorHandler() {
-            @Override
-            public void warning(SAXParseException exception) {
-                // Non-fatal metadata warnings do not change the parsed page model.
-            }
-
-            @Override
-            public void error(SAXParseException exception) throws SAXException {
-                throw exception;
-            }
-
-            @Override
-            public void fatalError(SAXParseException exception) throws SAXException {
-                throw exception;
-            }
-        });
-        return builder;
-    }
 
     private static String resolvePath(String baseFile, String reference) throws EpubException {
         String value = reference.trim();

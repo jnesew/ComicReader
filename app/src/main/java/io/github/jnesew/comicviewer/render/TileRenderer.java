@@ -250,7 +250,7 @@ public final class TileRenderer implements AutoCloseable {
                         destination.top + source.top * scale,
                         destination.left + source.right * scale,
                         destination.top + source.bottom * scale);
-                TileKey key = key(pageIndex, sample, renderScale, tileX, tileY);
+                TileKey key = key(pageIndex, page, sample, renderScale, tileX, tileY);
                 Bitmap bitmap = tiles.get(key);
                 if (bitmap == null && speculativeTiles != null) {
                     bitmap = speculativeTiles.take(this, key);
@@ -339,7 +339,7 @@ public final class TileRenderer implements AutoCloseable {
             for (int tileY = top / sourceTile; tileY <= (bottom - 1) / sourceTile; tileY++) {
                 for (int tileX = left / sourceTile; tileX <= (right - 1) / sourceTile; tileX++) {
                     if (considered >= maxTiles) return;
-                    TileKey key = key(request.page, sample, renderScale, tileX, tileY);
+                    TileKey key = key(request.page, page, sample, renderScale, tileX, tileY);
                     if (tiles.get(key) != null || speculativeTiles.contains(this, key)) continue;
                     considered++;
                     int x = tileX * sourceTile;
@@ -431,7 +431,7 @@ public final class TileRenderer implements AutoCloseable {
         @Override public void run() {
             boolean slot = false;
             try {
-                if (closed) return;
+                if (closed || !matchesPageDimensions(key)) return;
                 if (speculative) {
                     if (!prefetchGeneration.isCurrent(epoch) ||
                             !speculativeTiles.beginSpeculativeDecode()) return;
@@ -439,19 +439,21 @@ public final class TileRenderer implements AutoCloseable {
                 }
                 Bitmap decoded = decodeTile(pageIndex, sample, renderScale, source);
                 synchronized (TileRenderer.this) {
-                    if (decoded != null && !closed) {
+                    if (decoded != null && !closed && matchesPageDimensions(key)) {
                         if (speculative) {
-                            prefetchGeneration.publishIfCurrent(epoch,
-                                    () -> speculativeTiles.put(TileRenderer.this, key, decoded));
+                            if (!prefetchGeneration.publishIfCurrent(epoch,
+                                    () -> speculativeTiles.put(TileRenderer.this, key, decoded))) {
+                                decoded.recycle();
+                            }
                         } else {
                             tiles.put(key, decoded);
                             mainHandler.post(invalidator);
                         }
-                    }
+                    } else if (decoded != null) decoded.recycle();
                 }
             } catch (OutOfMemoryError error) {
                 if (speculativeTiles != null) speculativeTiles.onMemoryPressure();
-                discardVisibleTiles();
+                trimMemory();
                 if (!speculative) reportError(context.getString(R.string.error_tile_memory));
             } catch (IOException | RuntimeException error) {
                 if (!speculative) reportError(context.getString(R.string.error_render_page, pageIndex + 1));
@@ -481,9 +483,11 @@ public final class TileRenderer implements AutoCloseable {
 
         PageInfo pageInfo = archive.page(pageIndex);
         int fallbackSample = InputLimits.boundedBitmapSample(
-                pageInfo.width, pageInfo.height, sample);
+                pageInfo.width, pageInfo.height, sample, tiles.maxSize() * 1024L / 4L);
         if (holder.fallback == null || holder.fallbackSample != fallbackSample) {
-            if (holder.fallback != null) holder.fallback.recycle();
+            // Keep one full-decoder backing image, bounded by this renderer's existing
+            // visible-cache budget. Four decoder holders must not retain four 128 MiB images.
+            for (DecoderHolder cached : decoders.values()) cached.clearFallback();
             BitmapFactory.Options options = new BitmapFactory.Options();
             options.inSampleSize = fallbackSample;
             options.inPreferredConfig = Bitmap.Config.ARGB_8888;
@@ -504,6 +508,11 @@ public final class TileRenderer implements AutoCloseable {
         // Android can return the source bitmap for a full-region crop. The decoder holder
         // recycles its fallback later, so cached tiles must own independent pixels.
         return tile == holder.fallback ? tile.copy(Bitmap.Config.ARGB_8888, false) : tile;
+    }
+
+    private boolean matchesPageDimensions(TileKey key) {
+        PageInfo page = archive.page(key.page());
+        return page.width == key.width() && page.height == key.height();
     }
 
     private DecoderHolder decoderFor(int pageIndex) throws IOException {
@@ -559,7 +568,8 @@ public final class TileRenderer implements AutoCloseable {
         cached.putAll(tiles.snapshot());
         java.util.List<Map.Entry<TileKey, Bitmap>> result = new ArrayList<>();
         for (Map.Entry<TileKey, Bitmap> entry : cached.entrySet()) {
-            if (entry.getKey().page() == page && entry.getKey().sample() != sample &&
+            if (entry.getKey().page() == page && matchesPageDimensions(entry.getKey()) &&
+                    entry.getKey().sample() != sample &&
                     !entry.getValue().isRecycled()) result.add(entry);
         }
         // Coarse pixels fill gaps first; finer cached tiles can then replace them.
@@ -611,7 +621,7 @@ public final class TileRenderer implements AutoCloseable {
                     sourceTop,
                     Math.min(page.width, sourceLeft + fallbackSourceTile),
                     Math.min(page.height, sourceTop + fallbackSourceTile));
-            Bitmap fallback = tiles.get(key(pageIndex, 1, fallbackScale, tileX, tileY));
+            Bitmap fallback = tiles.get(key(pageIndex, page, 1, fallbackScale, tileX, tileY));
             if (fallback != null && !fallback.isRecycled()) {
                 canvas.drawBitmap(
                         fallback,
@@ -646,8 +656,8 @@ public final class TileRenderer implements AutoCloseable {
         return new Rect(left, top, right, bottom);
     }
 
-    private static TileKey key(int page, int sample, float renderScale, int x, int y) {
-        return new TileKey(page, sample, renderScale, x, y);
+    private static TileKey key(int pageIndex, PageInfo page, int sample, float renderScale, int x, int y) {
+        return new TileKey(pageIndex, sample, renderScale, x, y, page.width, page.height);
     }
 
     private static String extension(String name) {
@@ -681,8 +691,14 @@ public final class TileRenderer implements AutoCloseable {
 
         private void close() {
             if (regionDecoder != null && !regionDecoder.isRecycled()) regionDecoder.recycle();
-            if (fallback != null && !fallback.isRecycled()) fallback.recycle();
+            clearFallback();
             file.delete();
+        }
+
+        private void clearFallback() {
+            if (fallback != null && !fallback.isRecycled()) fallback.recycle();
+            fallback = null;
+            fallbackSample = 0;
         }
     }
 }
