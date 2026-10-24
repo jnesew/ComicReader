@@ -8,4 +8,4 @@ ComicViewer ei tarvitse käyttäjätiliä, verkkoyhteyttä eikä Google Play -pa
 
 Vaatii Android 8.0:n tai uudemman. EPUB-tuki on tarkoitettu kuvapohjaisille sarjakuville, ei mukautuvalle tekstille. Sovelluksen kielet ovat suomi ja englanti. Sarjakuvia ei toimiteta sovelluksen mukana.
 
-Kuvakaappausten sarjakuvat: Little Nemo in Slumberland (1905), Winsor McCay, tekijänoikeudesta vapaat teokset. Lähdetiedot ovat lähdekoodivaraston tiedostossa docs/STORE-ASSETS.md.
+Kuvakaappausten sarjakuvat: Pepper & Carrot, jakso 10; kuvitus, käsikirjoitus ja Herevan luominen: David Revoy; englanninkielinen käännös: Alex Gryson; CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Lähde ja täydelliset tekijätiedot: https://www.peppercarrot.com/en/webcomic-sources/ep10_Summer-Special.html. Signal in the Rain on tekoälyllä luotu alkuperäinen testisarjakuva, joka on toimitettu CC0-luovutuksella. Winsor McCayn ja Gustave Verbeekin klassikkosarjakuvat on luetteloitu tekijänoikeudesta vapaiksi. Kaikki lähde- ja tekijätiedot ovat lähdekoodivaraston tiedostossa docs/STORE-ASSETS.md.
