@@ -9,5 +9,8 @@ The Actual size zoom option now displays `100%` correctly in English and Finnish
 For developers, the repository now includes the local Obtainium release preparation
 script. It checks versions against published APKs, verifies reproducible builds,
 and prepares a verified release bundle. Signing passwords use hidden terminal
-prompts by default, with an explicit unattended mode for environment passwords.
+prompts by default, reusing the keystore password for the key when possible and
+validating both before building. One-time setup saves the local keystore selection;
+a tracked public certificate pin replaces manual fingerprint configuration.
+An explicit unattended mode supports environment passwords.
 See [Preparing an Obtainium release](RELEASING.md) for the workflow and versioning rules.

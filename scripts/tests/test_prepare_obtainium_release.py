@@ -28,15 +28,23 @@ name=Path(sys.argv[0]).name
 args=sys.argv[1:]
 fixture=Path(os.environ['RELEASE_TEST_FIXTURE'])
 with (fixture/'events.jsonl').open('a') as f:
- f.write(json.dumps({'tool':name,'args':args,'signing_env':bool(os.environ.get('COMICVIEWER_STORE_PASSWORD'))})+'\n')
+ f.write(json.dumps({'tool':name,'args':args,'signing_env':any(os.environ.get(k) for k in ['COMICVIEWER_STORE_PASSWORD','COMICVIEWER_KEY_PASSWORD'])})+'\n')
 if os.environ.get('FAKE_FAIL_GATE')==name:sys.exit(9)
 if os.environ.get('FAKE_INTERRUPT_GATE')==name:sys.exit(130)
-if name=='java':print('openjdk version "17.0.16"');sys.exit(0)
+if name=='java':
+ if args==['-version']:print('openjdk version "17.0.16"');sys.exit(0)
+ assert args[:2]==['--source','17'] and Path(args[2]).name=='SigningKeyProbe.java'
+ lines=sys.stdin.read().splitlines()
+ if len(lines)!=2 or lines[0]!='fixture store pass':sys.exit(1)
+ expected='fixture key pass' if os.environ.get('FAKE_SEPARATE_KEY') else 'fixture store pass'
+ names=json.loads(os.environ.get('FAKE_ALIASES','["fixture"]'))
+ alias=args[-1]
+ names=[alias] if alias and any(n.casefold()==alias.casefold() for n in names) else ([] if alias else names)
+ cert=hashlib.sha256(b'fixture certificate').hexdigest()
+ if os.environ.get('FAKE_WRONG_ALIAS') or (os.environ.get('FAKE_CHANGED_KEY') and lines[1]==expected):cert='b'*64
+ print(json.dumps({'entries':[{'alias':n,'certificate_sha256':cert,'key_unlocked':lines[1]==expected} for n in names]}))
+ sys.exit(0)
 if name=='javac':print('javac 17.0.16');sys.exit(0)
-if name=='keytool':
- assert args[args.index('-storepass:file')+1]=='/dev/stdin'
- lines=sys.stdin.read().splitlines();assert len(lines)==1 and lines[0]=='fixture store pass'
- sys.stdout.buffer.write(b'wrong alias' if os.environ.get('FAKE_WRONG_ALIAS') else b'fixture certificate');sys.exit(0)
 if name=='gh':
  if os.environ.get('FAKE_NETWORK_FAILURE'):sys.exit(1)
  assert args[0]=='api' and '--hostname' in args and 'github.com' in args
@@ -114,16 +122,17 @@ class WorkflowTests(unittest.TestCase):
         for path in [platform, self.tools]:(path/'source.properties').write_text('Pkg.Revision=2\n')
         for name in ['java','javac','keytool','gh','apksigcopier']:self.executable(self.bin/name, TOOL)
         for name in ['aapt2','apksigner','zipalign']:self.executable(self.tools/name, TOOL)
-        self.env = {k:v for k,v in os.environ.items() if k not in release.SIGNING_ENV}
+        self.env = {k:v for k,v in os.environ.items() if k not in release.SIGNING_ENV | {'COMICVIEWER_EXPECTED_CERT_SHA256'}}
         self.env.update(PATH=str(self.bin)+os.pathsep+os.environ['PATH'], JAVA_HOME=str(self.bin.parent),
                         ANDROID_HOME=str(self.sdk), ANDROID_SDK_ROOT=str(self.sdk),
-                        RELEASE_TEST_FIXTURE=str(self.fixture), COMICVIEWER_EXPECTED_CERT_SHA256=CERT,
+                        RELEASE_TEST_FIXTURE=str(self.fixture),
                         COMICVIEWER_KEYSTORE_PATH=str(self.root/'signing/test.jks'),
                         COMICVIEWER_KEY_ALIAS='fixture', COMICVIEWER_STORE_PASSWORD='fixture store pass',
-                        COMICVIEWER_KEY_PASSWORD='fixture key pass')
+                        COMICVIEWER_KEY_PASSWORD='fixture store pass')
         scripts=self.root/'scripts';scripts.mkdir()
-        for name in ['prepare-obtainium-release.sh','prepare_obtainium_release.py','verify-release-apk.sh','verify-reproducible-build.sh']:
+        for name in ['prepare-obtainium-release.sh','prepare_obtainium_release.py','verify-release-apk.sh','verify-reproducible-build.sh','SigningKeyProbe.java']:
             shutil.copyfile(SOURCE/'scripts'/name,scripts/name);(scripts/name).chmod(0o755)
+        (self.root/release.CERTIFICATE_PIN).write_text(CERT+'\n')
         for name in ['verify-source-security.sh','verify-database-roundtrip.sh']:self.executable(scripts/name, TOOL)
         shutil.copyfile(SOURCE/'build-release.sh',self.root/'build-release.sh');(self.root/'build-release.sh').chmod(0o755)
         self.executable(self.root/'gradlew',TOOL)
@@ -195,14 +204,14 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn(self.env.get('COMICVIEWER_STORE_PASSWORD','unprinted secret'),result.stdout+result.stderr)
         return result
 
-    def interactive(self,answers,ok=True):
+    def interactive(self,answers,ok=True,args=(),prompts=None):
         master,slave=pty.openpty()
-        process=subprocess.Popen([str(self.root/'scripts/prepare-obtainium-release.sh')],
+        process=subprocess.Popen([str(self.root/'scripts/prepare-obtainium-release.sh'),*args],
                                  cwd=self.fixture,env=self.env,stdin=slave,stdout=slave,stderr=slave,
                                  start_new_session=True)
         os.close(slave)
         output=bytearray();deadline=time.monotonic()+40;sent=0
-        prompts=[b'Keystore password: ',b'Key password (Enter to reuse keystore password): ']
+        prompts=prompts or [b'Keystore password: ',b'Key password (different from keystore): ']
         try:
             while time.monotonic()<deadline:
                 if select.select([master],[],[],0.1)[0]:
@@ -221,6 +230,7 @@ class WorkflowTests(unittest.TestCase):
             os.close(master)
         text=output.decode('utf-8',errors='replace')
         self.assertEqual(process.returncode==0,ok,text)
+        self.assertEqual(sent,len(answers),text)
         self.assertNotIn('fixture store pass',text)
         self.assertNotIn('fixture key pass',text)
         return text
@@ -254,7 +264,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertFalse(any(e['tool']=='gradlew' or (e['tool']=='apksigner' and e['args'][0]=='sign') for e in self.events()))
 
     def test_development_offline_unsigned_and_separate(self):
-        self.env['FAKE_NETWORK_FAILURE']='1';self.env.pop('COMICVIEWER_EXPECTED_CERT_SHA256')
+        self.env['FAKE_NETWORK_FAILURE']='1'
         self.invoke('--development')
         manifest=json.loads((self.bundle(True)/'release.json').read_text())
         self.assertFalse(manifest['publishable']);self.assertIsNone(manifest['certificate_sha256'])
@@ -345,12 +355,21 @@ class WorkflowTests(unittest.TestCase):
         path=self.root/'dist/release-cache/1.apk';path.parent.mkdir(parents=True);path.write_bytes(b'corrupt')
         self.invoke('--check');self.assertEqual(path.read_bytes(),(self.fixture/'asset-1.json').read_bytes())
 
-    def test_expected_certificate_required(self):
-        self.env.pop('COMICVIEWER_EXPECTED_CERT_SHA256');self.assertIn('EXPECTED_CERT',self.invoke(ok=False).stderr)
+    def test_tracked_certificate_pin_required(self):
+        (self.root/release.CERTIFICATE_PIN).unlink();self.retag()
+        self.assertIn('Missing tracked release certificate',self.invoke(ok=False).stderr)
 
     def test_certificate_must_match_published_apk(self):
-        self.env['COMICVIEWER_EXPECTED_CERT_SHA256']='c'*64
+        (self.root/release.CERTIFICATE_PIN).write_text('c'*64+'\n');self.retag()
         self.assertIn('latest published APK',self.invoke(ok=False).stderr)
+
+    def test_old_certificate_environment_cannot_override_pin(self):
+        self.env['COMICVIEWER_EXPECTED_CERT_SHA256']='c'*64
+        self.assertIn('disagrees with the tracked certificate pin',self.invoke(ok=False).stderr)
+
+    def test_matching_old_certificate_environment_remains_compatible(self):
+        self.env['COMICVIEWER_EXPECTED_CERT_SHA256']=CERT.upper()
+        self.invoke('--check')
 
     def test_signer_mismatch_does_not_stage(self):
         self.env['FAKE_BAD_CERT']='1';self.invoke(ok=False);self.assertFalse(self.bundle().exists())
@@ -439,7 +458,8 @@ class WorkflowTests(unittest.TestCase):
 
     def test_interactive_passwords_hidden_and_reused(self):
         for key in release.PASSWORD_ENV:self.env[key]='ignored environment password'
-        self.interactive([b'fixture store pass\n',b'\n'])
+        text=self.interactive([b'fixture store pass\n'])
+        self.assertNotIn('Key password',text)
         self.assertTrue(self.bundle().is_dir())
         events=self.events()
         self.assertTrue(any(e['tool']=='password-input' and e['reused'] for e in events))
@@ -448,8 +468,132 @@ class WorkflowTests(unittest.TestCase):
             self.assertNotIn(b'fixture store pass',path.read_bytes())
 
     def test_interactive_separate_key_password(self):
+        self.env['FAKE_SEPARATE_KEY']='1'
         self.interactive([b'fixture store pass\n',b'fixture key pass\n'])
         self.assertTrue(any(e['tool']=='password-input' and not e['reused'] for e in self.events()))
+
+    def test_wrong_store_password_stops_before_build(self):
+        self.env['COMICVIEWER_STORE_PASSWORD']='wrong store secret'
+        self.assertIn('Cannot unlock or inspect',self.invoke(ok=False).stderr)
+        self.assertFalse(any(e['tool']=='gradlew' for e in self.events()))
+
+    def test_noninteractive_separate_key_needs_correct_password_before_build(self):
+        self.env['FAKE_SEPARATE_KEY']='1'
+        self.env.pop('COMICVIEWER_KEY_PASSWORD')
+        self.assertIn('COMICVIEWER_KEY_PASSWORD',self.invoke(ok=False).stderr)
+        self.assertFalse(any(e['tool']=='gradlew' for e in self.events()))
+        self.env['COMICVIEWER_KEY_PASSWORD']='fixture key pass'
+        self.invoke('--check')
+
+    def test_interactive_wrong_key_password_stops_before_build(self):
+        self.env['FAKE_SEPARATE_KEY']='1'
+        text=self.interactive([b'fixture store pass\n',b'wrong key secret\n'],ok=False)
+        self.assertNotIn('wrong key secret',text)
+        self.assertIn('Cannot unlock the private key',text)
+        self.assertFalse(any(e['tool']=='gradlew' for e in self.events()))
+
+    def test_key_identity_must_survive_password_retry(self):
+        self.env.update(FAKE_SEPARATE_KEY='1',FAKE_CHANGED_KEY='1')
+        self.interactive([b'fixture store pass\n',b'fixture key pass\n'],ok=False)
+        self.assertFalse(any(e['tool']=='gradlew' for e in self.events()))
+
+    def test_setup_discovers_alias_saves_only_metadata_and_supports_next_release(self):
+        self.env.pop('COMICVIEWER_KEY_ALIAS')
+        self.env['FAKE_NETWORK_FAILURE']='1'
+        store=self.root/'signing/test.jks';original=store.read_bytes()
+        self.invoke('--setup')
+        path=self.root/release.LOCAL_SIGNING
+        self.assertEqual(json.loads(path.read_text()),{'keystore':str(store),'alias':'fixture'})
+        self.assertEqual(path.stat().st_mode & 0o777,0o600)
+        self.assertEqual(store.read_bytes(),original)
+        self.assertEqual(self.git('status','--porcelain'),'')
+        self.assertFalse(any(e['tool'] in ['gh','gradlew','apksigner'] for e in self.events()))
+        for key in release.PASSWORD_ENV:self.assertNotIn(self.env.get(key,'unused'),path.read_text())
+        self.env.pop('FAKE_NETWORK_FAILURE');self.env.pop('COMICVIEWER_KEYSTORE_PATH')
+        self.invoke()
+
+    def test_interactive_setup_accepts_path_with_no_existing_configuration(self):
+        self.env.pop('COMICVIEWER_KEYSTORE_PATH');self.env.pop('COMICVIEWER_KEY_ALIAS')
+        self.interactive([b'signing/test.jks\n',b'fixture store pass\n'],args=('--setup',),
+                         prompts=[b'Keystore path: ',b'Keystore password: '])
+        self.assertEqual(json.loads((self.root/release.LOCAL_SIGNING).read_text())['alias'],'fixture')
+
+    def test_interactive_setup_selects_between_matching_aliases(self):
+        self.env.pop('COMICVIEWER_KEY_ALIAS');self.env['FAKE_ALIASES']='["first", "second"]'
+        self.interactive([b'\n',b'fixture store pass\n',b'2\n'],args=('--setup',),
+                         prompts=[b'Keystore path',b'Keystore password: ',b'Signing alias number: '])
+        self.assertEqual(json.loads((self.root/release.LOCAL_SIGNING).read_text())['alias'],'second')
+
+    def test_ambiguous_unattended_setup_preserves_existing_settings(self):
+        self.invoke('--setup')
+        path=self.root/release.LOCAL_SIGNING;before=path.read_bytes()
+        self.env.pop('COMICVIEWER_KEY_ALIAS');self.env['FAKE_ALIASES']='["first", "second"]'
+        self.assertIn('Multiple signing aliases',self.invoke('--setup',ok=False).stderr)
+        self.assertEqual(path.read_bytes(),before)
+        self.assertFalse(list(path.parent.glob('.release.local-*')))
+
+    def test_setup_wrong_certificate_never_saves_settings(self):
+        self.env['FAKE_WRONG_ALIAS']='1'
+        self.invoke('--setup',ok=False)
+        self.assertFalse((self.root/release.LOCAL_SIGNING).exists())
+
+    def test_setup_with_no_private_key_never_saves_settings(self):
+        self.env.pop('COMICVIEWER_KEY_ALIAS');self.env['FAKE_ALIASES']='[]'
+        self.assertIn('No private signing key',self.invoke('--setup',ok=False).stderr)
+        self.assertFalse((self.root/release.LOCAL_SIGNING).exists())
+
+    def test_setup_with_separate_key_password_saves_no_secrets(self):
+        self.env['FAKE_SEPARATE_KEY']='1'
+        self.interactive([b'\n',b'fixture store pass\n',b'fixture key pass\n'],args=('--setup',),
+                         prompts=[b'Keystore path',b'Keystore password: ',b'Key password (different from keystore): '])
+        text=(self.root/release.LOCAL_SIGNING).read_text()
+        self.assertNotIn('fixture store pass',text);self.assertNotIn('fixture key pass',text)
+
+    def test_setup_preserves_legacy_properties(self):
+        path=self.root/'signing/keystore.properties'
+        config={'storeFile':'signing/test.jks','keyAlias':'fixture','storePassword':'legacy secret'}
+        path.write_text('\n'.join(k+'='+v for k,v in config.items()))
+        before=path.read_bytes()
+        self.invoke('--setup')
+        self.assertEqual(path.read_bytes(),before)
+
+    def test_local_metadata_overrides_legacy_but_explicit_properties_take_precedence(self):
+        self.invoke('--setup')
+        for key in ['COMICVIEWER_KEYSTORE_PATH','COMICVIEWER_KEY_ALIAS']:self.env.pop(key)
+        legacy=self.root/'signing/keystore.properties'
+        legacy.write_text('storeFile=does-not-exist.jks\nkeyAlias=wrong\n')
+        self.invoke('--check')
+        local=self.root/release.LOCAL_SIGNING
+        local.write_text(json.dumps({'keystore':'wrong.jks','alias':'wrong'}))
+        legacy.write_text('storeFile=signing/test.jks\nkeyAlias=fixture\n')
+        self.env['COMICVIEWER_SIGNING_PROPERTIES']=str(legacy)
+        self.invoke('--check')
+
+    def test_setup_refuses_settings_with_extra_fields(self):
+        path=self.root/release.LOCAL_SIGNING
+        path.write_text(json.dumps({'keystore':'signing/test.jks','alias':'fixture','password':'keep private'}))
+        before=path.read_bytes();self.invoke('--setup',ok=False)
+        self.assertEqual(path.read_bytes(),before)
+
+    def test_setup_refuses_symlink_settings(self):
+        target=self.fixture/'other.json';target.write_text(json.dumps({'keystore':'signing/test.jks','alias':'fixture'}))
+        (self.root/release.LOCAL_SIGNING).symlink_to(target)
+        before=target.read_bytes();self.invoke('--setup',ok=False)
+        self.assertEqual(target.read_bytes(),before)
+
+    def test_setup_refuses_tracked_settings(self):
+        path=self.root/release.LOCAL_SIGNING
+        path.write_text(json.dumps({'keystore':'signing/test.jks','alias':'fixture'}))
+        self.git('add','-f',str(release.LOCAL_SIGNING));self.git('commit','-m','Tracked fixture metadata')
+        self.assertIn('Git-ignored and untracked',self.invoke('--setup',ok=False).stderr)
+
+    def test_published_certificate_is_checked_again_after_build(self):
+        previous=(self.fixture/'releases.json').read_bytes()
+        self.published('1.3.1',6,2,certificate='c'*64)
+        (self.fixture/'publish-during-build.json').write_bytes((self.fixture/'releases.json').read_bytes())
+        (self.fixture/'releases.json').write_bytes(previous)
+        self.assertIn('latest published APK',self.invoke(ok=False).stderr)
+        self.assertFalse(self.bundle().exists())
 
     def test_interactive_empty_password_cancels_without_building(self):
         self.interactive([b'\n'],ok=False)

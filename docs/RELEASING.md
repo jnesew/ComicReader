@@ -20,39 +20,74 @@ consumes the normal signed APK attached to a matching GitHub release.
 - Keep a populated Gradle cache: the two independent reproducibility builds run
   with strict offline dependency verification.
 
-Configure the keystore path and alias in the existing ignored
-`signing/keystore.properties`, an alternative file selected by
-`COMICVIEWER_SIGNING_PROPERTIES`, or these environment variables (which take
-precedence over the properties file):
+## One-time signing setup
 
-- `COMICVIEWER_KEYSTORE_PATH`
-- `COMICVIEWER_KEY_ALIAS`
+Run from a terminal:
+
+```bash
+scripts/prepare-obtainium-release.sh --setup
+```
+
+Enter the keystore path and its password. Setup finds private-key aliases matching
+the tracked certificate pin. It selects a sole match automatically or asks you to
+choose among multiple matches. It tries the keystore password for the private key
+first and requests a separate key password only if needed. Both passwords are
+validated before saving any settings.
+
+Setup saves only the keystore path and alias to the Git-ignored
+`signing/release.local.json`. It never changes the keystore or existing properties
+files. Rerun `--setup` to change the local selection. Setup needs the pinned local
+toolchain but does not access GitHub, build, sign, or require a release tag.
+
+The public fingerprint in [release-certificate.sha256](../scripts/release-certificate.sha256)
+is the independent signing identity for this project. It was verified against the
+[v1.3.0 release APK](https://github.com/jnesew/ComicReader/releases/tag/v1.3.0)
+(APK SHA-256 `961b49dd32e0e27a6e1cd287ec59e082eaff8be2dc48389eed6cd4a5caa5ad23`)
+and the five earlier published APKs for the current application ID. Public preparation
+automatically compares the latest published APK, selected signing key, and finished
+APK against this pin. A mismatch stops preparation. Changing the pin requires a
+reviewed source change; setup never learns or replaces it from the selected keystore.
+
+## Password entry and existing configuration
+
+The normal release command and public `--check` use hidden terminal password entry.
+Usually only the keystore password is needed. A separate private-key password is
+requested only when reuse fails. The JDK 17 helper `SigningKeyProbe.java` validates
+the store, private key, and certificate before the lengthy build. It uses the JDK's
+keystore APIs and never exports the private key.
+
+Passwords are held for the current invocation and sent to the inspector and signer
+through standard input. They are excluded from child-process environments,
+command-line arguments, local settings, and release files. Each invocation requests
+them again. Empty input, EOF, Ctrl+C, incorrect credentials, or inability to disable
+echo stops preparation. Version bumping and unsigned development verification do
+not request passwords.
+
+Existing nonsecret configuration remains supported, with this precedence:
+
+1. `COMICVIEWER_KEYSTORE_PATH` and `COMICVIEWER_KEY_ALIAS` environment variables.
+2. A properties file explicitly selected by `COMICVIEWER_SIGNING_PROPERTIES`.
+3. The settings saved by `--setup` in `signing/release.local.json`.
+4. The existing ignored `signing/keystore.properties` file.
 
 Relative keystore paths resolve from the repository root. Properties files use
-Java `.properties` syntax, including escapes and continuations.
+Java `.properties` syntax, including escapes and continuations. Password fields in
+properties are ignored by this preparation script; it does not remove old entries.
+Interactive mode also ignores environment passwords.
 
-Public preparation and public `--check` prompt for the keystore password with
-terminal echo disabled. The second prompt accepts a separate key password; press
-Enter to reuse the keystore password. Passwords are held for the current run and
-sent to SDK tools through standard input. They are not placed in child-process
-environments, command-line arguments, release files, or the manifest. Each
-invocation prompts again; neither prompt saves a password. An empty keystore
-password, EOF, Ctrl+C, or inability to disable echo stops preparation.
-
-Without a terminal, public preparation fails with an explanation. The default mode
-ignores passwords supplied in either the environment or the properties file. This
-script no longer reads password fields from properties for signing; remove any
-old password entries from your local properties file if you no longer need them.
-It does not edit that local file automatically. Version bumping and unsigned
-development verification do not prompt for passwords.
+`COMICVIEWER_EXPECTED_CERT_SHA256` is no longer needed. If present for compatibility,
+it must match the tracked pin and cannot override it.
 
 For explicit unattended operation, add `--non-interactive` and supply
 `COMICVIEWER_STORE_PASSWORD` through the environment. Optionally supply
-`COMICVIEWER_KEY_PASSWORD`; if absent or empty, the keystore password is reused.
+`COMICVIEWER_KEY_PASSWORD`; if absent or empty, the keystore password is tried.
+If the key needs a different password, this mode fails before building rather
+than prompting. It also supports `--setup --non-interactive`, using the path and
+alias from the configuration above. Ambiguous alias discovery requires an explicit
+`COMICVIEWER_KEY_ALIAS`.
 For example, when a trusted local secret provider supplies these variables:
 
 ```bash
-scripts/prepare-obtainium-release.sh --check --non-interactive
 scripts/prepare-obtainium-release.sh --non-interactive
 ```
 
@@ -60,12 +95,6 @@ This mode never falls back to prompting or passwords in a properties file.
 Environment passwords must be single-line values. They are passed to the signer
 through standard input and excluded from the environments of build/GitHub/SDK
 subprocesses.
-
-Set `COMICVIEWER_EXPECTED_CERT_SHA256` to the previously verified release
-certificate fingerprint. Upper/lowercase and colon-separated fingerprints are
-accepted. The script compares it with both the latest published APK and the
-configured keystore alias before building, then checks the final signed APK.
-The fingerprint is public; the private key and passwords remain local.
 
 ## Choose the version explicitly
 
@@ -132,19 +161,17 @@ moves a tag or pushes anything on your behalf.
 
 ## Preflight, build, and review
 
-After configuring the keystore path, alias, and expected certificate, run from a terminal:
+After setup and the source/tag steps above, the usual release flow is one command:
 
 ```bash
-# Validate source, versions, toolchain, notes, signing configuration, and existing output.
-scripts/prepare-obtainium-release.sh --check
-
-# Run the full local verification, sign, and stage the completed bundle.
 scripts/prepare-obtainium-release.sh
 ```
 
-Both commands request passwords independently. Certificate verification occurs
-before the lengthy build; the same in-memory credentials are reused for signing
-later in that invocation.
+This includes preflight, so there is no need to run it separately. For diagnostics,
+`scripts/prepare-obtainium-release.sh --check` performs preflight without building,
+signing, or staging. It is a separate invocation and requests passwords again.
+The full command validates credentials once, then reuses them for signing later
+in the same invocation.
 
 The full run calls the existing source-security and database-roundtrip checks,
 `build-release.sh` (unit tests, release lint, optimized unsigned Gradle build), and
@@ -215,9 +242,14 @@ direct-SDK convenience build.
 python3 -m unittest discover -s scripts/tests -v
 ```
 
-These tests use temporary Git repositories/remotes and fake SDK, Gradle, signing,
-and GitHub commands. Pseudo-terminal tests check hidden password entry, reuse,
-and cancellation. They also exercise release-policy failures, staging, and reruns
-without real credentials or publication. They do not establish that real signing,
-Android builds, or device upgrades pass; test the local workflow with the actual
-toolchain as well.
+Workflow tests use temporary Git repositories/remotes and fake SDK, Gradle,
+signing, and GitHub commands. Pseudo-terminal tests check setup, hidden password
+entry, automatic reuse, separate-password retries, and cancellation. They also
+exercise certificate mismatches, release-policy failures, staging, and reruns.
+
+With JDK 17 selected by `JAVA_HOME`, native inspector tests create disposable
+PKCS12/JKS stores and test real unlocking, Unicode passwords, alias lookup, and
+certificate-only entries. They skip explicitly when JDK 17 is unavailable.
+Neither suite uses release credentials or publishes anything. They do not establish
+that the full SDK signing/build workflow or device upgrades pass; test those with
+the actual toolchain as well.

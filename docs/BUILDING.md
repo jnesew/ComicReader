@@ -122,8 +122,10 @@ reviewed notes, the canonical unsigned build, independent reproducibility, local
 signing, APK verification, and safe output staging. Start with
 [RELEASING.md](RELEASING.md) for version bumping, preflight, public preparation,
 and unsigned development verification. It never pushes or publishes automatically.
-Public preparation uses hidden terminal password prompts by default. Its
-`--non-interactive` mode explicitly opts into environment-supplied passwords;
+Run its `--setup` once to verify the signing key and save the local keystore path
+and alias. Normal preparation uses the tracked public certificate pin and hidden
+password entry, automatically reusing the store password for the key when possible.
+Its `--non-interactive` mode explicitly opts into environment-supplied passwords;
 password fields in properties files are not used by the preparation script.
 
 `scripts/verify-reproducible-build.sh --output <path>` can retain its independently
