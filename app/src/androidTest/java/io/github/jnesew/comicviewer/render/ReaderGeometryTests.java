@@ -25,6 +25,17 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class ReaderGeometryTests {
     private ReaderGeometryTests() { }
 
+    public static void actualSizeLabels(Instrumentation instrumentation) {
+        for (java.util.Locale locale : new java.util.Locale[]{java.util.Locale.ENGLISH, java.util.Locale.forLanguageTag("fi")}) {
+            android.content.res.Configuration configuration = new android.content.res.Configuration(
+                    instrumentation.getTargetContext().getResources().getConfiguration());
+            configuration.setLocale(locale);
+            String label = instrumentation.getTargetContext().createConfigurationContext(configuration)
+                    .getString(io.github.jnesew.comicviewer.R.string.reader_actual_size);
+            check(label.endsWith("(100%)"), "Actual size label has an escaped percent: " + label);
+        }
+    }
+
     public static void zoomFromFitPage(Instrumentation instrumentation) {
         onMain(instrumentation, () -> {
             for (int height : new int[]{5000, 10000, 262144}) {
