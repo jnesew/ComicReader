@@ -2,7 +2,7 @@ Lue omia sarjakuviasi ilman verkkoyhteyttä. ComicViewer on pieni Android-lukija
 
 Valitse yksittäinen sivu, kahden sivun aukeama tai jatkuva vieritys. Jatka sarjan seuraavaan numeroon, palaa tallennettuun lukukohtaan, siirry sivulle ja käytä kirjanmerkkejä. Säädä zoomausta, lukitse zoomauseleet ja valitse lukusuunta tai automaattinen tunnistus.
 
-Järjestä paikalliset tiedostosi kansikuvanäkymässä. Käytettävissä ovat haku, lajittelu, suosikit ja sarjaryhmät. Tuo yksittäisiä tiedostoja tai skannaa Androidin tiedostovalitsimella valitsemasi kansio. Muokkaa nimiä ja sarjatietoja muuttamatta alkuperäisiä tiedostoja.
+Järjestä paikalliset tiedostosi kansikuvanäkymässä. Käytettävissä ovat haku, lajittelu, sarjakuvien ja sarjojen suosikit sekä sarjaryhmät. Tuo yksittäisiä tiedostoja tai skannaa useita Androidin tiedostovalitsimella valitsemiasi kansioita. Muokkaa nimiä ja sarjatietoja muuttamatta alkuperäisiä tiedostoja.
 
 ComicViewer ei tarvitse käyttäjätiliä, verkkoyhteyttä eikä Google Play -palveluita. Sovelluksessa ei ole mainoksia tai analytiikkaa. Tiedostot pysyvät laitteellasi. Sovellus ei pyydä Android-käyttöoikeuksia, vaan käyttää tiedostovalitsimella antamaasi pääsyä valittuihin tiedostoihin.
 

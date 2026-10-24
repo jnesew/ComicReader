@@ -2,6 +2,38 @@
 
 All notable public changes to ComicViewer for Android are recorded here.
 
+## 1.3.0 - 2026-10-24
+
+### Library
+
+- Added multiple library folders with per-folder scan status, removal, and a shared rescan action.
+  Existing single-folder selections migrate automatically. Verified identical copies across
+  folders share one library entry and retain reading state when another copy becomes the source.
+- Added independent series favorites. Favoriting a series includes future issues without changing
+  individual comic favorites; opening it from Favorites shows all its issues.
+- Refreshed the library toolbar, Titles/Series selector, cover cards, issue labels, and icons.
+  Favorite markers no longer cover the artwork, and unread cards hide empty progress tracks.
+- Preserve search, filters, and scroll position when returning from a series and across recreation.
+- Fixed cover alignment in compact series grids, including mixed reading states and larger text.
+
+### Reader
+
+- Added a comic favorite action beside the separate page-bookmark control.
+- Fixed zoom buttons starting from the wrong scale after Fit page, Actual size changing after
+  relayout, and continuous zoom shifting the focused content.
+- Fixed stale tiles remaining distorted after background indexing corrects page dimensions.
+- Preserve precise scrolling and flinging through very long continuous collections.
+- Fixed previews for very tall PDF pages and restored EPUB/ComicInfo parsing on Android while
+  retaining rejection of DTDs and external entities.
+- Bound retained full-image fallback bitmaps to the renderer's working-set budget and validate
+  actual image headers before decoder allocation, including while page dimensions are provisional.
+
+### Maintenance
+
+- Added real Android coverage for multi-folder reconciliation, migrations, library navigation,
+  mixed-format rendering, maximum-size pages, and long-document scrolling.
+- Fixed host-side connected-test dependency resolution.
+
 ## 1.2.0 - 2026-10-20
 
 ### Reader

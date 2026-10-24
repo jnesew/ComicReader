@@ -1,0 +1,1 @@
+Multiple library folders with per-folder status and verified copy recovery. Independent series favorites, clearer library controls, aligned covers, and a reader favorite button. Fixes zoom jumps, long-strip scrolling, stale tiles, tall PDF previews, and EPUB/ComicInfo parsing. Tighter image-memory and input safeguards. Existing library and reading state are retained.
