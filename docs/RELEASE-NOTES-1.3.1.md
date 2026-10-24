@@ -1,4 +1,4 @@
-# ComicViewer 1.4.0
+# ComicViewer 1.3.1
 
 GIF comics now receive cover thumbnails and import successfully into the library.
 The cover decoder preserves the usual crop while bounding memory for image formats
