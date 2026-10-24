@@ -171,6 +171,41 @@ public final class FormatRenderingTests {
         finally { file.delete(); }
     }
 
+    public static void actualImageBoundsAreValidated(Instrumentation instrumentation) {
+        File file = new File(instrumentation.getTargetContext().getCacheDir(), "oversized-audit.cbz");
+        try {
+            try (ZipOutputStream zip = new ZipOutputStream(new FileOutputStream(file))) {
+                for (String name : new String[]{"page.png", "oversized.png"}) {
+                    zip.putNextEntry(new ZipEntry(name.equals("page.png") ? "0.png" : "1.png"));
+                    try (InputStream input = instrumentation.getContext().getAssets().open("rendering/" + name)) {
+                        input.transferTo(zip);
+                    }
+                    zip.closeEntry();
+                }
+            }
+            // Open only the first page; the second initially has the first page's provisional
+            // dimensions, exactly as in a real archive before background indexing catches up.
+            try (ComicDocument document = ComicDocumentFactory.open(instrumentation.getTargetContext(),
+                    Uri.fromFile(file), new DocumentInfo(file.getName(), file.length(), 0, ""),
+                    0, List.of(), -1, -1, null); Fixture f = new Fixture(instrumentation, document)) {
+                f.main(() -> f.view.showPage(1, 0f));
+                long until = SystemClock.elapsedRealtime() + 5000;
+                do {
+                    f.main(() -> f.view.draw(new Canvas(f.output)));
+                    if (f.error.get() != null) {
+                        ReaderGeometryTests.check(f.error.get().equals(f.context.getString(
+                                io.github.jnesew.comicviewer.R.string.error_render_page, 2)),
+                                "Oversized page reached the OOM handler instead of input rejection");
+                        return;
+                    }
+                    SystemClock.sleep(20);
+                } while (SystemClock.elapsedRealtime() < until);
+                throw new AssertionError("Oversized actual image bypassed provisional page dimensions");
+            }
+        } catch (IOException error) { throw new AssertionError(error); }
+        finally { file.delete(); }
+    }
+
     private static final class PendingDimensions implements ComicDocument {
         final ComicDocument actual;
         final List<PageInfo> pages;

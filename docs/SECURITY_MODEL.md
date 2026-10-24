@@ -33,7 +33,9 @@ before page-sized arrays are allocated.
 
 Raster formats without region decoding use a sampled full-image backing bitmap. Each renderer
 retains at most one such bitmap, sampled to its existing visible-tile cache byte budget and the
-32-megapixel hard fallback limit. Tile caches and the shared speculative cache keep their existing
+32-megapixel hard fallback limit. Actual image headers are validated before decoder construction
+and supply the allocation dimensions even while the page index contains provisional metadata.
+Tile caches and the shared speculative cache keep their existing
 ceilings; memory-pressure trimming also releases decoder backing images. This bounds retained
 application bitmaps, not every temporary allocation inside Android's decoders. File-size limits
 are rejection ceilings rather than a promise that every document below them fits every device.

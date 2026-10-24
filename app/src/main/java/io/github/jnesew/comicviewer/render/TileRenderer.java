@@ -481,9 +481,8 @@ public final class TileRenderer implements AutoCloseable {
             return result;
         }
 
-        PageInfo pageInfo = archive.page(pageIndex);
         int fallbackSample = InputLimits.boundedBitmapSample(
-                pageInfo.width, pageInfo.height, sample, tiles.maxSize() * 1024L / 4L);
+                holder.width, holder.height, sample, tiles.maxSize() * 1024L / 4L);
         if (holder.fallback == null || holder.fallbackSample != fallbackSample) {
             // Keep one full-decoder backing image, bounded by this renderer's existing
             // visible-cache budget. Four decoder holders must not retain four 128 MiB images.
@@ -526,13 +525,20 @@ public final class TileRenderer implements AutoCloseable {
                 "page-%05d%s", pageIndex, extension));
         if (!file.isFile()) archive.extractPage(pageIndex, file);
 
+        // The document's page index can still contain provisional dimensions. Validate
+        // the actual file before constructing a decoder or planning a full-image allocation.
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
+        InputLimits.validateImageDimensions(bounds.outWidth, bounds.outHeight);
+
         BitmapRegionDecoder regionDecoder = null;
         try {
             regionDecoder = BitmapRegionDecoder.newInstance(file.getAbsolutePath(), false);
         } catch (IOException | RuntimeException ignored) {
             // Animated GIF and a few older bitmap encodings need the full-decoder fallback.
         }
-        DecoderHolder created = new DecoderHolder(file, regionDecoder);
+        DecoderHolder created = new DecoderHolder(file, regionDecoder, bounds.outWidth, bounds.outHeight);
         decoders.put(pageIndex, created);
         trimDecoders();
         return created;
@@ -681,12 +687,16 @@ public final class TileRenderer implements AutoCloseable {
     private static final class DecoderHolder {
         private final File file;
         private final BitmapRegionDecoder regionDecoder;
+        private final int width;
+        private final int height;
         private Bitmap fallback;
         private int fallbackSample;
 
-        private DecoderHolder(File file, BitmapRegionDecoder regionDecoder) {
+        private DecoderHolder(File file, BitmapRegionDecoder regionDecoder, int width, int height) {
             this.file = file;
             this.regionDecoder = regionDecoder;
+            this.width = width;
+            this.height = height;
         }
 
         private void close() {

@@ -24,7 +24,7 @@ public final class DatabaseTestRunner extends Instrumentation {
     private LibraryDatabase db;
     private int current;
     private int failed;
-    private static final int TOTAL = 38;
+    private static final int TOTAL = 39;
 
     @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
 
@@ -37,6 +37,7 @@ public final class DatabaseTestRunner extends Instrumentation {
         run("platformXmlRejectsDtdAndExternalEntities", FormatRenderingTests::platformXmlSecurity);
         run("largeContinuousCollectionScrollsPrecisely", () -> ReaderGeometryTests.longCollectionScrollsPrecisely(this));
         run("latePageDimensionsDoNotStretchCachedTiles", () -> FormatRenderingTests.dimensionsArrivingAfterFirstDraw(this));
+        run("actualImageBoundsOverrideProvisionalMetadata", () -> FormatRenderingTests.actualImageBoundsAreValidated(this));
         run("unicodeMetadataAndReadingState", this::metadata);
         run("indexReplacementRollsBack", this::indexRollback);
         run("canonicalRelinkMovesDependentRows", this::relink);
