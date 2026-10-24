@@ -10,6 +10,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.SeekBar;
@@ -29,6 +30,7 @@ public final class ReaderScreen extends FrameLayout {
         void onPagePreviewRequested(int page);
         void onPagePreviewCancelled();
         void onBookmark();
+        void onFavorite();
         void onRetryUnavailable();
         void onLayoutMenu(View anchor);
         void onFitMenu(View anchor);
@@ -42,7 +44,8 @@ public final class ReaderScreen extends FrameLayout {
     private final LinearLayout topBar;
     private final LinearLayout bottomBar;
     private final TextView title;
-    private final TextView bookmark;
+    private final ImageButton bookmark;
+    private final ImageButton favorite;
     private final TextView pageLabel;
     private final TextView zoomLabel;
     private final TextView modeLabel;
@@ -85,7 +88,7 @@ public final class ReaderScreen extends FrameLayout {
         topBar.setGravity(Gravity.CENTER_VERTICAL);
         topBar.setPadding(Ui.dp(context, 4), Ui.dp(context, 4), Ui.dp(context, 4), Ui.dp(context, 4));
         topBar.setBackgroundColor(Color.argb(224, 13, 16, 21));
-        TextView home = Ui.iconButton(context, "‹", context.getString(R.string.reader_back_to_library));
+        ImageButton home = Ui.iconButton(context, R.drawable.ic_back, context.getString(R.string.reader_back_to_library));
         home.setOnClickListener(view -> {
             keepChromeAwake();
             listener.onHome();
@@ -94,14 +97,21 @@ public final class ReaderScreen extends FrameLayout {
         title = Ui.text(context, context.getString(R.string.reader_default_title), 16, Ui.TEXT);
         Ui.bold(title);
         title.setSingleLine(true);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         topBar.addView(title, new LinearLayout.LayoutParams(0, Ui.dp(context, 52), 1f));
-        bookmark = Ui.iconButton(context, "☆", context.getString(R.string.reader_add_bookmark));
+        bookmark = Ui.iconButton(context, R.drawable.ic_bookmark_outline, context.getString(R.string.reader_add_bookmark));
         bookmark.setOnClickListener(view -> {
             keepChromeAwake();
             listener.onBookmark();
         });
         topBar.addView(bookmark);
-        TextView more = Ui.iconButton(context, "⋮", context.getString(R.string.reader_menu));
+        favorite = Ui.iconButton(context, R.drawable.ic_star_outline, context.getString(R.string.title_add_favorite));
+        favorite.setOnClickListener(view -> {
+            keepChromeAwake();
+            listener.onFavorite();
+        });
+        topBar.addView(favorite);
+        ImageButton more = Ui.iconButton(context, R.drawable.ic_more, context.getString(R.string.reader_menu));
         more.setOnClickListener(view -> {
             keepChromeAwake();
             listener.onMoreMenu(view);
@@ -322,9 +332,19 @@ public final class ReaderScreen extends FrameLayout {
     }
 
     public void updateBookmark(boolean bookmarked) {
-        bookmark.setText(bookmarked ? "★" : "☆");
+        bookmark.setImageResource(bookmarked ? R.drawable.ic_bookmark_filled : R.drawable.ic_bookmark_outline);
+        bookmark.setSelected(bookmarked);
+        bookmark.setImageTintList(android.content.res.ColorStateList.valueOf(bookmarked ? Ui.ACCENT : Ui.TEXT));
         bookmark.setContentDescription(getResources().getString(bookmarked ?
                 R.string.reader_remove_bookmark : R.string.reader_add_bookmark));
+    }
+
+    public void updateFavorite(boolean favorited) {
+        favorite.setImageResource(favorited ? R.drawable.ic_star_filled : R.drawable.ic_star_outline);
+        favorite.setSelected(favorited);
+        favorite.setImageTintList(android.content.res.ColorStateList.valueOf(favorited ? Ui.ACCENT : Ui.TEXT));
+        favorite.setContentDescription(getResources().getString(favorited
+                ? R.string.title_remove_favorite_named : R.string.title_add_favorite_named, title.getText()));
     }
 
     public void setUnavailable(boolean value) {

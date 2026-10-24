@@ -3,8 +3,10 @@ package io.github.jnesew.comicviewer.data;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.database.Cursor;
+import android.database.MatrixCursor;
 import android.net.Uri;
 import android.provider.DocumentsContract;
+import android.os.CancellationSignal;
 
 import io.github.jnesew.comicviewer.document.ComicDocumentFactory;
 import io.github.jnesew.comicviewer.util.InputLimits;
@@ -13,6 +15,9 @@ import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.LinkedHashMap;
 
 /** Iterative, bounded traversal of one user-granted Storage Access Framework tree. */
 public final class LibraryFolderScanner {
@@ -21,6 +26,7 @@ public final class LibraryFolderScanner {
 
     public interface Cancellation {
         boolean isCancelled();
+        default CancellationSignal signal() { return null; }
     }
 
     public interface Visitor {
@@ -78,6 +84,7 @@ public final class LibraryFolderScanner {
         public int providerErrors;
         public boolean bounded;
         public boolean cancelled;
+        public int cachedDirectories;
 
         public boolean complete() {
             return !bounded && !cancelled && providerErrors == 0;
@@ -92,6 +99,11 @@ public final class LibraryFolderScanner {
             Uri treeUri,
             Cancellation cancellation,
             Visitor visitor) throws IOException {
+        return scan(context, treeUri, cancellation, visitor, null);
+    }
+
+    public static Summary scan(Context context, Uri treeUri, Cancellation cancellation,
+            Visitor visitor, DirectoryCache directoryCache) throws IOException {
         if (treeUri == null || !DocumentsContract.isTreeUri(treeUri)) {
             throw new IOException("The selected library folder is invalid.");
         }
@@ -107,6 +119,17 @@ public final class LibraryFolderScanner {
         }
         if (!InputLimits.isIdentifierAcceptable(rootId)) {
             throw new IOException("The selected library folder identifier is too large.");
+        }
+        // Cached listings never substitute for proving access through this selected grant.
+        Uri rootDocument = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId);
+        try (Cursor root = resolver.query(rootDocument, new String[]{
+                DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null, cancellation.signal())) {
+            if (root == null || !root.moveToFirst() ||
+                    !DocumentsContract.Document.MIME_TYPE_DIR.equals(root.getString(0))) {
+                throw new IOException("The selected library folder is unavailable.");
+            }
+        } catch (RuntimeException unavailable) {
+            throw new IOException("The selected library folder is unavailable.", unavailable);
         }
 
         Summary summary = new Summary();
@@ -138,7 +161,13 @@ public final class LibraryFolderScanner {
                 continue;
             }
 
-            try (Cursor cursor = resolver.query(children, projection, null, null, null)) {
+            String cacheKey = treeUri.getAuthority() + "\n" + folder.documentId;
+            Cursor cached = directoryCache == null ? null : directoryCache.cursor(cacheKey, projection);
+            ArrayList<Object[]> observed = cached == null && directoryCache != null ? new ArrayList<>() : null;
+            boolean cacheable = observed != null;
+            if (cached != null) summary.cachedDirectories++;
+            try (Cursor cursor = cached != null ? cached : resolver.query(children, projection, null, null, null,
+                    cancellation.signal())) {
                 if (cursor == null) {
                     summary.providerErrors++;
                     continue;
@@ -161,6 +190,7 @@ public final class LibraryFolderScanner {
                     String documentId = value(cursor, idColumn);
                     if (documentId.isEmpty() ||
                             !InputLimits.isIdentifierAcceptable(documentId)) {
+                        cacheable = false;
                         summary.providerErrors++;
                         continue;
                     }
@@ -169,6 +199,11 @@ public final class LibraryFolderScanner {
                     if (displayName.isEmpty()) displayName = documentId;
                     String mimeType = InputLimits.normalizeText(
                             value(cursor, mimeColumn), InputLimits.MAX_MIME_CODE_POINTS);
+                    if (cacheable) {
+                        if (observed.size() >= 256) { cacheable = false; observed.clear(); }
+                        else observed.add(new Object[]{documentId, displayName, mimeType,
+                                longValue(cursor, sizeColumn), longValue(cursor, modifiedColumn)});
+                    }
                     String relativePath = InputLimits.normalizeText(
                             folder.relativePath.isEmpty()
                                     ? displayName : folder.relativePath + "/" + displayName,
@@ -205,6 +240,9 @@ public final class LibraryFolderScanner {
                             longValue(cursor, sizeColumn), longValue(cursor, modifiedColumn),
                             relativePath, folder.seriesFolderKey, folder.seriesFolderName));
                 }
+                if (cacheable && !cancellation.isCancelled() && !summary.bounded) {
+                    directoryCache.put(cacheKey, observed);
+                }
             } catch (SecurityException | IllegalArgumentException exception) {
                 summary.providerErrors++;
             } catch (RuntimeException exception) {
@@ -213,6 +251,48 @@ public final class LibraryFolderScanner {
         }
         summary.cancelled = cancellation.isCancelled();
         return summary;
+    }
+
+    /** Bounded metadata reuse within one scan batch, keyed only by provider and opaque document ID. */
+    public static final class DirectoryCache {
+        private static final int MAX_ROWS = 2048;
+        private static final int MAX_CHARACTERS = 1_048_576;
+        private final LinkedHashMap<String, List<Object[]>> entries = new LinkedHashMap<>();
+        private int rows;
+        private int characters;
+
+        public void clear() { entries.clear(); rows = 0; characters = 0; }
+
+        private Cursor cursor(String key, String[] projection) {
+            List<Object[]> values = entries.get(key);
+            if (values == null) return null;
+            MatrixCursor cursor = new MatrixCursor(projection, values.size());
+            for (Object[] row : values) cursor.addRow(row);
+            return cursor;
+        }
+
+        private void put(String key, List<Object[]> values) {
+            int addedCharacters = characters(key, values);
+            if (values.size() > MAX_ROWS || addedCharacters > MAX_CHARACTERS) return;
+            while (!entries.isEmpty() && (rows + values.size() > MAX_ROWS ||
+                    characters + addedCharacters > MAX_CHARACTERS || entries.size() >= 128)) {
+                String oldest = entries.keySet().iterator().next();
+                List<Object[]> removed = entries.remove(oldest);
+                rows -= removed.size();
+                characters -= characters(oldest, removed);
+            }
+            entries.put(key, values);
+            rows += values.size();
+            characters += addedCharacters;
+        }
+
+        private static int characters(String key, List<Object[]> values) {
+            int count = key.length();
+            for (Object[] row : values) for (Object value : row) {
+                if (value instanceof String string) count += string.length();
+            }
+            return count;
+        }
     }
 
     private static String value(Cursor cursor, int column) {

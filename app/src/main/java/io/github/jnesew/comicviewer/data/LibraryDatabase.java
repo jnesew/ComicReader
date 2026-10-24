@@ -44,9 +44,10 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
     public static final int METADATA_FAILED = -1;
 
     private static final String NAME = "comicviewer.sqlite3";
-    private static final int VERSION = 10;
+    private static final int VERSION = 11;
     private static final String PROGRESS_WITH_SERIES =
-            "SELECT p.*, COALESCE(s.name, '') AS series_title FROM progress p " +
+            "SELECT p.*, COALESCE(s.name, '') AS series_title, " +
+                    "COALESCE(s.favorite, 0) AS series_favorite FROM progress p " +
                     "LEFT JOIN series s ON s.id = p.series_id";
 
     public LibraryDatabase(Context context) {
@@ -105,6 +106,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                 "PRIMARY KEY(uri, page))");
         createPageTable(db);
         createSeriesTables(db);
+        createManualSourceTable(db);
         createIndexes(db);
     }
 
@@ -184,6 +186,13 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
             // page title read solely because its default page index is zero.
             db.execSQL("UPDATE progress SET read_status=1 WHERE last_opened>0 " +
                     "AND page_count>0 AND page>=page_count-1");
+        }
+        if (oldVersion < 11) {
+            if (oldVersion >= 4) db.execSQL(
+                    "ALTER TABLE series ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0");
+            createManualSourceTable(db);
+            db.execSQL("INSERT OR IGNORE INTO manual_sources(document_uri,canonical_uri,available) " +
+                    "SELECT uri,uri,available FROM progress WHERE manual_source=1");
         }
         createIndexes(db);
     }
@@ -318,18 +327,25 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
      * Entries made unavailable because folder access was stopped or lost are deliberately excluded.
      */
     public List<ReadingProgress> confirmedMissingItems(String activeTreeUri) {
+        return confirmedMissingItems(Collections.singletonList(clean(activeTreeUri)));
+    }
+
+    public List<ReadingProgress> confirmedMissingItems(List<String> activeTreeUris) {
         ArrayList<ReadingProgress> result = new ArrayList<>();
-        String treeUri = clean(activeTreeUri);
-        if (treeUri.isEmpty()) return result;
+        ArrayList<String> trees = new ArrayList<>();
+        for (String tree : activeTreeUris) if (!clean(tree).isEmpty()) trees.add(tree);
+        if (trees.isEmpty()) return result;
+        String placeholders = String.join(",", Collections.nCopies(trees.size(), "?"));
         String selection = " WHERE p.available=0 AND p.manual_source=0 " +
+                "AND NOT EXISTS (SELECT 1 FROM manual_sources manual WHERE manual.canonical_uri=p.uri) " +
                 "AND EXISTS (SELECT 1 FROM scanned_files known " +
-                "WHERE known.canonical_uri=p.uri AND known.tree_uri=?) " +
+                "WHERE known.canonical_uri=p.uri AND known.tree_uri IN (" + placeholders + ")) " +
                 "AND NOT EXISTS (SELECT 1 FROM scanned_files uncertain " +
                 "WHERE uncertain.canonical_uri=p.uri AND uncertain.missing_confirmed=0)";
         try (Cursor cursor = getReadableDatabase().rawQuery(
                 PROGRESS_WITH_SERIES + selection +
                         " ORDER BY p.title COLLATE NOCASE ASC, p.uri ASC",
-                new String[]{treeUri})) {
+                trees.toArray(new String[0]))) {
             while (cursor.moveToNext()) result.add(fromCursor(cursor));
         }
         return result;
@@ -686,6 +702,25 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         return favorite;
     }
 
+    public boolean toggleSeriesFavorite(long seriesId) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            boolean favorite;
+            String[] args = {Long.toString(seriesId)};
+            try (Cursor cursor = db.query("series", new String[]{"favorite"}, "id=?", args,
+                    null, null, null, "1")) {
+                if (!cursor.moveToFirst()) return false;
+                favorite = cursor.getInt(0) == 0;
+            }
+            ContentValues values = new ContentValues();
+            values.put("favorite", favorite ? 1 : 0);
+            db.update("series", values, "id=?", args);
+            db.setTransactionSuccessful();
+            return favorite;
+        } finally { db.endTransaction(); }
+    }
+
     public void setReadingDirection(String uri, String direction) {
         setReadingDirection(uri, direction, true);
     }
@@ -783,7 +818,60 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         ContentValues values = new ContentValues();
         values.put("manual_source", 1);
         values.put("available", 1);
-        getWritableDatabase().update("progress", values, "uri=?", new String[]{uri});
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            db.update("progress", values, "uri=?", new String[]{uri});
+            ContentValues source = new ContentValues();
+            source.put("document_uri", uri);
+            source.put("canonical_uri", uri);
+            source.put("available", 1);
+            db.insertWithOnConflict("manual_sources", null, source, SQLiteDatabase.CONFLICT_REPLACE);
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+    }
+
+    public List<String> manualSources(String canonicalUri) {
+        ArrayList<String> result = new ArrayList<>();
+        try (Cursor cursor = getReadableDatabase().query("manual_sources",
+                new String[]{"document_uri"}, "canonical_uri=?", new String[]{canonicalUri},
+                null, null, "document_uri ASC")) {
+            while (cursor.moveToNext()) result.add(cursor.getString(0));
+        }
+        return result;
+    }
+
+    public void setManualSourceAvailable(String canonicalUri, String uri, boolean available) {
+        ContentValues values = new ContentValues();
+        values.put("available", available ? 1 : 0);
+        getWritableDatabase().update("manual_sources", values, "canonical_uri=? AND document_uri=?",
+                new String[]{canonicalUri, uri});
+    }
+
+    public void setSourceAvailability(String canonicalUri, boolean available) {
+        ContentValues values = new ContentValues();
+        values.put("available", available ? 1 : 0);
+        getWritableDatabase().update("progress", values, "uri=?", new String[]{canonicalUri});
+    }
+
+    public List<ReadingProgress> sourceItems() {
+        ArrayList<ReadingProgress> result = new ArrayList<>();
+        try (Cursor cursor = getReadableDatabase().rawQuery(PROGRESS_WITH_SERIES +
+                " WHERE EXISTS (SELECT 1 FROM scanned_files sf WHERE sf.canonical_uri=p.uri) " +
+                "OR EXISTS (SELECT 1 FROM manual_sources ms WHERE ms.canonical_uri=p.uri)", null)) {
+            while (cursor.moveToNext()) result.add(fromCursor(cursor));
+        }
+        return result;
+    }
+
+    public List<ScannedFile> sourceCopies(String canonicalUri) {
+        ArrayList<ScannedFile> result = new ArrayList<>();
+        try (Cursor cursor = getReadableDatabase().query("scanned_files", null,
+                "canonical_uri=?", new String[]{canonicalUri}, null, null,
+                "tree_uri ASC, document_uri ASC")) {
+            while (cursor.moveToNext()) result.add(scannedFileFromCursor(cursor));
+        }
+        return result;
     }
 
     public void setLibraryFingerprint(
@@ -1063,6 +1151,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
             ContentValues sources = new ContentValues();
             sources.put("canonical_uri", canonicalKey);
             db.update("scanned_files", sources, "canonical_uri=?", new String[]{duplicateKey});
+            db.update("manual_sources", sources, "canonical_uri=?", new String[]{duplicateKey});
             db.delete("progress", "uri=?", new String[]{duplicateKey});
             db.setTransactionSuccessful();
             result.merged = true;
@@ -1115,6 +1204,9 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
             values.put("sample_signature", replacement.sampleSignature);
             values.put("content_fingerprint", replacement.contentFingerprint);
             db.update("progress", values, "uri=?", new String[]{replacement.documentUri});
+            ContentValues inaccessibleManual = new ContentValues();
+            inaccessibleManual.put("available", 0);
+            db.update("manual_sources", inaccessibleManual, "document_uri=?", new String[]{oldUri});
             db.insertWithOnConflict("scanned_files", null, scannedFileValues(replacement),
                     SQLiteDatabase.CONFLICT_REPLACE);
             db.setTransactionSuccessful();
@@ -1136,7 +1228,39 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         }
     }
 
-    /** Mark disappeared sources unavailable and move a canonical title to a surviving exact copy. */
+    /** The caller freshly read the independently granted manual copy and its complete hash. */
+    public boolean reconnectManualSource(String oldUri, String manualUri, String full) {
+        if (full.isEmpty() || oldUri.equals(manualUri)) return false;
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            ReadingProgress current = get(oldUri);
+            boolean matching = full.equals(current.contentFingerprint);
+            if (!matching) {
+                try (Cursor cursor = db.rawQuery("SELECT 1 FROM scanned_files WHERE " +
+                        "canonical_uri=? AND content_fingerprint=? LIMIT 1", new String[]{oldUri, full})) {
+                    matching = cursor.moveToFirst();
+                }
+            }
+            if (!matching || (!current.contentFingerprint.isEmpty() &&
+                    !full.equals(current.contentFingerprint))) return false;
+            try (Cursor cursor = db.query("manual_sources", new String[]{"document_uri"},
+                    "canonical_uri=? AND document_uri=? AND available=1",
+                    new String[]{oldUri, manualUri}, null, null, null, "1")) {
+                if (!cursor.moveToFirst()) return false;
+            }
+            if (!migrateUri(db, oldUri, manualUri)) return false;
+            ContentValues values = new ContentValues();
+            values.put("manual_source", 1);
+            values.put("available", 1);
+            values.put("content_fingerprint", full);
+            db.update("progress", values, "uri=?", new String[]{manualUri});
+            db.setTransactionSuccessful();
+            return true;
+        } finally { db.endTransaction(); }
+    }
+
+    /** Only this tree's completed traversal can confirm its copies missing. */
     public void finishFolderScan(String treeUri, long scanStarted) {
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
@@ -1152,32 +1276,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
             db.update("scanned_files", present, "tree_uri=? AND last_seen>=?",
                     new String[]{treeUri, Long.toString(scanStarted)});
 
-            ArrayList<String[]> replacements = new ArrayList<>();
-            String replacementSql = "SELECT sf.canonical_uri, MIN(sf.document_uri) " +
-                    "FROM scanned_files sf WHERE sf.tree_uri=? AND sf.last_seen>=? " +
-                    "AND sf.document_uri<>sf.canonical_uri AND NOT EXISTS (" +
-                    "SELECT 1 FROM scanned_files direct WHERE " +
-                    "direct.canonical_uri=sf.canonical_uri AND " +
-                    "direct.document_uri=sf.canonical_uri AND direct.last_seen>=?) " +
-                    "AND EXISTS (SELECT 1 FROM progress p WHERE " +
-                    "p.uri=sf.canonical_uri AND p.manual_source=0) " +
-                    "GROUP BY sf.canonical_uri";
-            try (Cursor cursor = db.rawQuery(replacementSql, new String[]{
-                    treeUri, Long.toString(scanStarted), Long.toString(scanStarted)})) {
-                while (cursor.moveToNext()) {
-                    replacements.add(new String[]{cursor.getString(0), cursor.getString(1)});
-                }
-            }
-            for (String[] replacement : replacements) {
-                migrateUri(db, replacement[0], replacement[1]);
-            }
-
-            db.execSQL("UPDATE progress SET available=0 WHERE manual_source=0 AND uri IN (" +
-                    "SELECT DISTINCT canonical_uri FROM scanned_files WHERE tree_uri=?)",
-                    new Object[]{treeUri});
-            db.execSQL("UPDATE progress SET available=1 WHERE uri IN (" +
-                    "SELECT DISTINCT canonical_uri FROM scanned_files " +
-                    "WHERE tree_uri=? AND available=1)", new Object[]{treeUri});
+            refreshSourceAvailability(db, treeUri);
             db.setTransactionSuccessful();
         } finally {
             db.endTransaction();
@@ -1192,14 +1291,22 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
             missing.put("available", 0);
             missing.put("missing_confirmed", 0);
             db.update("scanned_files", missing, "tree_uri=?", new String[]{treeUri});
-            db.execSQL("UPDATE progress SET available=0 WHERE manual_source=0 AND uri IN (" +
-                    "SELECT DISTINCT canonical_uri FROM scanned_files WHERE tree_uri=?) " +
-                    "AND uri NOT IN (SELECT DISTINCT canonical_uri FROM scanned_files " +
-                    "WHERE available=1)", new Object[]{treeUri});
+            refreshSourceAvailability(db, treeUri);
             db.setTransactionSuccessful();
         } finally {
             db.endTransaction();
         }
+    }
+
+    private static void refreshSourceAvailability(SQLiteDatabase db, String treeUri) {
+        // Timestamps from other trees are unrelated scan generations. Their own availability
+        // remains valid until their scan or grant check changes it.
+        db.execSQL("UPDATE progress SET available=CASE WHEN EXISTS (SELECT 1 FROM " +
+                "scanned_files sf WHERE sf.canonical_uri=progress.uri AND sf.available=1) " +
+                "OR EXISTS (SELECT 1 FROM manual_sources ms WHERE " +
+                "ms.canonical_uri=progress.uri AND ms.available=1) THEN 1 ELSE 0 END " +
+                "WHERE uri IN (SELECT canonical_uri FROM scanned_files WHERE tree_uri=?)",
+                new Object[]{treeUri});
     }
 
     public String forget(String uri) {
@@ -1229,6 +1336,8 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                 db.delete("bookmarks", "uri=?", new String[]{uri});
                 db.delete("archive_pages", "uri=?", new String[]{uri});
                 db.delete("scanned_files", "canonical_uri=? OR document_uri=?",
+                        new String[]{uri, uri});
+                db.delete("manual_sources", "canonical_uri=? OR document_uri=?",
                         new String[]{uri, uri});
                 db.delete("progress", "uri=?", new String[]{uri});
             }
@@ -1285,6 +1394,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                 "stable_key TEXT NOT NULL UNIQUE," +
                 "name TEXT NOT NULL," +
                 "origin TEXT NOT NULL," +
+                "favorite INTEGER NOT NULL DEFAULT 0," +
                 "updated_at INTEGER NOT NULL DEFAULT 0)");
         db.execSQL("CREATE TABLE IF NOT EXISTS scanned_files (" +
                 "source_identity TEXT PRIMARY KEY," +
@@ -1301,6 +1411,14 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                 "available INTEGER NOT NULL DEFAULT 1," +
                 "missing_confirmed INTEGER NOT NULL DEFAULT 0," +
                 "UNIQUE(tree_uri, document_id))");
+    }
+
+    private static void createManualSourceTable(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS manual_sources (" +
+                "document_uri TEXT PRIMARY KEY,canonical_uri TEXT NOT NULL," +
+                "available INTEGER NOT NULL DEFAULT 1)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS manual_sources_canonical " +
+                "ON manual_sources(canonical_uri,available)");
     }
 
     private static void createIndexes(SQLiteDatabase db) {
@@ -1390,6 +1508,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         ContentValues sources = new ContentValues();
         sources.put("canonical_uri", newUri);
         db.update("scanned_files", sources, "canonical_uri=?", new String[]{oldUri});
+        db.update("manual_sources", sources, "canonical_uri=?", new String[]{oldUri});
         return true;
     }
 
@@ -1477,6 +1596,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         result.available = integer(cursor, "available") != 0;
         result.seriesId = longValue(cursor, "series_id");
         result.seriesTitle = string(cursor, "series_title");
+        result.seriesFavorite = integer(cursor, "series_favorite") != 0;
         result.seriesNumber = string(cursor, "series_number");
         result.seriesOverride = integer(cursor, "series_override");
         result.detectedSeriesKey = string(cursor, "detected_series_key");

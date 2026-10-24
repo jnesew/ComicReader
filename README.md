@@ -18,9 +18,9 @@ accounts, ads, analytics, subscriptions, network access, or broad storage permis
 - Global layout and direction defaults with per-title overrides
 - Seamless continuous scrolling and symmetric first/last-page navigation across series issues
 - Searchable cover library with filters, sorting, configurable density, and cached covers
-- Optional recursive scanning of one user-selected library folder
+- Optional recursive scanning of multiple user-selected library folders, with exact-copy reconciliation
 - Verified automatic reconnection of moved comics when their full content identity was retained
-- Series grouping from conservative metadata or folder structure, with per-comic correction
+- Series grouping from conservative metadata or folder structure, with per-comic correction and independent series favorites
 - Page previews while scrubbing, natural page ordering, and direct “open with” support
 - English and Finnish interface resources
 - Android 8.0 (API 26) through Android 16 (API 36)

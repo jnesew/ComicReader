@@ -92,6 +92,8 @@ final class ContinuousSeriesController {
         session.reader.setTitle(session.progress().title);
         session.reader.updatePosition(session.reader.canvas.page(), session.reader.canvas.pageEnd(), session.document().count());
         session.reader.updateBookmark(session.database.isBookmarked(session.document().key(), session.reader.canvas.page()));
+        session.progress().favorite = session.database.get(session.document().key()).favorite;
+        session.reader.updateFavorite(session.progress().favorite);
         session.reader.setRightToLeft(ReadingDirection.isRightToLeft(
                 ReaderDefaults.direction(session.progress().readingDirection,
                         session.progress().readingDirectionOverride,

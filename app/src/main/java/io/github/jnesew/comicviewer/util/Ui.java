@@ -4,11 +4,14 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.Drawable;
+import android.content.res.ColorStateList;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
+import android.widget.ImageButton;
 
 public final class Ui {
     public static final int HOME_BACKGROUND = Color.rgb(11, 13, 16);
@@ -42,6 +45,40 @@ public final class Ui {
         button.setClickable(true);
         button.setBackground(rounded(Color.TRANSPARENT, dp(context, 24), 0, 0));
         button.setLayoutParams(new ViewGroup.LayoutParams(dp(context, 52), dp(context, 52)));
+        return button;
+    }
+
+    public static ImageButton iconButton(Context context, int icon, String description) {
+        ImageButton button = new ImageButton(context);
+        button.setImageResource(icon);
+        button.setImageTintList(ColorStateList.valueOf(TEXT));
+        button.setContentDescription(description);
+        button.setTooltipText(description);
+        button.setFocusable(true);
+        button.setClickable(true);
+        button.setPadding(dp(context, 14), dp(context, 14), dp(context, 14), dp(context, 14));
+        button.setBackground(rounded(Color.TRANSPARENT, dp(context, 24), 0, 0));
+        button.setLayoutParams(new ViewGroup.LayoutParams(dp(context, 52), dp(context, 52)));
+        return button;
+    }
+
+    public static Drawable icon(Context context, int resource, int sizeDp, int color) {
+        Drawable drawable = context.getDrawable(resource).mutate();
+        drawable.setTint(color);
+        drawable.setBounds(0, 0, dp(context, sizeDp), dp(context, sizeDp));
+        return drawable;
+    }
+
+    public static TextView actionButton(Context context, int label, int icon) {
+        TextView button = text(context, context.getString(label), 15, ACCENT);
+        button.setGravity(Gravity.CENTER);
+        button.setPadding(dp(context, 16), dp(context, 10), dp(context, 16), dp(context, 10));
+        button.setMinimumHeight(dp(context, 48));
+        button.setCompoundDrawablesRelative(icon(context, icon, 22, ACCENT), null, null, null);
+        button.setCompoundDrawablePadding(dp(context, 10));
+        button.setFocusable(true);
+        button.setClickable(true);
+        button.setBackground(rounded(SURFACE, dp(context, 12), SURFACE_HIGH, dp(context, 1)));
         return button;
     }
 

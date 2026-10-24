@@ -1,15 +1,13 @@
 package io.github.jnesew.comicviewer.ui;
 import android.content.Context;
 import android.content.res.ColorStateList;
-import android.graphics.Color;
-import android.graphics.Paint;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
-import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.ProgressBar;
@@ -98,14 +96,12 @@ final class LibraryGridAdapter extends BaseAdapter {
         holder.options.setContentDescription(context.getResources().getString(R.string.comic_options));
         holder.options.setVisibility(View.VISIBLE);
         holder.options.setOnClickListener(view -> showComicMenu(view, item));
-        holder.favorite.setVisibility(View.VISIBLE);
-        updateFavoriteButton(holder.favorite, item);
-        holder.favorite.setOnClickListener(view -> toggleFavorite(item));
         holder.cover.setContentDescription(context.getResources().getString(
                 R.string.cover_description, item.title));
         covers.bindCover(holder.cover, item);
-        holder.title.setText(item.title);
-        holder.progress.setProgress(item.percent());
+        bindTitle(holder.title, item.title, item.favorite);
+        bindIssue(holder.issue, item);
+        bindProgress(holder.progress, item.percent(), item.isCompleted(), !item.isNew() && item.page > 0);
         bindTitleDetails(holder.details, item);
         return convertView;
     }
@@ -140,13 +136,13 @@ final class LibraryGridAdapter extends BaseAdapter {
             if (standalone != null) showComicMenu(view, standalone);
             else showSeriesMenu(view, group);
         });
-        holder.favorite.setVisibility(View.GONE);
-        holder.favorite.setOnClickListener(null);
         holder.cover.setContentDescription(context.getResources().getString(
                 R.string.series_cover_description, group.title));
         covers.bindCover(holder.cover, group.cover);
-        holder.title.setText(group.title);
-        holder.progress.setProgress(group.percent);
+        bindTitle(holder.title, group.title, group.favorite);
+        if (standalone != null) bindIssue(holder.issue, standalone);
+        else holder.issue.setVisibility(View.GONE);
+        bindProgress(holder.progress, group.percent, group.isCaughtUp(), group.percent > 0);
         if (standalone != null) {
             bindTitleDetails(holder.details, standalone);
         } else {
@@ -207,6 +203,11 @@ final class LibraryGridAdapter extends BaseAdapter {
 
     private void showSeriesMenu(View anchor, SeriesGroup group) {
         PopupMenu menu = new PopupMenu(context, anchor);
+        menu.getMenu().add(group.favorite ? R.string.series_remove_favorite : R.string.series_add_favorite)
+                .setOnMenuItemClickListener(selected -> {
+                    listener.onSeriesFavoriteRequested(group);
+                    return true;
+                });
         menu.getMenu().add(R.string.series_mark_read).setOnMenuItemClickListener(selected -> {
             listener.onSeriesReadStatusRequested(group, true);
             return true;
@@ -226,12 +227,26 @@ final class LibraryGridAdapter extends BaseAdapter {
         listener.onFavoriteRequested(item);
     }
 
-    private void updateFavoriteButton(TextView button, ReadingProgress item) {
-        button.setText(item.favorite ? "★" : "☆");
-        button.setTextColor(item.favorite ? Ui.ACCENT : Ui.TEXT);
-        button.setContentDescription(context.getResources().getString(
-                item.favorite ? R.string.title_remove_favorite_named : R.string.title_add_favorite_named,
-                item.title));
+    private void bindTitle(TextView title, String value, boolean favorite) {
+        if (favorite) {
+            android.text.SpannableString marked = new android.text.SpannableString("\uFFFC " + value);
+            marked.setSpan(new android.text.style.ImageSpan(
+                    Ui.icon(context, R.drawable.ic_star_filled, 14, Ui.ACCENT),
+                    android.text.style.ImageSpan.ALIGN_BASELINE), 0, 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            title.setText(marked);
+        } else title.setText(value);
+        title.setContentDescription(favorite ? context.getString(R.string.favorite_title, value) : value);
+    }
+
+    private void bindIssue(TextView subtitle, ReadingProgress item) {
+        boolean structured = !item.seriesNumber.trim().isEmpty();
+        subtitle.setVisibility(structured ? View.VISIBLE : View.GONE);
+        if (structured) subtitle.setText(context.getString(R.string.comic_issue_number, item.seriesNumber));
+    }
+
+    private void bindProgress(ProgressBar progress, int percent, boolean complete, boolean started) {
+        progress.setVisibility(complete || (started && percent > 0) ? View.VISIBLE : View.GONE);
+        progress.setProgress(complete ? 100 : percent);
     }
 
     private CardHolder createCard() {
@@ -242,93 +257,67 @@ final class LibraryGridAdapter extends BaseAdapter {
         root.setFocusable(true);
         root.setPadding(0, 0, 0, Ui.dp(context, 2));
 
-        FrameLayout coverFrame = new FrameLayout(context);
         ImageView cover = new ImageView(context);
         cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
         cover.setClipToOutline(true);
-        cover.setBackground(Ui.rounded(Ui.SURFACE, Ui.dp(context, 12), Ui.SURFACE_HIGH,
-                Ui.dp(context, 1)));
-        coverFrame.addView(cover, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        TextView favorite = Ui.text(context, "☆", density.favoriteTextSp, Ui.TEXT);
-        favorite.setGravity(Gravity.CENTER);
-        favorite.setClickable(true);
-        favorite.setFocusable(true);
-        favorite.setElevation(Ui.dp(context, 5));
-        favorite.setBackground(Ui.rounded(
-                Color.argb(218, 13, 16, 21), Ui.dp(context, 22), Ui.TEXT_MUTED, Ui.dp(context, 1)));
-        FrameLayout.LayoutParams favoriteParams = new FrameLayout.LayoutParams(
-                Ui.dp(context, 44), Ui.dp(context, 44), Gravity.TOP | Gravity.END);
-        favoriteParams.topMargin = Ui.dp(context, 7);
-        favoriteParams.rightMargin = Ui.dp(context, 7);
-        coverFrame.addView(favorite, favoriteParams);
-        root.addView(coverFrame, new LinearLayout.LayoutParams(
+        cover.setBackground(Ui.rounded(Ui.SURFACE, Ui.dp(context, 12), Ui.SURFACE_HIGH, Ui.dp(context, 1)));
+        root.addView(cover, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, density.coverHeightDp)));
 
-        LinearLayout titleRow = new LinearLayout(context);
-        titleRow.setGravity(Gravity.TOP);
-        titleRow.setPadding(0, Ui.dp(context, 8), 0, Ui.dp(context, 4));
-        titleRow.setMinimumHeight(Ui.dp(context, density.titleRowHeightDp));
         TextView title = Ui.text(context, "", density.titleTextSp, Ui.TEXT);
         Ui.bold(title);
         title.setIncludeFontPadding(true);
         title.setLines(2);
         title.setEllipsize(TextUtils.TruncateAt.END);
         title.setGravity(Gravity.TOP);
-        Paint.FontMetricsInt titleMetrics = title.getPaint().getFontMetricsInt();
-        int titleLineBox = Math.max(
-                title.getLineHeight(), titleMetrics.bottom - titleMetrics.top);
-        int titleHeight = titleLineBox * 2 + Ui.dp(context, 3);
-        titleRow.addView(title, new LinearLayout.LayoutParams(
-                0, titleHeight, 1f));
-        TextView options = Ui.text(
-                context, "⋮", density == LibraryGridDensity.DENSE ? 18 : 20, Ui.TEXT_MUTED);
-        options.setGravity(Gravity.TOP | Gravity.END);
-        options.setClickable(true);
-        options.setFocusable(true);
-        titleRow.addView(options, new LinearLayout.LayoutParams(
-                Ui.dp(context, 30), ViewGroup.LayoutParams.MATCH_PARENT));
-        root.addView(titleRow, new LinearLayout.LayoutParams(
+        title.setPadding(0, Ui.dp(context, 8), 0, Ui.dp(context, 3));
+        root.addView(title, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        ProgressBar progress = new ProgressBar(
-                context, null, android.R.attr.progressBarStyleHorizontal);
+        TextView issue = Ui.text(context, "", density.detailTextSp, Ui.TEXT_MUTED);
+        issue.setSingleLine(true);
+        issue.setEllipsize(TextUtils.TruncateAt.END);
+        root.addView(issue, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        ProgressBar progress = new ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(100);
         progress.setProgressTintList(ColorStateList.valueOf(Ui.ACCENT));
         progress.setProgressBackgroundTintList(ColorStateList.valueOf(Ui.SURFACE_HIGH));
-        root.addView(progress, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 4)));
+        LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 4));
+        progressParams.topMargin = Ui.dp(context, 5);
+        root.addView(progress, progressParams);
 
+        LinearLayout statusRow = new LinearLayout(context);
+        statusRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView details = Ui.text(context, "", density.detailTextSp, Ui.TEXT_MUTED);
-        details.setSingleLine(true);
+        details.setMaxLines(3);
         details.setEllipsize(TextUtils.TruncateAt.END);
-        details.setPadding(0, Ui.dp(context, 7), 0, 0);
-        root.addView(details, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, density.detailHeightDp)));
-        return new CardHolder(root, cover, favorite, title, options, progress, details);
+        statusRow.addView(details, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        ImageButton options = Ui.iconButton(context, R.drawable.ic_more, context.getString(R.string.comic_options));
+        options.setImageTintList(ColorStateList.valueOf(Ui.TEXT_MUTED));
+        options.setPadding(Ui.dp(context, 12), Ui.dp(context, 12), Ui.dp(context, 12), Ui.dp(context, 12));
+        statusRow.addView(options, new LinearLayout.LayoutParams(Ui.dp(context, 48), Ui.dp(context, 48)));
+        root.addView(statusRow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return new CardHolder(root, cover, title, issue, options, progress, details);
     }
 
     private static final class CardHolder {
-        private final LinearLayout root;
-        private final ImageView cover;
-        private final TextView favorite;
-        private final TextView title;
-        private final TextView options;
-        private final ProgressBar progress;
-        private final TextView details;
-
-        private CardHolder(
-                LinearLayout root,
-                ImageView cover,
-                TextView favorite,
-                TextView title,
-                TextView options,
-                ProgressBar progress,
-                TextView details) {
+        final LinearLayout root;
+        final ImageView cover;
+        final TextView title;
+        final TextView issue;
+        final ImageButton options;
+        final ProgressBar progress;
+        final TextView details;
+        CardHolder(LinearLayout root, ImageView cover, TextView title, TextView issue,
+                ImageButton options, ProgressBar progress, TextView details) {
             this.root = root;
             this.cover = cover;
-            this.favorite = favorite;
             this.title = title;
+            this.issue = issue;
             this.options = options;
             this.progress = progress;
             this.details = details;

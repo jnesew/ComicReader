@@ -136,7 +136,10 @@ With a test device or emulator connected, run:
 The platform-only DatabaseTestRunner exercises the production LibraryDatabase using a
 separate named database. No user library is erased. It also runs real decoder/canvas cases.
 Coverage includes transaction rollback, schema upgrade, metadata and reading-state retention,
-source reconciliation, buffering preferences, and raster cache behavior. Run this suite before
+source reconciliation, buffering preferences, and raster cache behavior. A document provider in the
+test APK supplies real read grants for multi-folder, exact-copy fallback, incomplete traversal,
+cancellation, and restart cases. Folder preferences and navigation use isolated test preferences.
+The test provider and grant activity are absent from production APKs. Run this suite before
 and after changes to database internals or resource ownership.
 Without a device, `assembleDebugAndroidTest` checks packaging but does not run SQLite.
 The supplementary `verify-database-roundtrip.sh` script runs example SQL policies through

@@ -335,6 +335,7 @@ public final class ReaderSession implements AutoCloseable {
         reader.updateZoom(reader.canvas.zoomMode(), reader.canvas.zoom(),
                 reader.canvas.zoomGesturesLocked());
         reader.updateBookmark(database.isBookmarked(opened.key(), reader.canvas.page()));
+        reader.updateFavorite(database.get(opened.key()).favorite);
 
         readerActive = true;
         comicOpening = false;

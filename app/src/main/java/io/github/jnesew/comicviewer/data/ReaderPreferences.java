@@ -9,10 +9,19 @@ import io.github.jnesew.comicviewer.R;
 import io.github.jnesew.comicviewer.model.OpeningZoomPolicy;
 import io.github.jnesew.comicviewer.model.ReaderDefaults;
 import io.github.jnesew.comicviewer.model.ReadingDirection;
+import io.github.jnesew.comicviewer.model.LibraryFolder;
+import io.github.jnesew.comicviewer.util.InputLimits;
 import io.github.jnesew.comicviewer.render.BufferingPolicy;
 import io.github.jnesew.comicviewer.render.AndroidBufferingMemory;
 
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.json.JSONException;
 
 public final class ReaderPreferences {
     private static final String FILE = "reader_preferences";
@@ -141,23 +150,103 @@ public final class ReaderPreferences {
         values.edit().putString("canvas_theme", key).apply();
     }
 
-    public String libraryFolderUri() {
-        return values.getString("library_folder_uri", "");
+    /** The collection and removal of the legacy keys are committed together, exactly once. */
+    public synchronized List<LibraryFolder> libraryFolders() {
+        if (!values.contains("library_folders")) {
+            ArrayList<LibraryFolder> migrated = new ArrayList<>();
+            String uri = values.getString("library_folder_uri", "");
+            if (!uri.isEmpty()) migrated.add(new LibraryFolder(uri,
+                    values.getString("library_folder_label", ""), ""));
+            saveLibraryFolders(migrated, pendingFolderReleases());
+        }
+        ArrayList<LibraryFolder> folders = new ArrayList<>();
+        try {
+            JSONArray array = new JSONArray(values.getString("library_folders", "[]"));
+            for (int index = 0; index < array.length(); index++) {
+                JSONObject entry = array.getJSONObject(index);
+                String uri = entry.getString("uri");
+                if (uri.isEmpty() || !InputLimits.isIdentifierAcceptable(uri)) continue;
+                boolean duplicate = false;
+                for (LibraryFolder folder : folders) if (folder.sameTree(uri)) duplicate = true;
+                if (!duplicate) folders.add(new LibraryFolder(uri,
+                        entry.optString("label", ""), entry.optString("location", "")));
+            }
+        } catch (JSONException invalidCollection) {
+            // Never replace a corrupt persisted collection with an empty one silently.
+            throw new IllegalStateException("Invalid saved library folder collection", invalidCollection);
+        }
+        return java.util.Collections.unmodifiableList(folders);
     }
 
-    public String libraryFolderLabel() {
-        return values.getString("library_folder_label", "");
+    public synchronized void addLibraryFolder(LibraryFolder selected) {
+        replaceLibraryFolder("", selected);
     }
 
-    public void setLibraryFolder(String uri, String label) {
-        values.edit()
-                .putString("library_folder_uri", uri == null ? "" : uri)
-                .putString("library_folder_label", label == null ? "" : label)
-                .apply();
+    public synchronized void replaceLibraryFolder(String previousUri, LibraryFolder selected) {
+        ArrayList<LibraryFolder> folders = new ArrayList<>(libraryFolders());
+        Set<String> pending = pendingFolderReleases();
+        int position = folders.size();
+        for (int index = folders.size() - 1; index >= 0; index--) {
+            LibraryFolder folder = folders.get(index);
+            if (folder.sameTree(selected.uri)) {
+                // Retain the original tree URI so existing source identities remain stable.
+                selected = new LibraryFolder(folder.uri, selected.label, selected.location);
+                position = index;
+                folders.remove(index);
+            } else if (!previousUri.isEmpty() && folder.uri.equals(previousUri)) {
+                position = index;
+                pending.add(folder.uri);
+                folders.remove(index);
+            }
+        }
+        folders.add(Math.min(position, folders.size()), selected);
+        pending.remove(selected.uri);
+        saveLibraryFolders(folders, pending);
     }
 
-    public void clearLibraryFolder() {
-        values.edit().remove("library_folder_uri").remove("library_folder_label").apply();
+    public synchronized void removeLibraryFolder(String uri) {
+        ArrayList<LibraryFolder> folders = new ArrayList<>(libraryFolders());
+        Set<String> pending = pendingFolderReleases();
+        if (folders.removeIf(folder -> folder.uri.equals(uri))) pending.add(uri);
+        saveLibraryFolders(folders, pending);
+    }
+
+    public synchronized List<String> libraryFolderUris() {
+        ArrayList<String> result = new ArrayList<>();
+        for (LibraryFolder folder : libraryFolders()) result.add(folder.uri);
+        return result;
+    }
+
+    public synchronized Set<String> pendingFolderReleases() {
+        return new HashSet<>(values.getStringSet("pending_folder_releases", java.util.Collections.emptySet()));
+    }
+
+    public synchronized void finishFolderRelease(String uri) {
+        Set<String> pending = pendingFolderReleases();
+        pending.remove(uri);
+        if (!values.edit().putStringSet("pending_folder_releases", pending).commit()) {
+            throw new IllegalStateException("Could not save library folder grant state");
+        }
+    }
+
+    private void saveLibraryFolders(List<LibraryFolder> folders, Set<String> pending) {
+        JSONArray array = new JSONArray();
+        try {
+            for (LibraryFolder folder : folders) {
+                JSONObject entry = new JSONObject();
+                entry.put("uri", folder.uri);
+                entry.put("label", folder.label);
+                entry.put("location", folder.location);
+                array.put(entry);
+            }
+        } catch (JSONException invalidValue) {
+            throw new IllegalArgumentException("Invalid library folder", invalidValue);
+        }
+        if (!values.edit().putString("library_folders", array.toString())
+                .putStringSet("pending_folder_releases", pending)
+                .remove("library_folder_uri").remove("library_folder_label").commit()) {
+            throw new IllegalStateException("Could not save library folders");
+        }
     }
 
     public int canvasColor() {

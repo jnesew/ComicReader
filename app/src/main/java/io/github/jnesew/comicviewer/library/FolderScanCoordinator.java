@@ -1,9 +1,13 @@
 package io.github.jnesew.comicviewer.library;
-import android.app.Activity;
+
+import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ProviderInfo;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.DocumentsContract;
+import io.github.jnesew.comicviewer.R;
 import io.github.jnesew.comicviewer.data.CoverStore;
 import io.github.jnesew.comicviewer.data.ContentFingerprint;
 import io.github.jnesew.comicviewer.data.LibraryDatabase;
@@ -11,26 +15,31 @@ import io.github.jnesew.comicviewer.data.LibraryFolderScanner;
 import io.github.jnesew.comicviewer.data.ReaderPreferences;
 import io.github.jnesew.comicviewer.document.ComicDocumentFactory;
 import io.github.jnesew.comicviewer.document.DocumentInfo;
+import io.github.jnesew.comicviewer.model.LibraryFolder;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
+import io.github.jnesew.comicviewer.util.InputLimits;
 import io.github.jnesew.comicviewer.util.LibraryFolderLabel;
 import io.github.jnesew.comicviewer.util.LibraryScanResult;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
-import android.content.Context;
-import io.github.jnesew.comicviewer.R;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 
-/** SAF scan scheduling/reconciliation. A cancelled or inaccessible tree is not proof of deletion. */
+/** One bounded worker and one queued job per selected tree; cancellation is source-specific. */
 public final class FolderScanCoordinator implements AutoCloseable {
     public interface Listener {
         void onLibraryChanged();
         void onScanStatus(String detail, boolean scanning, boolean persistent);
     }
+    public record FolderState(String detail, boolean scanning, boolean unavailable) { }
     private static final long AUTO_SCAN_COOLDOWN_MS = 5_000L;
     private final Context context;
     private final LibraryDatabase database;
@@ -38,18 +47,27 @@ public final class FolderScanCoordinator implements AutoCloseable {
     private final LibraryImportCoordinator imports;
     private final BooleanSupplier readerBusy;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private final AtomicBoolean folderScanRunning = new AtomicBoolean();
+    private final ConcurrentHashMap<String, ScanJob> jobs = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> lastStarted = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, FolderState> states = new ConcurrentHashMap<>();
+    private final AtomicInteger nextGeneration = new AtomicInteger();
+    private final AtomicInteger nextBatch = new AtomicInteger();
+    private final LibraryFolderScanner.DirectoryCache directoryCache = new LibraryFolderScanner.DirectoryCache();
+    private int cachedBatch;
+    private final AtomicBoolean reconciliationQueued = new AtomicBoolean();
+    private final AtomicInteger sourceRevision = new AtomicInteger();
+    private final LibrarySourceReconciler reconciler;
     private volatile boolean destroyed;
-    private volatile long lastFolderScanStarted;
-    private volatile String pendingReleaseFolderUri = "";
-    private volatile Future<?> folderScanTask;
-    private volatile int folderScanGeneration;
+    private volatile boolean needsReconciliation = true;
+    private volatile Set<String> configuredTrees;
+    private volatile int configurationVersion;
     private Listener listener;
     private final ExecutorService scanWorker = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "comic-folder-scanner");
         thread.setPriority(Thread.NORM_PRIORITY - 1);
         return thread;
     });
+
     public FolderScanCoordinator(Context context, LibraryDatabase database, ReaderPreferences preferences,
             LibraryImportCoordinator imports, BooleanSupplier readerBusy, Listener listener) {
         this.context = context.getApplicationContext();
@@ -58,130 +76,247 @@ public final class FolderScanCoordinator implements AutoCloseable {
         this.imports = imports;
         this.readerBusy = readerBusy;
         this.listener = listener;
+        this.configuredTrees = new HashSet<>(preferences.libraryFolderUris());
+        this.reconciler = new LibrarySourceReconciler(this.context, database);
     }
-    public boolean isRunning() { return folderScanRunning.get(); }
+
+    public boolean isRunning() { return !jobs.isEmpty() || reconciliationQueued.get(); }
+
+    public FolderState folderState(String uri) {
+        return states.getOrDefault(uri, new FolderState("", false, false));
+    }
+
     /** The Activity has already persisted the newly selected grant. */
-    public void selectFolder(Uri selected) {
-        String previous = preferences.libraryFolderUri();
-        folderScanGeneration++;
-        Future<?> activeScan = folderScanTask;
-        if (activeScan != null) activeScan.cancel(true);
-        folderScanRunning.set(false);
-        DocumentInfo folder = ComicDocumentFactory.describe(context, selected);
-        preferences.setLibraryFolder(selected.toString(), LibraryFolderLabel.compact(folder.displayName));
-        if (!previous.isEmpty() && !previous.equals(selected.toString())) pendingReleaseFolderUri = previous;
-        updateLibraryFolderUi("", false, false);
-        lastFolderScanStarted = 0L;
+    public void selectFolder(Uri selected) { selectFolder(selected, ""); }
+
+    public void selectFolder(Uri selected, String previousUri) {
+        if (!DocumentsContract.isTreeUri(selected) ||
+                !InputLimits.isIdentifierAcceptable(selected.toString())) {
+            throw new IllegalArgumentException("Invalid library folder");
+        }
+        String rootId = DocumentsContract.getTreeDocumentId(selected);
+        if (!InputLimits.isIdentifierAcceptable(rootId)) throw new IllegalArgumentException("Invalid folder identifier");
+        Uri document = DocumentsContract.buildDocumentUriUsingTree(selected, rootId);
+        DocumentInfo info = ComicDocumentFactory.describe(context, document);
+        ProviderInfo provider = context.getPackageManager().resolveContentProvider(selected.getAuthority(), 0);
+        String providerLabel = provider == null ? selected.getAuthority()
+                : provider.loadLabel(context.getPackageManager()).toString();
+        LibraryFolder folder = new LibraryFolder(selected.toString(),
+                LibraryFolderLabel.compact(info.displayName),
+                InputLimits.normalizeText(providerLabel + " · " + rootId, InputLimits.MAX_PATH_CODE_POINTS));
+        preferences.replaceLibraryFolder(previousUri, folder);
+        configurationChanged();
+        if (!previousUri.isEmpty() && !previousUri.equals(selected.toString())) cancelFolder(previousUri);
+        for (LibraryFolder configured : preferences.libraryFolders()) {
+            if (configured.sameTree(selected.toString())) {
+                cancelFolder(configured.uri);
+                lastStarted.remove(configured.uri);
+                break;
+            }
+        }
         maybeScanLibraryFolder(true);
     }
-    private void updateLibraryFolderUi(String detail, boolean scanning, boolean persistent) {
-        if (!destroyed && listener != null) listener.onScanStatus(detail, scanning, persistent);
+
+    public void removeFolder(String uri) {
+        preferences.removeLibraryFolder(uri);
+        configurationChanged();
+        cancelFolder(uri);
+        states.remove(uri);
+        lastStarted.remove(uri);
+        requestReconciliation();
+        updateLibraryFolderUi("", false, false);
     }
+
+    private void configurationChanged() {
+        configuredTrees = new HashSet<>(preferences.libraryFolderUris());
+        configurationVersion++;
+        requireReconciliation();
+    }
+
+    private void requireReconciliation() {
+        sourceRevision.incrementAndGet();
+        needsReconciliation = true;
+    }
+
+    private void cancelFolder(String uri) {
+        ScanJob job = jobs.remove(uri);
+        if (job != null) {
+            job.cancelled = true;
+            job.cancellation.cancel();
+            if (job.future != null) job.future.cancel(true);
+        }
+    }
+
+    private void updateLibraryFolderUi(String detail, boolean scanning, boolean persistent) {
+        if (!destroyed && listener != null) listener.onScanStatus(detail, !jobs.isEmpty(), persistent);
+    }
+
     private void notifyChanged() {
         if (!destroyed && listener != null) listener.onLibraryChanged();
     }
+
     private void releaseReadAccess(Uri uri) {
         try {
-            context.getContentResolver().releasePersistableUriPermission(
-                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            context.getContentResolver().releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
         } catch (RuntimeException ignored) {
-            // Some providers grant temporary access only.
+            // Temporary grants do not have a persistable permission to release.
         }
     }
+
     @Override public void close() {
         destroyed = true;
-        folderScanGeneration++;
+        for (String uri : jobs.keySet()) cancelFolder(uri);
         listener = null;
         mainHandler.removeCallbacksAndMessages(null);
         scanWorker.shutdownNow();
     }
+
     public void awaitStopped() throws InterruptedException {
         scanWorker.awaitTermination(Long.MAX_VALUE, java.util.concurrent.TimeUnit.NANOSECONDS);
     }
-    public void stopLibraryFolder() {
-        String configured = preferences.libraryFolderUri();
-        preferences.clearLibraryFolder();
-        folderScanGeneration++;
-        Future<?> activeScan = folderScanTask;
-        if (activeScan != null) activeScan.cancel(true);
-        folderScanRunning.set(false);
-        if (!configured.isEmpty()) {
-            database.markFolderUnavailable(configured);
-            releaseReadAccess(Uri.parse(configured));
-        }
-        String pendingRelease = pendingReleaseFolderUri;
-        if (!pendingRelease.isEmpty() && !pendingRelease.equals(configured)) {
-            database.markFolderUnavailable(pendingRelease);
-            releaseReadAccess(Uri.parse(pendingRelease));
-        }
-        pendingReleaseFolderUri = "";
-        updateLibraryFolderUi("", false, false);
-        notifyChanged();
-    }
 
     public void maybeScanLibraryFolder(boolean userRequested) {
-        if (destroyed || preferences == null || database == null) return;
-        String configured = preferences.libraryFolderUri();
-        if (configured.isEmpty()) return;
+        if (destroyed) return;
+        requestReconciliation();
         long now = System.currentTimeMillis();
-        if (!userRequested && now - lastFolderScanStarted < AUTO_SCAN_COOLDOWN_MS) return;
-        if (!folderScanRunning.compareAndSet(false, true)) return;
-        int scanGeneration = ++folderScanGeneration;
-        lastFolderScanStarted = now;
-        updateLibraryFolderUi("", true, true);
-        Uri treeUri;
-        try {
-            treeUri = Uri.parse(configured);
-        } catch (RuntimeException exception) {
-            if (scanGeneration == folderScanGeneration) folderScanRunning.set(false);
-            updateLibraryFolderUi(
-                    context.getString(R.string.library_scan_incomplete_short), false, true);
-            return;
+        int batch = nextBatch.incrementAndGet();
+        for (LibraryFolder folder : preferences.libraryFolders()) {
+            if (jobs.containsKey(folder.uri)) continue;
+            if (!userRequested && now - lastStarted.getOrDefault(folder.uri, 0L) < AUTO_SCAN_COOLDOWN_MS) continue;
+            ScanJob job = new ScanJob(folder, nextGeneration.incrementAndGet(), batch);
+            if (jobs.putIfAbsent(folder.uri, job) != null) continue;
+            states.put(folder.uri, new FolderState(context.getString(R.string.library_folder_waiting), true, false));
+            job.future = scanWorker.submit(() -> scan(job));
         }
+        updateLibraryFolderUi("", !jobs.isEmpty(), true);
+    }
 
-        folderScanTask = scanWorker.submit(() -> {
-            ScanCounts counts = new ScanCounts();
-            FingerprintBudget fingerprintBudget = new FingerprintBudget();
-            long scanStarted = System.currentTimeMillis();
-            LibraryFolderScanner.Summary traversal = null;
-            try {
-                traversal = LibraryFolderScanner.scan(
-                        context, treeUri,
-                        () -> destroyed || Thread.currentThread().isInterrupted() ||
-                                scanGeneration != folderScanGeneration ||
-                                !preferences.libraryFolderUri().equals(treeUri.toString()),
-                        entry -> processScannedEntry(
-                                entry, scanStarted, counts, scanGeneration,
-                                fingerprintBudget));
-                if (!destroyed && scanGeneration == folderScanGeneration && traversal.complete() && !readerBusy.getAsBoolean() &&
-                        preferences.libraryFolderUri().equals(treeUri.toString())) {
-                    database.finishFolderScan(treeUri.toString(), scanStarted);
-                    String pendingRelease = pendingReleaseFolderUri;
-                    if (!pendingRelease.isEmpty() &&
-                            !pendingRelease.equals(treeUri.toString())) {
-                        database.markFolderUnavailable(pendingRelease);
-                        releaseReadAccess(Uri.parse(pendingRelease));
-                        pendingReleaseFolderUri = "";
-                    }
-                }
-            } catch (IOException | RuntimeException error) {
-                counts.errors++;
-            } finally {
-                if (scanGeneration == folderScanGeneration) folderScanRunning.set(false);
+    private void scan(ScanJob job) {
+        if (!current(job)) return;
+        if (cachedBatch != job.batch) { directoryCache.clear(); cachedBatch = job.batch; }
+        lastStarted.put(job.folder.uri, System.currentTimeMillis());
+        states.put(job.folder.uri, new FolderState(context.getString(R.string.library_folder_scanning), true, false));
+        mainHandler.post(() -> updateLibraryFolderUi(job.folder.label, true, true));
+        ScanCounts counts = new ScanCounts();
+        LibraryFolderScanner.Summary traversal = null;
+        long started = System.currentTimeMillis();
+        try {
+            traversal = LibraryFolderScanner.scan(context, Uri.parse(job.folder.uri),
+                    new LibraryFolderScanner.Cancellation() {
+                        @Override public boolean isCancelled() { return !current(job); }
+                        @Override public android.os.CancellationSignal signal() { return job.cancellation; }
+                    }, entry -> processScannedEntry(entry, started, counts,
+                            job.generation, job.fingerprintBudget), directoryCache);
+            if (current(job) && traversal.complete() && counts.errors == 0 && !readerBusy.getAsBoolean()) {
+                database.finishFolderScan(job.folder.uri, started);
+                requireReconciliation();
+            } else if (current(job) && readerBusy.getAsBoolean()) {
+                // Revisit negative scan evidence after the reader no longer holds source keys.
+                lastStarted.remove(job.folder.uri);
             }
-            LibraryFolderScanner.Summary finished = traversal;
-            mainHandler.post(() -> {
-                if (destroyed || scanGeneration != folderScanGeneration) return;
-                notifyChanged();
-                LibraryScanResult result = folderScanResult(counts, finished);
-                String summary = folderScanSummary(result);
-                updateLibraryFolderUi(summary, false, result.shouldPersist());
-                if (!preferences.libraryFolderUri().equals(treeUri.toString())) {
-                    lastFolderScanStarted = 0L;
-                    maybeScanLibraryFolder(false);
+        } catch (IOException | RuntimeException error) {
+            counts.errors++;
+            if (current(job)) {
+                database.markFolderUnavailable(job.folder.uri);
+                requireReconciliation();
+            }
+        }
+        boolean inaccessible = traversal == null;
+        LibraryScanResult result = folderScanResult(counts, traversal);
+        String detail = inaccessible ? context.getString(R.string.library_folder_access_unavailable)
+                : folderScanSummary(result);
+        int version = configurationVersion;
+        List<String> roots = preferences.libraryFolderUris();
+        List<LibrarySourceReconciler.Change> changes = prepareChanges(roots, job.folder.uri,
+                () -> !current(job) || version != configurationVersion || readerBusy.getAsBoolean());
+        mainHandler.post(() -> {
+            if (!current(job)) return;
+            // Reader activation and source-key publication both run on the main thread.
+            if (version == configurationVersion && !readerBusy.getAsBoolean()) {
+                for (LibrarySourceReconciler.Change change : changes) {
+                    if (!imports.isProcessing(change.before.uri)) change.apply();
                 }
+            } else requireReconciliation();
+            jobs.remove(job.folder.uri, job);
+            states.put(job.folder.uri, new FolderState(detail, false, inaccessible));
+            notifyChanged();
+            updateLibraryFolderUi(detail, false, inaccessible || result.shouldPersist());
+            requestReconciliation();
+        });
+    }
+
+    private boolean current(ScanJob job) {
+        return !destroyed && !job.cancelled && !Thread.currentThread().isInterrupted() &&
+                jobs.get(job.folder.uri) == job && configuredTrees.contains(job.folder.uri);
+    }
+
+    private void requestReconciliation() {
+        if (destroyed || !jobs.isEmpty() || readerBusy.getAsBoolean() || !needsReconciliation ||
+                !reconciliationQueued.compareAndSet(false, true)) return;
+        int version = configurationVersion;
+        int revision = sourceRevision.get();
+        List<String> roots = preferences.libraryFolderUris();
+        Set<String> releases = preferences.pendingFolderReleases();
+        scanWorker.execute(() -> {
+            if (destroyed) return;
+            List<LibrarySourceReconciler.Change> changes;
+            try {
+                for (String uri : releases) {
+                    if (!configuredTrees.contains(uri)) database.markFolderUnavailable(uri);
+                }
+                changes = reconciler.prepare(roots, null,
+                        () -> destroyed || Thread.currentThread().isInterrupted() || version != configurationVersion);
+            } catch (RuntimeException error) {
+                android.util.Log.w("FolderScanCoordinator", "Source reconciliation deferred", error);
+                mainHandler.post(() -> reconciliationQueued.set(false));
+                return;
+            }
+            mainHandler.post(() -> {
+                reconciliationQueued.set(false);
+                if (destroyed) return;
+                if (version != configurationVersion) { requestReconciliation(); return; }
+                if (readerBusy.getAsBoolean()) return;
+                boolean processing = false;
+                for (LibrarySourceReconciler.Change change : changes) {
+                    if (imports.isProcessing(change.before.uri)) processing = true;
+                    else change.apply();
+                }
+                if (!processing) {
+                    for (String uri : releases) {
+                        if (!configuredTrees.contains(uri)) {
+                            releaseReadAccess(Uri.parse(uri));
+                            preferences.finishFolderRelease(uri);
+                        }
+                    }
+                    if (revision == sourceRevision.get() && jobs.isEmpty()) needsReconciliation = false;
+                }
+                notifyChanged();
+                updateLibraryFolderUi("", !jobs.isEmpty(), false);
             });
         });
+    }
+
+    private List<LibrarySourceReconciler.Change> prepareChanges(List<String> roots,
+            String affectedTree, BooleanSupplier cancelled) {
+        try { return reconciler.prepare(roots, affectedTree, cancelled); }
+        catch (RuntimeException error) {
+            android.util.Log.w("FolderScanCoordinator", "Source reconciliation deferred", error);
+            requireReconciliation();
+            return java.util.Collections.emptyList();
+        }
+    }
+
+    private static final class ScanJob {
+        final LibraryFolder folder;
+        final int generation;
+        final int batch;
+        final FingerprintBudget fingerprintBudget = new FingerprintBudget();
+        final android.os.CancellationSignal cancellation = new android.os.CancellationSignal();
+        volatile boolean cancelled;
+        volatile Future<?> future;
+        ScanJob(LibraryFolder folder, int generation, int batch) {
+            this.folder = folder; this.generation = generation; this.batch = batch;
+        }
     }
 
     private void processScannedEntry(
@@ -213,10 +348,20 @@ public final class FolderScanCoordinator implements AutoCloseable {
             if (manualMatch != null && scanStillConfigured(entry, scanGeneration)) {
                 LibraryDatabase.DuplicateMergeResult merge = null;
                 if (!newSource) {
-                    merge = database.mergeExactDuplicate(
-                            manualMatch.uri, existing.canonicalUri,
-                            probe.sample, probe.fullFingerprint);
-                    if (!merge.merged) manualMatch = null;
+                    String manualKey = manualMatch.uri;
+                    java.util.concurrent.atomic.AtomicReference<LibraryDatabase.DuplicateMergeResult> published =
+                            new java.util.concurrent.atomic.AtomicReference<>();
+                    boolean merged = publishWhenIdle(entry, scanGeneration, () -> {
+                        if (imports.isProcessing(manualKey) || imports.isProcessing(existing.canonicalUri)) return false;
+                        published.set(database.mergeExactDuplicate(manualKey, existing.canonicalUri,
+                                probe.sample, probe.fullFingerprint));
+                        if (!published.get().merged) return false;
+                        database.upsertScannedFile(scannedFile(entry, manualKey, probe.sample,
+                                probe.fullFingerprint, scanStarted));
+                        return true;
+                    });
+                    merge = published.get();
+                    if (!merged) { counts.skipped++; counts.errors++; return; }
                 }
                 if (manualMatch != null) {
                     database.upsertScannedFile(scannedFile(
@@ -259,7 +404,11 @@ public final class FolderScanCoordinator implements AutoCloseable {
         }
         if (existing != null && existing.canonicalUri.equals(existing.documentUri) &&
                 !existing.documentUri.equals(documentUri) && !readerBusy.getAsBoolean()) {
-            database.relinkCanonicalUri(existing.canonicalUri, documentUri);
+            if (!publishWhenIdle(entry, scanGeneration, () ->
+                    !imports.isProcessing(existing.canonicalUri) &&
+                            database.relinkCanonicalUri(existing.canonicalUri, documentUri))) {
+                counts.skipped++; counts.errors++; return;
+            }
         }
 
         if (probe.sample.isEmpty()) probe.sample = imports.sampleContent(entry.uri, entry.size);
@@ -277,10 +426,11 @@ public final class FolderScanCoordinator implements AutoCloseable {
                     if (probe.fullFingerprint.isEmpty()) {
                         probe.fullFingerprint = ContentFingerprint.full(context, entry.uri);
                     }
-                    String candidateFingerprint = candidate.contentFingerprint;
-                    if (candidateFingerprint.isEmpty()) {
-                        candidateFingerprint = ContentFingerprint.full(
-                                context, Uri.parse(candidate.documentUri));
+                    String candidateFingerprint = ContentFingerprint.full(
+                            context, Uri.parse(candidate.documentUri));
+                    if (!candidate.contentFingerprint.isEmpty() &&
+                            !candidate.contentFingerprint.equals(candidateFingerprint)) continue;
+                    if (candidate.contentFingerprint.isEmpty()) {
                         database.setScannedFingerprint(
                                 candidate.sourceIdentity, candidateFingerprint);
                     }
@@ -289,6 +439,7 @@ public final class FolderScanCoordinator implements AutoCloseable {
                     database.upsertScannedFile(scannedFile(
                             entry, candidate.canonicalUri, probe.sample,
                             probe.fullFingerprint, scanStarted));
+                    reapplyFolderSeries(candidate.canonicalUri, entry);
                     counts.duplicates++;
                     return;
                 } catch (IOException | RuntimeException ignored) {
@@ -305,10 +456,12 @@ public final class FolderScanCoordinator implements AutoCloseable {
                                     probe.sample.equals(imports.sampleContent(entry.uri, entry.size)) &&
                                     scanStillConfigured(entry, scanGeneration) &&
                                     !readerBusy.getAsBoolean() &&
-                                    database.reconnectByFingerprint(candidate.canonicalUri,
-                                            candidate, scannedFile(entry, documentUri,
-                                                    probe.sample, probe.fullFingerprint,
-                                                    scanStarted))) {
+                                    publishWhenIdle(entry, scanGeneration, () ->
+                                            !imports.isProcessing(candidate.canonicalUri) &&
+                                            database.reconnectByFingerprint(candidate.canonicalUri,
+                                                    candidate, scannedFile(entry, documentUri,
+                                                            probe.sample, probe.fullFingerprint,
+                                                            scanStarted)))) {
                                 reapplyFolderSeries(documentUri, entry);
                                 counts.updated++;
                                 return;
@@ -324,15 +477,31 @@ public final class FolderScanCoordinator implements AutoCloseable {
         boolean previouslyImported = existing != null || !database.get(documentUri).uri.isEmpty();
         if (!imports.processLibraryItem(entry.uri, false, entry, false)) {
             counts.skipped++;
+            counts.errors++;
             return;
         }
         if (!scanStillConfigured(entry, scanGeneration)) {
-            if (!previouslyImported) {
-                String cover = database.forget(documentUri);
-                CoverStore.delete(context, cover);
+            ReadingProgress current = database.get(documentUri);
+            if (!current.uri.isEmpty()) {
+                LibraryDatabase.ScannedFile stopped = scannedFile(entry, documentUri,
+                        probe.sample, probe.fullFingerprint, scanStarted);
+                stopped.available = false;
+                database.upsertScannedFile(stopped);
+                requireReconciliation();
+                if (!previouslyImported) mainHandler.post(() -> {
+                    if (destroyed) return;
+                    ReadingProgress latest = database.get(documentUri);
+                    if (!destroyed && !readerBusy.getAsBoolean() && latest.lastOpened == 0L &&
+                            !latest.favorite && !latest.read && !latest.manualSource && !latest.titleOverride &&
+                            latest.seriesOverride == LibraryDatabase.SERIES_AUTOMATIC &&
+                            database.bookmarks(documentUri).isEmpty()) {
+                        CoverStore.delete(context, database.forget(documentUri));
+                    }
+                });
             }
             return;
         }
+
         if (probe.fullFingerprint.isEmpty() && !probe.sample.isEmpty() &&
                 fingerprintBudget.reserve(entry.size)) {
             try {
@@ -360,6 +529,10 @@ public final class FolderScanCoordinator implements AutoCloseable {
         ReadingProgress current = database.get(canonicalUri);
         if (current.uri.isEmpty()) return;
         boolean embedded = current.detectedSeriesKey.startsWith("metadata:");
+        // An exact copy found through another tree must not rename or reassign an established
+        // folder series according to scan order. The stable original key survives source failover.
+        if (!embedded && current.detectedSeriesKey.startsWith("folder:") &&
+                !current.detectedSeriesKey.equals("folder:" + entry.seriesFolderKey)) return;
         database.applyDetectedSeries(
                 canonicalUri,
                 embedded ? current.detectedSeriesName : "",
@@ -370,6 +543,7 @@ public final class FolderScanCoordinator implements AutoCloseable {
 
     private void updateRenamedTitle(
             LibraryDatabase.ScannedFile existing, LibraryFolderScanner.Entry entry) {
+        if (!existing.canonicalUri.equals(existing.documentUri)) return;
         if (existing.relativePath.equals(entry.relativePath)) return;
         ReadingProgress current = database.get(existing.canonicalUri);
         if (current.uri.isEmpty()) return;
@@ -439,9 +613,10 @@ public final class FolderScanCoordinator implements AutoCloseable {
                         !probe.sample.equals(imports.sampleContent(entry.uri, entry.size)) ||
                         !scanStillConfigured(entry, scanGeneration) ||
                         readerBusy.getAsBoolean()) continue;
-                if (database.reconnectByFingerprint(candidate.uri, null,
-                        scannedFile(entry, entry.uri.toString(), probe.sample,
-                                probe.fullFingerprint, scanStarted))) {
+                if (publishWhenIdle(entry, scanGeneration, () ->
+                        !imports.isProcessing(candidate.uri) && database.reconnectByFingerprint(candidate.uri, null,
+                                scannedFile(entry, entry.uri.toString(), probe.sample,
+                                        probe.fullFingerprint, scanStarted)))) {
                     reapplyFolderSeries(entry.uri.toString(), entry);
                     return true;
                 }
@@ -450,6 +625,31 @@ public final class FolderScanCoordinator implements AutoCloseable {
             }
         }
         return false;
+    }
+
+    /** Serialize URI transfers with reader activation; never hold a DB transaction while waiting. */
+    private boolean publishWhenIdle(LibraryFolderScanner.Entry entry, int generation,
+            BooleanSupplier publication) {
+        AtomicBoolean pending = new AtomicBoolean(true);
+        AtomicBoolean result = new AtomicBoolean();
+        java.util.concurrent.atomic.AtomicReference<RuntimeException> failure = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.CountDownLatch published = new java.util.concurrent.CountDownLatch(1);
+        mainHandler.post(() -> {
+            try {
+                if (pending.compareAndSet(true, false) && scanStillConfigured(entry, generation) &&
+                        !readerBusy.getAsBoolean()) result.set(publication.getAsBoolean());
+            } catch (RuntimeException error) { failure.set(error); }
+            finally { published.countDown(); }
+        });
+        try {
+            while (!published.await(50, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                if (!scanStillConfigured(entry, generation)) { pending.set(false); return false; }
+            }
+        } catch (InterruptedException interrupted) {
+            pending.set(false); Thread.currentThread().interrupt(); return false;
+        }
+        if (failure.get() != null) throw failure.get();
+        return result.get();
     }
 
     private void retainFingerprint(LibraryFolderScanner.Entry entry,
@@ -500,9 +700,8 @@ public final class FolderScanCoordinator implements AutoCloseable {
 
     private boolean scanStillConfigured(
             LibraryFolderScanner.Entry entry, int scanGeneration) {
-        return !destroyed && !Thread.currentThread().isInterrupted() &&
-                scanGeneration == folderScanGeneration &&
-                preferences.libraryFolderUri().equals(entry.treeUri);
+        ScanJob job = jobs.get(entry.treeUri);
+        return job != null && job.generation == scanGeneration && current(job);
     }
 
     private LibraryScanResult folderScanResult(

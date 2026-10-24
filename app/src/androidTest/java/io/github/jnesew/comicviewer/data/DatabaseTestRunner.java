@@ -22,7 +22,7 @@ public final class DatabaseTestRunner extends Instrumentation {
     private LibraryDatabase db;
     private int current;
     private int failed;
-    private static final int TOTAL = 15;
+    private static final int TOTAL = 28;
 
     @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
 
@@ -43,7 +43,20 @@ public final class DatabaseTestRunner extends Instrumentation {
                 () -> RasterRenderingTests.backwardTurn(this));
         run("rasterSamplingTransitionsKeepCachedCoverage",
                 () -> RasterRenderingTests.samplingTransitions(this));
-        run("upgradeVersionOneToTen", this::upgrade);
+        run("upgradeVersionOneToEleven", this::upgrade);
+        run("folderCollectionMigratesOnce", () -> new LibraryFeatureTests(this, db).preferencesMigration());
+        run("seriesFavoritesAreIndependent", () -> new LibraryFeatureTests(this, db).seriesFavorites());
+        run("upgradeVersionTenPreservesLibrary", () -> new LibraryFeatureTests(this, db).upgradeTen());
+        run("availabilityAcrossIndependentScanTimestamps", () -> new LibraryFeatureTests(this, db).sourceAvailability());
+        run("sharedCopiesPreserveStateAFirst", () -> new LibraryFeatureTests(this, db).sharedCopies(false));
+        run("sharedCopiesPreserveStateBFirst", () -> new LibraryFeatureTests(this, db).sharedCopies(true));
+        run("accessLossAndReaderBusyRemoval", () -> new LibraryFeatureTests(this, db).failuresAndBusyRemoval());
+        run("differentBytesAndIncompleteTraversalStaySeparate", () -> new LibraryFeatureTests(this, db).conservativeAndPartial());
+        run("overlappingFoldersAndCancelledScan", () -> new LibraryFeatureTests(this, db).overlapAndCancellation());
+        run("independentManualCopySurvivesFolderRemoval", () -> new LibraryFeatureTests(this, db).independentManualCopy());
+        run("removeSourceDuringActiveProviderTraversal", () -> new LibraryFeatureTests(this, db).removeDuringTraversal());
+        run("restartDuringScanAndCoalesceRepeatedRequests", () -> new LibraryFeatureTests(this, db).restartDuringTraversal());
+        run("seriesSearchAndFilterSurviveRecreation", () -> LibraryNavigationTests.recreation(this, db));
         Bundle result = new Bundle();
         result.putString("stream", "\n" + (TOTAL - failed) + "/" + TOTAL + " database tests passed\n");
         finish(Activity.RESULT_OK, result);
@@ -370,7 +383,7 @@ public final class DatabaseTestRunner extends Instrumentation {
         }
         db = new LibraryDatabase(getTargetContext(), NAME);
         ReadingProgress p = db.get("legacy");
-        equal(10, db.getReadableDatabase().getVersion()); equal("Vanha 🦊", p.originalTitle);
+        equal(11, db.getReadableDatabase().getVersion()); equal("Vanha 🦊", p.originalTitle);
         equal(4, p.page); equal(30, p.pageCount); equal(123L, p.addedAt);
         check(p.manualSource && p.available && !p.titleOverride);
         check(p.readingModeOverride && !p.readingDirectionOverride);

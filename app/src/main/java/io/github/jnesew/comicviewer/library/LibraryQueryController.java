@@ -17,7 +17,10 @@ public final class LibraryQueryController {
             boolean seriesMode) {
         List<ReadingProgress> rows;
         List<SeriesGroup> seriesRows;
-        List<ReadingProgress> matching = database.library(query, sort, filter);
+        boolean favoriteSeries = LibraryDatabase.FILTER_FAVORITES.equals(filter) &&
+                seriesMode && selectedSeriesId <= 0L;
+        List<ReadingProgress> matching = database.library(query, sort,
+                favoriteSeries ? LibraryDatabase.FILTER_ALL : filter);
         if (selectedSeriesId > 0L) {
             ArrayList<ReadingProgress> selected = new ArrayList<>();
             for (ReadingProgress item : matching) {
@@ -30,6 +33,7 @@ public final class LibraryQueryController {
                     "", sort, LibraryDatabase.FILTER_ALL);
             rows = Collections.emptyList();
             seriesRows = SeriesOrganizer.group(all, matching, sort);
+            if (favoriteSeries) seriesRows = SeriesOrganizer.favorites(seriesRows);
         } else {
             rows = matching;
             seriesRows = Collections.emptyList();

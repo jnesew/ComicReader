@@ -68,6 +68,13 @@ public final class SeriesOrganizer {
         return result;
     }
 
+    /** Filter complete groups, never their issue lists. Standalones retain comic favorites. */
+    public static List<SeriesGroup> favorites(List<SeriesGroup> groups) {
+        ArrayList<SeriesGroup> result = new ArrayList<>();
+        for (SeriesGroup group : groups) if (group.favorite) result.add(group);
+        return result;
+    }
+
     private static final Comparator<ReadingProgress> ISSUE_ORDER = (left, right) -> {
         boolean leftNumbered = !left.seriesNumber.trim().isEmpty();
         boolean rightNumbered = !right.seriesNumber.trim().isEmpty();

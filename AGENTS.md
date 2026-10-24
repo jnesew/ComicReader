@@ -91,7 +91,7 @@ Preserve these rules when changing the affected paths:
   for targeted updates. Schema changes require an explicit feature need and migration.
 - Database delegate extraction (the historical R5 follow-up) still requires the real
   connected Android baseline before extraction and the identical suite afterward.
-  The current schema is 10; older plans describing schema 8 are historical context.
+  The current schema is 11; older plans describing schemas 8 or 10 are historical context.
 - Preserve shared visible-frame budgeting and the common speculative cache ceiling.
   Do not change memory limits, prefetch distance, zoom limits, or decoder concurrency
   incidentally. Keep pressure trimming/cooldown, background suspension, and cached raster

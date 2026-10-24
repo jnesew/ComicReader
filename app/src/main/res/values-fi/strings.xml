@@ -14,7 +14,6 @@
     <string name="library_no_results">Haku tai suodatin ei löytänyt sarjakuvia.</string>
     <string name="library_sort_menu">Järjestä kirjasto</string>
     <string name="library_filter_menu">Suodata kirjasto</string>
-    <string name="library_view_menu">Kirjastonäkymä</string>
     <string name="library_view_titles">Nimikkeet</string>
     <string name="library_view_series">Sarjat</string>
     <string name="library_cover_size">Kansien koko</string>
@@ -23,12 +22,6 @@
     <string name="library_cover_size_standard">Normaali</string>
     <string name="library_cover_size_compact">Tiivis</string>
     <string name="library_cover_size_dense">Erittäin tiivis</string>
-    <string name="library_choose_folder">Valitse kirjastokansio</string>
-    <string name="library_change_folder">Vaihda kirjastokansiota</string>
-    <string name="library_rescan_folder">Tarkista kansio uudelleen</string>
-    <string name="library_stop_folder">Lopeta kansion käyttö</string>
-    <string name="library_stop_folder_title">Lopetetaanko tämän kirjastokansion käyttö?</string>
-    <string name="library_stop_folder_message">ComicViewer lopettaa kansion tarkistamisen ja vapauttaa sen käyttöoikeuden. Nimikkeet ja lukutiedot säilyvät kirjastossa ei-saatavilla-tilassa, kunnes ne löydetään uudelleen tai unohdetaan käsin.</string>
     <string name="library_folder_named_status">%1$s · %2$s</string>
     <string name="library_folder_scanning">Tarkistetaan…</string>
     <string name="library_scan_added">Lisättiin %1$d</string>
@@ -53,14 +46,14 @@
     <string name="sort_title_descending">Nimi Ö–A</string>
     <string name="sort_progress">Edistyminen</string>
     <string name="filter_all">Kaikki</string>
-    <string name="filter_new">Uudet</string>
+    <string name="filter_new">Lukemattomat</string>
     <string name="filter_in_progress">Kesken</string>
     <string name="filter_completed">Valmiit</string>
     <string name="filter_favorites">Suosikit</string>
     <string name="cover_description">Sarjakuvan %1$s kansi</string>
     <string name="comic_accessibility_progress">%1$s, lukukohta %2$d prosenttia</string>
     <string name="comic_page_progress">Sivu %1$d / %2$d</string>
-    <string name="comic_status_new">Uusi</string>
+    <string name="comic_status_new">Lukematon</string>
     <string name="comic_status_completed">Valmis</string>
     <string name="comic_mark_read">Merkitse luetuksi</string>
     <string name="comic_mark_unread">Merkitse lukemattomaksi</string>
@@ -191,8 +184,8 @@
     <string name="reading_direction_auto">Automaattinen</string>
     <string name="reading_direction_left_to_right">Vasemmalta oikealle</string>
     <string name="reading_direction_right_to_left">Oikealta vasemmalle</string>
-    <string name="reader_add_bookmark">Lisää kirjanmerkki</string>
-    <string name="reader_remove_bookmark">Poista kirjanmerkki</string>
+    <string name="reader_add_bookmark">Lisää sivun kirjanmerkki</string>
+    <string name="reader_remove_bookmark">Poista sivun kirjanmerkki</string>
     <string name="reader_bookmarked_page">Sivu %1$d lisättiin kirjanmerkkeihin</string>
     <string name="reader_removed_bookmark">Kirjanmerkki poistettiin</string>
     <string name="reader_jump_message">Anna sivunumero väliltä 1–%1$d.</string>
@@ -270,4 +263,28 @@
     <string name="error_page_missing">Sivu katosi arkistosta.</string>
     <string name="error_tile_memory">Sivun kuvaruutu ylitti käytettävissä olevan kuvamuistin.</string>
     <string name="error_render_page">Sivua %1$d ei voitu näyttää.</string>
+
+    <!-- Library sources and independent series favorites. -->
+    <string name="library_add_comics">Lisää sarjakuvia</string>
+    <string name="library_folders">Kirjastokansiot</string>
+    <string name="library_add_folder">Lisää kansio</string>
+    <string name="library_rescan_all_folders">Skannaa kaikki kansiot</string>
+    <string name="library_no_folders">Valitse kansiot, joista etsitään sarjakuvia. Vain valitsemiisi kansioihin päästään.</string>
+    <string name="library_unnamed_folder">Valittu kansio</string>
+    <string name="library_reconnect_folder">Yhdistä kansio uudelleen</string>
+    <string name="library_remove_folder">Poista kansiovalinta</string>
+    <string name="library_remove_folder_named">Poista kansiovalinta ”%1$s”</string>
+    <string name="library_remove_folder_message">Lopetetaanko tämän kansion skannaus? Sarjakuvatiedostoja ei poisteta. Lukuhistoria, kirjanmerkit, suosikit ja muokkaukset säilyvät kirjastossa. Sarjakuvia voi yhä lukea muiden toimivien lähteiden kautta. Muuten ne säilyvät ei-saatavilla-tilassa. Kansion käyttöoikeus vapautetaan, kun lukija ei enää tarvitse sitä.</string>
+    <string name="library_folder_waiting">Odottaa skannausta…</string>
+    <string name="library_folder_ready">Valmis skannattavaksi</string>
+    <string name="library_folder_access_unavailable">Kansioon ei päästä. Yritä yhdistää se uudelleen.</string>
+    <string name="library_folder_add_failed">Kansion tallentaminen epäonnistui. Valitse se uudelleen järjestelmän kansiovalitsimella.</string>
+    <string name="series_add_favorite">Lisää sarja suosikkeihin</string>
+    <string name="series_remove_favorite">Poista sarja suosikeista</string>
+    <string name="favorite_title">Suosikki: %1$s</string>
+    <string name="comic_issue_number">Numero %1$s</string>
+    <plurals name="library_folder_count">
+        <item quantity="one">%1$d kansio</item>
+        <item quantity="other">%1$d kansiota</item>
+    </plurals>
 </resources>

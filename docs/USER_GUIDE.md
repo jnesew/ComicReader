@@ -2,18 +2,27 @@
 
 ## Import comics
 
-Use **Open comics** to select one or more CBZ, ZIP, supported EPUB, or PDF files through Android's
+Use the **Add comics** plus icon in the library toolbar to select one or more CBZ, ZIP, supported EPUB, or PDF files through Android's
 system document picker. ComicViewer remembers Android's document grant so a title can normally be
 reopened without selecting it again.
 
-The optional library-folder setting grants access to one user-selected folder. ComicViewer scans it
-recursively on launch or return to the library, skips unchanged files, and reconciles exact copies
-with earlier manual imports. It never requests access to all device storage.
+The folder icon opens **Library folders**. Add one or more folders through Android's picker;
+ComicViewer scans them recursively on launch or return to the library, skips unchanged files, and
+reconciles verified exact copies with earlier imports. The manager shows each folder's location and
+scan status, with actions to rescan, reconnect, or remove a folder. It never requests access to all
+device storage. An existing saved folder is retained automatically when upgrading.
+
+Removing a folder stops scanning it and releases its access after the reader has finished using it.
+It never changes source files or erases reading history. If a verified identical copy remains in
+another selected folder, ComicViewer uses it with the same progress, bookmarks, favorites, and edits.
+An independently accessible manual import can also keep a comic readable. Otherwise the entry stays
+in the library as unavailable until its source is reconnected.
 
 ## Library
 
 The Titles view supports search, favorites, reading-status filters, cover-size choices, and sorting
-by recent reading, import time, title, or progress. Opening a title marks it as started and restores
+by recent reading, import time, title, or progress. Use the visible **Titles / Series** selector to
+switch views. Opening a title marks it as started and restores
 its saved page and view state.
 
 Series view groups titles conservatively using supported embedded metadata or folder structure.
@@ -21,6 +30,18 @@ Standalone titles remain separate. **Edit comic** changes the displayed comic ti
 existing or new series and issue number, restores automatic grouping, or explicitly keeps the
 comic standalone. **Use original title** restores the detected title. These edits change only
 ComicViewer metadata and never rename or modify the comic file.
+
+The Favorites filter in Titles shows favorite comics. In Series it shows favorite series and
+favorite standalone comics. Series favorites are independent: starring a series never stars its
+issues, and new issues appear in that saved series automatically. Opening a favorite series shows
+all its issues; you can then apply search or reading-status filters. Returning restores the parent
+view's search, filter, and scroll position. Use each card's options menu to change its favorite state;
+a small star beside its title indicates a favorite without covering the artwork.
+
+**Unread** is the explicit read status, independent of saved reading position. Progress tracks appear
+only after reading has started or the title is marked read. Cards show a separate issue number when
+structured metadata supplies one. Dates embedded in filenames or titles remain part of the title;
+ComicViewer does not guess publication dates from them.
 
 Long-press a title or series, or use its options menu, to forget it. Forgetting deletes
 ComicViewer's local reading state and caches but never the original comic files. Tapping an
@@ -102,7 +123,11 @@ its last page or previewing it does not mark it read.
 | Fit/zoom control | Select fit or zoom and lock or unlock touch zoom |
 | Page slider | Preview pages while dragging and open on release |
 
-The reader menu provides jump to page, bookmarks, title favorites, **Edit comic**, Auto/LTR/RTL
+The reader toolbar has a ribbon icon for the current page's bookmark and a separate star for the
+current comic's favorite state. They toggle independently and follow the active issue during series
+reading. Unavailable notices cannot receive page bookmarks.
+
+The reader menu provides jump to page, the bookmark list, **Edit comic**, Auto/LTR/RTL
 reading direction, and Reader options. Reader options contains background colors, volume-key
 navigation, tap zones, screen-awake behavior, and external-keyboard shortcut capture.
 

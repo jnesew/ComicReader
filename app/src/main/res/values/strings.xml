@@ -14,7 +14,6 @@
     <string name="library_no_results">No comics match this search or filter.</string>
     <string name="library_sort_menu">Sort library</string>
     <string name="library_filter_menu">Filter library</string>
-    <string name="library_view_menu">Library view</string>
     <string name="library_view_titles">Titles</string>
     <string name="library_view_series">Series</string>
     <string name="library_cover_size">Cover size</string>
@@ -23,12 +22,6 @@
     <string name="library_cover_size_standard">Standard</string>
     <string name="library_cover_size_compact">Compact</string>
     <string name="library_cover_size_dense">Dense</string>
-    <string name="library_choose_folder">Choose library folder</string>
-    <string name="library_change_folder">Change library folder</string>
-    <string name="library_rescan_folder">Rescan folder</string>
-    <string name="library_stop_folder">Stop using folder</string>
-    <string name="library_stop_folder_title">Stop using this library folder?</string>
-    <string name="library_stop_folder_message">ComicViewer will stop scanning this folder and release access to it. Its titles and reading state stay in the library, marked unavailable, until they are found again or forgotten manually.</string>
     <string name="library_folder_named_status">%1$s · %2$s</string>
     <string name="library_folder_scanning">Scanning…</string>
     <string name="library_scan_added">Added %1$d</string>
@@ -53,14 +46,14 @@
     <string name="sort_title_descending">Title Z–A</string>
     <string name="sort_progress">Progress</string>
     <string name="filter_all">All</string>
-    <string name="filter_new">New</string>
+    <string name="filter_new">Unread</string>
     <string name="filter_in_progress">In progress</string>
     <string name="filter_completed">Completed</string>
     <string name="filter_favorites">Favorites</string>
     <string name="cover_description">Cover of %1$s</string>
     <string name="comic_accessibility_progress">%1$s, reading position %2$d percent</string>
     <string name="comic_page_progress">Page %1$d / %2$d</string>
-    <string name="comic_status_new">New</string>
+    <string name="comic_status_new">Unread</string>
     <string name="comic_status_completed">Completed</string>
     <string name="comic_mark_read">Mark read</string>
     <string name="comic_mark_unread">Mark unread</string>
@@ -191,8 +184,8 @@
     <string name="reading_direction_auto">Auto</string>
     <string name="reading_direction_left_to_right">Left-to-right</string>
     <string name="reading_direction_right_to_left">Right-to-left</string>
-    <string name="reader_add_bookmark">Add bookmark</string>
-    <string name="reader_remove_bookmark">Remove bookmark</string>
+    <string name="reader_add_bookmark">Add page bookmark</string>
+    <string name="reader_remove_bookmark">Remove page bookmark</string>
     <string name="reader_bookmarked_page">Bookmarked page %1$d</string>
     <string name="reader_removed_bookmark">Removed bookmark</string>
     <string name="reader_jump_message">Enter a page from 1 to %1$d.</string>
@@ -270,4 +263,28 @@
     <string name="error_page_missing">A page disappeared from the archive.</string>
     <string name="error_tile_memory">A page tile exceeded the available image memory.</string>
     <string name="error_render_page">Could not render page %1$d.</string>
+
+    <!-- Library sources and independent series favorites. -->
+    <string name="library_add_comics">Add comics</string>
+    <string name="library_folders">Library folders</string>
+    <string name="library_add_folder">Add folder</string>
+    <string name="library_rescan_all_folders">Rescan all folders</string>
+    <string name="library_no_folders">Choose folders to scan for comics. Only the folders you select are accessed.</string>
+    <string name="library_unnamed_folder">Selected folder</string>
+    <string name="library_reconnect_folder">Reconnect folder</string>
+    <string name="library_remove_folder">Remove folder</string>
+    <string name="library_remove_folder_named">Remove folder “%1$s”</string>
+    <string name="library_remove_folder_message">Stop scanning this folder? Comic files are never deleted. Reading history, bookmarks, favorites, and edits stay in the library. Comics remain readable through other usable sources; otherwise they are kept as unavailable. Folder access is released when the reader no longer needs it.</string>
+    <string name="library_folder_waiting">Waiting to scan…</string>
+    <string name="library_folder_ready">Ready to scan</string>
+    <string name="library_folder_access_unavailable">Folder access unavailable. Reconnect to try again.</string>
+    <string name="library_folder_add_failed">Could not save this folder. Choose it again using the system folder picker.</string>
+    <string name="series_add_favorite">Add series to favorites</string>
+    <string name="series_remove_favorite">Remove series from favorites</string>
+    <string name="favorite_title">Favorite: %1$s</string>
+    <string name="comic_issue_number">Issue %1$s</string>
+    <plurals name="library_folder_count">
+        <item quantity="one">%1$d folder</item>
+        <item quantity="other">%1$d folders</item>
+    </plurals>
 </resources>

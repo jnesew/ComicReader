@@ -238,12 +238,6 @@ public final class ReaderController implements ReaderScreen.Listener, ComicCanva
                             return true;
                         });
             }
-            menu.getMenu().add(session.progress().favorite
-                    ? R.string.title_remove_favorite : R.string.title_add_favorite)
-                    .setOnMenuItemClickListener(item -> {
-                        toggleTitleFavorite();
-                        return true;
-                    });
             menu.getMenu().add(R.string.comic_edit)
                     .setOnMenuItemClickListener(item -> {
                         host.onComicEditRequested(session.progress());
@@ -432,9 +426,10 @@ public final class ReaderController implements ReaderScreen.Listener, ComicCanva
         });
     }
 
-    private void toggleTitleFavorite() {
+    @Override public void onFavorite() {
         if (session.document() == null || session.progress() == null) return;
         session.progress().favorite = session.database.toggleFavorite(session.document().key());
+        session.reader.updateFavorite(session.progress().favorite);
         Toast.makeText(context, context.getString(
                 session.progress().favorite ? R.string.title_added_favorite : R.string.title_removed_favorite,
                 session.progress().title), Toast.LENGTH_SHORT).show();

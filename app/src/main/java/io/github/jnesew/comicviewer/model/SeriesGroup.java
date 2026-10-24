@@ -13,6 +13,7 @@ public final class SeriesGroup {
     public final int percent;
     public final long lastOpened;
     public final long addedAt;
+    public final boolean favorite;
 
     public SeriesGroup(
             long id,
@@ -31,6 +32,7 @@ public final class SeriesGroup {
         this.percent = percent;
         this.lastOpened = lastOpened;
         this.addedAt = addedAt;
+        this.favorite = id > 0L ? cover.seriesFavorite : cover.favorite;
     }
 
     public boolean isStandalone() {

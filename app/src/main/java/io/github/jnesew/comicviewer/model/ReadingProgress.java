@@ -32,6 +32,7 @@ public final class ReadingProgress {
     public boolean available = true;
     public long seriesId = 0L;
     public String seriesTitle = "";
+    public boolean seriesFavorite = false;
     public String seriesNumber = "";
     public int seriesOverride = 0;
     public String detectedSeriesKey = "";
