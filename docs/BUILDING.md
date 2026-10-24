@@ -17,6 +17,8 @@ Run `./build-release.sh` from a clean commit. It runs tests and release lint, th
 an unsigned optimized Gradle APK with signing explicitly disabled. The result is
 `dist/ComicViewer-Android-v<versionName>-unsigned.apk`, using the version in `gradle.properties`.
 See [Signing and release verification](#signing-and-release-verification) below.
+Use `./build-release.sh --output <path>` to select a new output file in an existing
+directory without overwriting a previously saved candidate.
 
 ## Gradle build
 
@@ -111,6 +113,18 @@ Neither unsigned reproducibility nor CI alone establishes a matching signed rele
 Test upgrading the previous release with the same certificate, retaining library data,
 document grants, reading state, bookmarks, metadata edits, favorites, and settings.
 Signing keys remain local and are not shared with distributors.
+
+### Obtainium release preparation
+
+The tracked `scripts/prepare-obtainium-release.sh` orchestrates version checks,
+reviewed notes, the canonical unsigned build, independent reproducibility, local
+signing, APK verification, and safe output staging. Start with
+[RELEASING.md](RELEASING.md) for version bumping, preflight, public preparation,
+and unsigned development verification. It never pushes or publishes automatically.
+
+`scripts/verify-reproducible-build.sh --output <path>` can retain its independently
+verified unsigned APK for signature-aware comparison. The destination must not
+already exist and its parent directory must exist.
 
 ### Distribution metadata
 
