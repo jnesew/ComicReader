@@ -229,9 +229,13 @@ final class LibraryGridAdapter extends BaseAdapter {
 
     private void bindTitle(TextView title, String value, boolean favorite) {
         if (favorite) {
+            android.graphics.drawable.Drawable marker = Ui.icon(context, R.drawable.ic_star_filled, 14, Ui.ACCENT);
+            // A marker taller than the text ascent makes favorite cards taller in Dense view.
+            int size = Math.min(Ui.dp(context, 14), -title.getPaint().getFontMetricsInt().ascent);
+            marker.setBounds(0, 0, size, size);
             android.text.SpannableString marked = new android.text.SpannableString("\uFFFC " + value);
             marked.setSpan(new android.text.style.ImageSpan(
-                    Ui.icon(context, R.drawable.ic_star_filled, 14, Ui.ACCENT),
+                    marker,
                     android.text.style.ImageSpan.ALIGN_BASELINE), 0, 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             title.setText(marked);
         } else title.setText(value);
@@ -245,7 +249,9 @@ final class LibraryGridAdapter extends BaseAdapter {
     }
 
     private void bindProgress(ProgressBar progress, int percent, boolean complete, boolean started) {
-        progress.setVisibility(complete || (started && percent > 0) ? View.VISIBLE : View.GONE);
+        // GridView fills rows from either edge while scrolling. Keep the card height stable
+        // when the track is hidden so covers cannot shift relative to neighboring cards.
+        progress.setVisibility(complete || (started && percent > 0) ? View.VISIBLE : View.INVISIBLE);
         progress.setProgress(complete ? 100 : percent);
     }
 
@@ -292,7 +298,8 @@ final class LibraryGridAdapter extends BaseAdapter {
         LinearLayout statusRow = new LinearLayout(context);
         statusRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView details = Ui.text(context, "", density.detailTextSp, Ui.TEXT_MUTED);
-        details.setMaxLines(3);
+        details.setLines(3);
+        details.setGravity(Gravity.CENTER_VERTICAL);
         details.setEllipsize(TextUtils.TruncateAt.END);
         statusRow.addView(details, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         ImageButton options = Ui.iconButton(context, R.drawable.ic_more, context.getString(R.string.comic_options));

@@ -2,7 +2,6 @@ package io.github.jnesew.comicviewer.library;
 
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.ProviderInfo;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
@@ -98,12 +97,9 @@ public final class FolderScanCoordinator implements AutoCloseable {
         if (!InputLimits.isIdentifierAcceptable(rootId)) throw new IllegalArgumentException("Invalid folder identifier");
         Uri document = DocumentsContract.buildDocumentUriUsingTree(selected, rootId);
         DocumentInfo info = ComicDocumentFactory.describe(context, document);
-        ProviderInfo provider = context.getPackageManager().resolveContentProvider(selected.getAuthority(), 0);
-        String providerLabel = provider == null ? selected.getAuthority()
-                : provider.loadLabel(context.getPackageManager()).toString();
         LibraryFolder folder = new LibraryFolder(selected.toString(),
                 LibraryFolderLabel.compact(info.displayName),
-                InputLimits.normalizeText(providerLabel + " · " + rootId, InputLimits.MAX_PATH_CODE_POINTS));
+                InputLimits.normalizeText(rootId, InputLimits.MAX_PATH_CODE_POINTS));
         preferences.replaceLibraryFolder(previousUri, folder);
         configurationChanged();
         if (!previousUri.isEmpty() && !previousUri.equals(selected.toString())) cancelFolder(previousUri);

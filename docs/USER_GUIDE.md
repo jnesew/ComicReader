@@ -9,8 +9,12 @@ reopened without selecting it again.
 The folder icon opens **Library folders**. Add one or more folders through Android's picker;
 ComicViewer scans them recursively on launch or return to the library, skips unchanged files, and
 reconciles verified exact copies with earlier imports. The manager shows each folder's location and
-scan status, with actions to rescan, reconnect, or remove a folder. It never requests access to all
+scan status, with actions to rescan or remove a folder. It never requests access to all
 device storage. An existing saved folder is retained automatically when upgrading.
+
+Use **Rescan all folders** to re-import forgotten comics that are still present in the selected
+folders. Existing entries keep their saved state. Forgotten comics are imported afresh: Forget
+permanently removes their progress, bookmarks, favorites, and edits.
 
 Removing a folder stops scanning it and releases its access after the reader has finished using it.
 It never changes source files or erases reading history. If a verified identical copy remains in

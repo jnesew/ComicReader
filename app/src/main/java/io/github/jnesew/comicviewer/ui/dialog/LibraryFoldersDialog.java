@@ -23,7 +23,6 @@ public final class LibraryFoldersDialog {
     public interface Listener {
         void onAdd();
         void onRescan();
-        void onReconnect(LibraryFolder folder);
         void onRemove(LibraryFolder folder);
     }
     private final Context context;
@@ -67,7 +66,10 @@ public final class LibraryFoldersDialog {
         if (!folders.isEmpty()) {
             TextView rescan = Ui.actionButton(context, R.string.library_rescan_all_folders, R.drawable.ic_folder);
             rescan.setOnClickListener(view -> listener.onRescan());
-            rows.addView(rescan);
+            LinearLayout.LayoutParams rescanParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rescanParams.bottomMargin = Ui.dp(context, 12);
+            rows.addView(rescan, rescanParams);
         }
         if (folders.isEmpty()) {
             TextView empty = Ui.text(context, context.getString(R.string.library_no_folders), 15, Ui.TEXT_MUTED);
@@ -93,11 +95,13 @@ public final class LibraryFoldersDialog {
             row.addView(titleRow);
 
             String location = folder.location;
-            if (location.isEmpty()) {
-                try {
-                    Uri uri = Uri.parse(folder.uri);
-                    location = uri.getAuthority() + " · " + DocumentsContract.getTreeDocumentId(uri);
-                } catch (RuntimeException invalid) { location = folder.uri; }
+            try {
+                Uri uri = Uri.parse(folder.uri);
+                String documentId = DocumentsContract.getTreeDocumentId(uri);
+                // Older selections stored a provider label before the opaque directory ID.
+                if (location.isEmpty() || location.endsWith(" · " + documentId)) location = documentId;
+            } catch (RuntimeException invalid) {
+                if (location.isEmpty()) location = folder.uri;
             }
             TextView secondary = Ui.text(context, location, 12, Ui.TEXT_MUTED);
             secondary.setMaxLines(3);
@@ -107,12 +111,6 @@ public final class LibraryFoldersDialog {
                     state.unavailable() ? Ui.ACCENT : Ui.TEXT_MUTED);
             status.setPadding(0, Ui.dp(context, 8), 0, 0);
             row.addView(status);
-            TextView reconnect = Ui.actionButton(context, R.string.library_reconnect_folder, R.drawable.ic_folder);
-            reconnect.setOnClickListener(view -> {
-                dialog.dismiss(); listener.onReconnect(folder);
-            });
-            row.addView(reconnect, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             params.bottomMargin = Ui.dp(context, 12);

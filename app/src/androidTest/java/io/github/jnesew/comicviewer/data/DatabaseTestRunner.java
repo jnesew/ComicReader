@@ -22,7 +22,7 @@ public final class DatabaseTestRunner extends Instrumentation {
     private LibraryDatabase db;
     private int current;
     private int failed;
-    private static final int TOTAL = 28;
+    private static final int TOTAL = 30;
 
     @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
 
@@ -57,6 +57,8 @@ public final class DatabaseTestRunner extends Instrumentation {
         run("removeSourceDuringActiveProviderTraversal", () -> new LibraryFeatureTests(this, db).removeDuringTraversal());
         run("restartDuringScanAndCoalesceRepeatedRequests", () -> new LibraryFeatureTests(this, db).restartDuringTraversal());
         run("seriesSearchAndFilterSurviveRecreation", () -> LibraryNavigationTests.recreation(this, db));
+        run("compactSeriesCoverAlignmentAfterScrolling", () -> LibraryNavigationTests.seriesCoversStayAligned(this, db));
+        run("rescanReaddsForgottenComics", () -> new LibraryFeatureTests(this, db).rescanReaddsForgottenComics());
         Bundle result = new Bundle();
         result.putString("stream", "\n" + (TOTAL - failed) + "/" + TOTAL + " database tests passed\n");
         finish(Activity.RESULT_OK, result);

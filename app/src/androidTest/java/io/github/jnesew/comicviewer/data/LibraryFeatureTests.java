@@ -319,6 +319,32 @@ final class LibraryFeatureTests {
         }
     }
 
+    void rescanReaddsForgottenComics() {
+        try (Scanning flow = new Scanning()) {
+            options("distinct"); flow.add("a"); flow.add("b"); equal(2, all().size());
+            String forgotten = all().stream().filter(item -> item.uri.contains("a-book")).findFirst().orElseThrow().uri;
+            String retained = all().stream().filter(item -> item.uri.contains("b-book")).findFirst().orElseThrow().uri;
+            for (String uri : List.of(forgotten, retained)) {
+                db.toggleFavorite(uri); db.toggleBookmark(uri, 1);
+                db.setComicMetadata(uri, "My edited title", LibraryDatabase.SERIES_MANUAL, "My series", "7");
+                ReadingProgress progress = db.get(uri); progress.page = 1; progress.lastOpened = 123;
+                db.saveReadingProgress(progress); db.setReadStatus(uri, true);
+            }
+            db.forget(forgotten); equal(1, all().size());
+            flow.rescan();
+            equal(2, all().size());
+            ReadingProgress restored = db.get(forgotten);
+            check(restored.available && !restored.favorite && !restored.read);
+            equal(0L, restored.lastOpened); check(!db.isBookmarked(forgotten, 1));
+            check(!restored.titleOverride); equal(LibraryDatabase.SERIES_AUTOMATIC, restored.seriesOverride);
+            ReadingProgress existing = db.get(retained);
+            check(existing.favorite && existing.read && db.isBookmarked(retained, 1));
+            equal("My edited title", existing.title); equal("My series", existing.seriesTitle);
+            equal(1, existing.page); equal(123L, existing.lastOpened);
+            flow.rescan(); equal(2, all().size());
+        }
+    }
+
     private void awaitProviderListing() {
         long end = System.currentTimeMillis() + 5_000;
         while (fixture("stats", null).getInt("aListings") == 0) {

@@ -271,13 +271,12 @@
     <string name="library_rescan_all_folders">Skannaa kaikki kansiot</string>
     <string name="library_no_folders">Valitse kansiot, joista etsitään sarjakuvia. Vain valitsemiisi kansioihin päästään.</string>
     <string name="library_unnamed_folder">Valittu kansio</string>
-    <string name="library_reconnect_folder">Yhdistä kansio uudelleen</string>
     <string name="library_remove_folder">Poista kansiovalinta</string>
     <string name="library_remove_folder_named">Poista kansiovalinta ”%1$s”</string>
     <string name="library_remove_folder_message">Lopetetaanko tämän kansion skannaus? Sarjakuvatiedostoja ei poisteta. Lukuhistoria, kirjanmerkit, suosikit ja muokkaukset säilyvät kirjastossa. Sarjakuvia voi yhä lukea muiden toimivien lähteiden kautta. Muuten ne säilyvät ei-saatavilla-tilassa. Kansion käyttöoikeus vapautetaan, kun lukija ei enää tarvitse sitä.</string>
     <string name="library_folder_waiting">Odottaa skannausta…</string>
     <string name="library_folder_ready">Valmis skannattavaksi</string>
-    <string name="library_folder_access_unavailable">Kansioon ei päästä. Yritä yhdistää se uudelleen.</string>
+    <string name="library_folder_access_unavailable">Kansioon ei päästä. Tarkista, että tallennustila on käytettävissä.</string>
     <string name="library_folder_add_failed">Kansion tallentaminen epäonnistui. Valitse se uudelleen järjestelmän kansiovalitsimella.</string>
     <string name="series_add_favorite">Lisää sarja suosikkeihin</string>
     <string name="series_remove_favorite">Poista sarja suosikeista</string>

@@ -271,13 +271,12 @@
     <string name="library_rescan_all_folders">Rescan all folders</string>
     <string name="library_no_folders">Choose folders to scan for comics. Only the folders you select are accessed.</string>
     <string name="library_unnamed_folder">Selected folder</string>
-    <string name="library_reconnect_folder">Reconnect folder</string>
     <string name="library_remove_folder">Remove folder</string>
     <string name="library_remove_folder_named">Remove folder “%1$s”</string>
     <string name="library_remove_folder_message">Stop scanning this folder? Comic files are never deleted. Reading history, bookmarks, favorites, and edits stay in the library. Comics remain readable through other usable sources; otherwise they are kept as unavailable. Folder access is released when the reader no longer needs it.</string>
     <string name="library_folder_waiting">Waiting to scan…</string>
     <string name="library_folder_ready">Ready to scan</string>
-    <string name="library_folder_access_unavailable">Folder access unavailable. Reconnect to try again.</string>
+    <string name="library_folder_access_unavailable">Folder unavailable. Check that its storage is available.</string>
     <string name="library_folder_add_failed">Could not save this folder. Choose it again using the system folder picker.</string>
     <string name="series_add_favorite">Add series to favorites</string>
     <string name="series_remove_favorite">Remove series from favorites</string>

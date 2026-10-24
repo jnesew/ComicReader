@@ -75,14 +75,12 @@ public final class MainActivity extends Activity implements
     private boolean destroyed;
     private Object platformBackCallback;
     private LibraryFoldersDialog foldersDialog;
-    private String reconnectingFolderUri = "";
     private boolean reopenFoldersAfterPicker;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         if (state != null) {
-            reconnectingFolderUri = state.getString("reconnecting_folder", "");
             reopenFoldersAfterPicker = state.getBoolean("reopen_folders", false);
         }
         configureEdgeToEdge();
@@ -171,12 +169,10 @@ public final class MainActivity extends Activity implements
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_LIBRARY_FOLDER) {
-            String previous = reconnectingFolderUri;
-            reconnectingFolderUri = "";
             if (resultCode == RESULT_OK && data != null && data.getData() != null) {
                 Uri selected = data.getData();
                 persistReadAccess(selected, data.getFlags());
-                try { scans.selectFolder(selected, previous); }
+                try { scans.selectFolder(selected); }
                 catch (RuntimeException invalid) {
                     showError(getString(R.string.library_folders), getString(R.string.library_folder_add_failed));
                 }
@@ -392,7 +388,7 @@ public final class MainActivity extends Activity implements
 
     @Override public void onFoldersRequested() { showLibraryFolders(); }
 
-    @Override public void onAddFolderRequested() { chooseLibraryFolder(""); }
+    @Override public void onAddFolderRequested() { chooseLibraryFolder(); }
 
     @Override
     public void onLibraryMenuRequested(View anchor) {
@@ -515,15 +511,12 @@ public final class MainActivity extends Activity implements
         scans.maybeScanLibraryFolder(false);
     }
 
-    private void chooseLibraryFolder(String previousUri) {
-        reconnectingFolderUri = previousUri;
+    private void chooseLibraryFolder() {
         reopenFoldersAfterPicker = true;
         Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
         picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
                 Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION |
                 Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
-        if (!previousUri.isEmpty()) picker.putExtra(
-                android.provider.DocumentsContract.EXTRA_INITIAL_URI, Uri.parse(previousUri));
         startActivityForResult(picker, REQUEST_LIBRARY_FOLDER);
     }
 
@@ -556,9 +549,8 @@ public final class MainActivity extends Activity implements
             return;
         }
         foldersDialog = new LibraryFoldersDialog(this, new LibraryFoldersDialog.Listener() {
-            @Override public void onAdd() { chooseLibraryFolder(""); }
+            @Override public void onAdd() { chooseLibraryFolder(); }
             @Override public void onRescan() { scans.maybeScanLibraryFolder(true); }
-            @Override public void onReconnect(LibraryFolder folder) { chooseLibraryFolder(folder.uri); }
             @Override public void onRemove(LibraryFolder folder) { confirmRemoveLibraryFolder(folder); }
         });
         foldersDialog.show(preferences.libraryFolders(), scans::folderState);
@@ -566,7 +558,6 @@ public final class MainActivity extends Activity implements
 
     @Override protected void onSaveInstanceState(Bundle state) {
         if (home != null) home.saveState(state);
-        state.putString("reconnecting_folder", reconnectingFolderUri);
         state.putBoolean("reopen_folders", reopenFoldersAfterPicker);
         super.onSaveInstanceState(state);
     }
