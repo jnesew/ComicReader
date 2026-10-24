@@ -17,6 +17,8 @@ Run `./build-release.sh` from a clean commit. It runs tests and release lint, th
 an unsigned optimized Gradle APK with signing explicitly disabled. The result is
 `dist/ComicViewer-Android-v<versionName>-unsigned.apk`, using the version in `gradle.properties`.
 See [Signing and release verification](#signing-and-release-verification) below.
+Use `./build-release.sh --output <path>` to select a new output file in an existing
+directory without overwriting a previously saved candidate.
 
 ## Gradle build
 
@@ -87,8 +89,9 @@ SHA-256 against an actual installed or published APK; a reported fingerprint alo
 Confirm that the version code exceeds every previously distributed APK and that the release tag
 matches `v<versionName>` from `gradle.properties`.
 
-Set the following path and credential variables locally. Provide passwords through environment
-references or the signer's interactive prompts, never literal command arguments or tracked files:
+For manual SDK signing, set the following path and credential variables locally.
+Provide passwords through environment references or the signer's interactive
+prompts, never literal command arguments or tracked files:
 
 ```bash
 "$ANDROID_HOME/build-tools/35.0.1/apksigner" sign \
@@ -111,6 +114,21 @@ Neither unsigned reproducibility nor CI alone establishes a matching signed rele
 Test upgrading the previous release with the same certificate, retaining library data,
 document grants, reading state, bookmarks, metadata edits, favorites, and settings.
 Signing keys remain local and are not shared with distributors.
+
+### Obtainium release preparation
+
+The tracked `scripts/prepare-obtainium-release.sh` orchestrates version checks,
+reviewed notes, the canonical unsigned build, independent reproducibility, local
+signing, APK verification, and safe output staging. Start with
+[RELEASING.md](RELEASING.md) for version bumping, preflight, public preparation,
+and unsigned development verification. It never pushes or publishes automatically.
+Public preparation uses hidden terminal password prompts by default. Its
+`--non-interactive` mode explicitly opts into environment-supplied passwords;
+password fields in properties files are not used by the preparation script.
+
+`scripts/verify-reproducible-build.sh --output <path>` can retain its independently
+verified unsigned APK for signature-aware comparison. The destination must not
+already exist and its parent directory must exist.
 
 ### Distribution metadata
 

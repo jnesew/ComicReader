@@ -3,14 +3,24 @@ set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 builder="gradle"
-if [[ "${1:-}" == "--local-builder" ]]; then
-    builder="local"
-elif [[ -n "${1:-}" ]]; then
-    echo "Usage: $0 [--local-builder]" >&2
-    exit 2
-fi
+output_path=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --local-builder) builder="local"; shift ;;
+        --output)
+            [[ $# -ge 2 && -n "$2" ]] || { echo '--output requires a path.' >&2; exit 2; }
+            output_path="$2"
+            shift 2
+            ;;
+        *) echo "Usage: $0 [--local-builder] [--output VERIFIED_UNSIGNED_APK]" >&2; exit 2 ;;
+    esac
+done
 
 cd "$project_dir"
+if [[ -n "$output_path" && -e "$output_path" ]]; then
+    echo 'Refusing to overwrite the reproducibility output.' >&2
+    exit 1
+fi
 if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
     echo "Commit or remove source-tree changes before reproducibility verification." >&2
     exit 1
@@ -73,3 +83,7 @@ if [[ "$first_sha" != "$second_sha" ]] || ! cmp -s "$work_dir/one.apk" "$work_di
 fi
 
 echo "Reproducible unsigned build: $first_sha"
+if [[ -n "$output_path" ]]; then
+    # Use noclobber so a competing writer cannot replace an existing result.
+    (set -o noclobber; cat "$work_dir/one.apk" > "$output_path")
+fi

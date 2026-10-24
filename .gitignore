@@ -42,4 +42,6 @@ out/
 keystore.properties
 secrets.properties
 signing/
-scripts/prepare-obtainium-release.sh
+
+# Python release-tool caches
+__pycache__/
