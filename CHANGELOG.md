@@ -15,7 +15,10 @@ All notable public changes to ComicViewer for Android are recorded here.
 - Added a tracked local release preparation script with explicit version bumps,
   published APK version checks, reproducible builds, and verified release bundles.
 - Release preparation prompts for signing passwords with hidden terminal input by
-  default; unattended operation requires explicit environment-based configuration.
+  default, reuses the store password when possible, and validates the private key
+  before building. Unattended operation requires explicit environment-based configuration.
+- Added one-time signing setup and a tracked public certificate pin, removing
+  repeated keystore selection and manual certificate configuration.
 - Documented release preparation and versioning rules for release staging branches.
 
 ## 1.3.0 - 2026-10-24
