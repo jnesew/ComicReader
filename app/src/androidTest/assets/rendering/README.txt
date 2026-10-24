@@ -1,3 +1,3 @@
-Synthetic test pages generated for ComicViewer with Pillow. White field, red left edge, blue right edge, green bottom eighth. No external artwork. Dimensions: PNG 400x4000, JPEG 1200x2400, WebP 800x5000, BMP 600x1800, GIF 8192x4096 (full-decoder fallback/memory boundary).
+Synthetic test pages generated for ComicViewer with Pillow. White field (GIF: RGB 60,60,60), red left edge, blue right edge, green bottom eighth. No external artwork. Dimensions: PNG 400x4000, JPEG 1200x2400, WebP 800x5000, BMP 600x1800, GIF 8192x4096 (full-decoder fallback/memory boundary).
 limit.png: synthetic indexed PNG, 1024x262144 = 268435456 pixels (256 Mi pixels); generated row by row with Python struct/zlib, same edge pattern. The BMP is gzip-compressed as page.bmp.bin to keep source fixtures small.
 oversized.png: synthetic black 1-bit PNG, 16385x16385, just above the image-area limit; generated row by row with struct/zlib for rejection-before-allocation tests.

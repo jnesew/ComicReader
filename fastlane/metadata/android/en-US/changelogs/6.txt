@@ -1,1 +1,1 @@
-TODO: Describe the changes for users.
+GIF comic cover thumbnails now appear correctly, and GIF comics import successfully into the library. The Actual size zoom option now displays 100% correctly.

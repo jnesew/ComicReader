@@ -162,7 +162,7 @@
     <string name="reader_choose_layout">Valitse lukutila</string>
     <string name="reader_fit_width">Sovita leveyteen</string>
     <string name="reader_fit_page">Sovita sivu</string>
-    <string name="reader_actual_size">Todellinen koko (100%%)</string>
+    <string name="reader_actual_size" formatted="false">Todellinen koko (100%)</string>
     <string name="reader_zoom_in">Lähennä</string>
     <string name="reader_zoom_out">Loitonna</string>
     <string name="reader_width_percent">%1$d %% leveydestä</string>

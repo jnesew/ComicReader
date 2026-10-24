@@ -4,7 +4,19 @@ All notable public changes to ComicViewer for Android are recorded here.
 
 ## 1.4.0 - 2026-10-25
 
-- TODO: Summarize changes.
+### Fixes
+
+- Fixed missing GIF cover thumbnails and failed GIF comic imports. Covers retain
+  their existing crop policy with bounded decoding for formats without region support.
+- Fixed the doubled percent sign in the English and Finnish Actual size zoom option.
+
+### Development
+
+- Added a tracked local release preparation script with explicit version bumps,
+  published APK version checks, reproducible builds, and verified release bundles.
+- Release preparation prompts for signing passwords with hidden terminal input by
+  default; unattended operation requires explicit environment-based configuration.
+- Documented release preparation and versioning rules for release staging branches.
 
 ## 1.3.0 - 2026-10-24
 

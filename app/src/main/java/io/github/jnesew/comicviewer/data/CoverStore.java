@@ -15,7 +15,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 
-/** Creates bounded private cover thumbnails without decoding an entire long-strip page. */
+/** Creates bounded private cover thumbnails, using region decoding where available. */
 public final class CoverStore {
     private static final int MAX_WIDTH = 720;
     private static final int MAX_HEIGHT = 1080;
@@ -44,15 +44,26 @@ public final class CoverStore {
                 decoded = archive.renderCover(MAX_WIDTH, MAX_HEIGHT);
             } else {
                 archive.extractCover(source);
-                regionDecoder = BitmapRegionDecoder.newInstance(source.getAbsolutePath(), false);
-                int width = regionDecoder.getWidth();
-                int height = regionDecoder.getHeight();
+                BitmapFactory.Options bounds = new BitmapFactory.Options();
+                bounds.inJustDecodeBounds = true;
+                BitmapFactory.decodeFile(source.getAbsolutePath(), bounds);
+                int width = bounds.outWidth;
+                int height = bounds.outHeight;
                 InputLimits.validateImageDimensions(width, height);
                 Rect region = coverRegion(width, height);
                 BitmapFactory.Options options = new BitmapFactory.Options();
                 options.inSampleSize = sampleFor(region.width(), region.height());
                 options.inPreferredConfig = Bitmap.Config.RGB_565;
-                decoded = regionDecoder.decodeRegion(region, options);
+                try {
+                    regionDecoder = BitmapRegionDecoder.newInstance(source.getAbsolutePath(), false);
+                } catch (IOException | RuntimeException ignored) {
+                    // GIF and some other supported encodings only have a full-image decoder.
+                }
+                if (regionDecoder != null) {
+                    decoded = regionDecoder.decodeRegion(region, options);
+                } else {
+                    decoded = decodeFallback(source, width, height, region, options);
+                }
             }
             if (decoded == null) throw new IOException("Android could not decode the cover page.");
 
@@ -112,6 +123,24 @@ public final class CoverStore {
             return new Rect(0, 0, width, Math.min(height, Math.round(width * 1.5f)));
         }
         return new Rect(0, 0, width, height);
+    }
+
+    private static Bitmap decodeFallback(File source, int width, int height,
+            Rect region, BitmapFactory.Options options) throws IOException {
+        // Bound the whole backing image, including pixels below the top-cover crop.
+        options.inSampleSize = InputLimits.boundedBitmapSample(width, height,
+                options.inSampleSize, (long) MAX_WIDTH * MAX_HEIGHT);
+        Bitmap full = BitmapFactory.decodeFile(source.getAbsolutePath(), options);
+        if (full == null) return null;
+        try {
+            int cropHeight = Math.max(1, Math.min(full.getHeight(),
+                    (int) ((region.height() * (long) full.getHeight() + height - 1L) / height)));
+            Bitmap cover = Bitmap.createBitmap(full, 0, 0, full.getWidth(), cropHeight);
+            if (cover == full) full = null; // Transfer ownership to ensureCover.
+            return cover;
+        } finally {
+            if (full != null && !full.isRecycled()) full.recycle();
+        }
     }
 
     private static int sampleFor(int width, int height) {
