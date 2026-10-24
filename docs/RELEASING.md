@@ -20,19 +20,46 @@ consumes the normal signed APK attached to a matching GitHub release.
 - Keep a populated Gradle cache: the two independent reproducibility builds run
   with strict offline dependency verification.
 
-Signing uses the existing ignored `signing/keystore.properties`, an alternative
-file selected by `COMICVIEWER_SIGNING_PROPERTIES`, or these environment variables
-(which take precedence over the properties file):
+Configure the keystore path and alias in the existing ignored
+`signing/keystore.properties`, an alternative file selected by
+`COMICVIEWER_SIGNING_PROPERTIES`, or these environment variables (which take
+precedence over the properties file):
 
 - `COMICVIEWER_KEYSTORE_PATH`
 - `COMICVIEWER_KEY_ALIAS`
-- `COMICVIEWER_STORE_PASSWORD`
-- `COMICVIEWER_KEY_PASSWORD`
 
-Relative keystore paths resolve from the repository root. Signing passwords are
-passed to SDK tools through environment references, never literal command-line
-arguments. They are not written to the bundle or manifest. Properties files use
+Relative keystore paths resolve from the repository root. Properties files use
 Java `.properties` syntax, including escapes and continuations.
+
+Public preparation and public `--check` prompt for the keystore password with
+terminal echo disabled. The second prompt accepts a separate key password; press
+Enter to reuse the keystore password. Passwords are held for the current run and
+sent to SDK tools through standard input. They are not placed in child-process
+environments, command-line arguments, release files, or the manifest. Each
+invocation prompts again; neither prompt saves a password. An empty keystore
+password, EOF, Ctrl+C, or inability to disable echo stops preparation.
+
+Without a terminal, public preparation fails with an explanation. The default mode
+ignores passwords supplied in either the environment or the properties file. This
+script no longer reads password fields from properties for signing; remove any
+old password entries from your local properties file if you no longer need them.
+It does not edit that local file automatically. Version bumping and unsigned
+development verification do not prompt for passwords.
+
+For explicit unattended operation, add `--non-interactive` and supply
+`COMICVIEWER_STORE_PASSWORD` through the environment. Optionally supply
+`COMICVIEWER_KEY_PASSWORD`; if absent or empty, the keystore password is reused.
+For example, when a trusted local secret provider supplies these variables:
+
+```bash
+scripts/prepare-obtainium-release.sh --check --non-interactive
+scripts/prepare-obtainium-release.sh --non-interactive
+```
+
+This mode never falls back to prompting or passwords in a properties file.
+Environment passwords must be single-line values. They are passed to the signer
+through standard input and excluded from the environments of build/GitHub/SDK
+subprocesses.
 
 Set `COMICVIEWER_EXPECTED_CERT_SHA256` to the previously verified release
 certificate fingerprint. Upper/lowercase and colon-separated fingerprints are
@@ -94,7 +121,7 @@ moves a tag or pushes anything on your behalf.
 
 ## Preflight, build, and review
 
-After configuring signing and the expected certificate:
+After configuring the keystore path, alias, and expected certificate, run from a terminal:
 
 ```bash
 # Validate source, versions, toolchain, notes, signing configuration, and existing output.
@@ -103,6 +130,10 @@ scripts/prepare-obtainium-release.sh --check
 # Run the full local verification, sign, and stage the completed bundle.
 scripts/prepare-obtainium-release.sh
 ```
+
+Both commands request passwords independently. Certificate verification occurs
+before the lengthy build; the same in-memory credentials are reused for signing
+later in that invocation.
 
 The full run calls the existing source-security and database-roundtrip checks,
 `build-release.sh` (unit tests, release lint, optimized unsigned Gradle build), and
@@ -174,7 +205,8 @@ python3 -m unittest discover -s scripts/tests -v
 ```
 
 These tests use temporary Git repositories/remotes and fake SDK, Gradle, signing,
-and GitHub commands. They exercise release-policy failures, staging, and reruns
+and GitHub commands. Pseudo-terminal tests check hidden password entry, reuse,
+and cancellation. They also exercise release-policy failures, staging, and reruns
 without real credentials or publication. They do not establish that real signing,
 Android builds, or device upgrades pass; test the local workflow with the actual
 toolchain as well.

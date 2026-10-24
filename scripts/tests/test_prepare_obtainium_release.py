@@ -2,11 +2,15 @@
 import hashlib
 import json
 import os
+import pty
+import select
+import signal
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -30,6 +34,8 @@ if os.environ.get('FAKE_INTERRUPT_GATE')==name:sys.exit(130)
 if name=='java':print('openjdk version "17.0.16"');sys.exit(0)
 if name=='javac':print('javac 17.0.16');sys.exit(0)
 if name=='keytool':
+ assert args[args.index('-storepass:file')+1]=='/dev/stdin'
+ lines=sys.stdin.read().splitlines();assert len(lines)==1 and lines[0]=='fixture store pass'
  sys.stdout.buffer.write(b'wrong alias' if os.environ.get('FAKE_WRONG_ALIAS') else b'fixture certificate');sys.exit(0)
 if name=='gh':
  if os.environ.get('FAKE_NETWORK_FAILURE'):sys.exit(1)
@@ -68,6 +74,11 @@ if name=='aapt2':
 if name=='apksigner':
  if args[0]=='sign':
   assert 'pass:' not in ' '.join(args)
+  assert args[args.index('--ks-pass')+1]=='stdin' and args[args.index('--key-pass')+1]=='stdin'
+  lines=sys.stdin.read().splitlines();assert len(lines)==2 and lines[0]=='fixture store pass'
+  assert lines[1] in ['fixture key pass','fixture store pass']
+  with (fixture/'events.jsonl').open('a') as f:
+   f.write(json.dumps({'tool':'password-input','reused':lines[0]==lines[1]})+'\n')
   data=json.loads(Path(args[-1]).read_text());data['certificate']='b'*64 if os.environ.get('FAKE_BAD_CERT') else hashlib.sha256(b'fixture certificate').hexdigest()
   Path(args[args.index('--out')+1]).write_text(json.dumps(data,sort_keys=True)+'\n')
   sys.exit(0)
@@ -176,12 +187,43 @@ class WorkflowTests(unittest.TestCase):
                                    'digest':'sha256:'+hashlib.sha256(data).hexdigest()}]})
         path.write_text(json.dumps(items))
 
-    def invoke(self,*args,ok=True):
+    def invoke(self,*args,ok=True,non_interactive=True):
+        if non_interactive:args=(*args,'--non-interactive')
         result=subprocess.run([str(self.root/'scripts/prepare-obtainium-release.sh'),*args],
                               cwd=self.fixture,env=self.env,capture_output=True,text=True,timeout=40)
         self.assertEqual(result.returncode==0,ok,result.stdout+'\n'+result.stderr)
         self.assertNotIn(self.env.get('COMICVIEWER_STORE_PASSWORD','unprinted secret'),result.stdout+result.stderr)
         return result
+
+    def interactive(self,answers,ok=True):
+        master,slave=pty.openpty()
+        process=subprocess.Popen([str(self.root/'scripts/prepare-obtainium-release.sh')],
+                                 cwd=self.fixture,env=self.env,stdin=slave,stdout=slave,stderr=slave,
+                                 start_new_session=True)
+        os.close(slave)
+        output=bytearray();deadline=time.monotonic()+40;sent=0
+        prompts=[b'Keystore password: ',b'Key password (Enter to reuse keystore password): ']
+        try:
+            while time.monotonic()<deadline:
+                if select.select([master],[],[],0.1)[0]:
+                    try:chunk=os.read(master,65536)
+                    except OSError:break  # Linux PTYs report EIO when their child exits.
+                    if not chunk:break
+                    output.extend(chunk)
+                    if sent<len(answers) and prompts[sent] in output:
+                        if answers[sent]==b'\x03':os.killpg(process.pid,signal.SIGINT)
+                        else:os.write(master,answers[sent])
+                        sent+=1
+                elif process.poll() is not None:break
+            process.wait(timeout=5)
+        finally:
+            if process.poll() is None:process.kill();process.wait()
+            os.close(master)
+        text=output.decode('utf-8',errors='replace')
+        self.assertEqual(process.returncode==0,ok,text)
+        self.assertNotIn('fixture store pass',text)
+        self.assertNotIn('fixture key pass',text)
+        return text
 
     def bundle(self,development=False):
         return self.root/'dist'/('development-v1.3.1-'+self.current[:12] if development else 'obtainium-v1.3.1')
@@ -360,7 +402,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_bump_patch_creates_notes_and_localized_placeholders(self):
         self.git('checkout','--detach',self.previous)
-        self.invoke('--bump','patch')
+        self.invoke('--bump','patch',non_interactive=False)
         self.assertEqual(release.read_version(self.root),('1.3.1',6))
         self.assertIn('TODO',(self.root/'fastlane/metadata/android/fi-FI/changelogs/6.txt').read_text())
         with self.assertRaisesRegex(release.ReleaseError,'TODO'):release.validate_notes(self.root,'1.3.1',6)
@@ -378,11 +420,62 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(release.read_version(self.root),('1.3.0',5));self.assertEqual(path.read_text(),'Human notes')
         self.assertFalse((self.root/'fastlane/metadata/android/en-US/changelogs/6.txt').exists())
 
-    def test_signing_properties_supported_without_exposing_values(self):
-        for key in release.SIGNING_ENV:self.env.pop(key,None)
-        config={'storeFile':'signing/test.jks','keyAlias':'fixture','storePassword':'fixture store pass','keyPassword':'fixture key pass'}
+    def test_nonsecret_signing_properties_supported(self):
+        for key in release.SIGNING_ENV-release.PASSWORD_ENV:self.env.pop(key,None)
+        config={'storeFile':'signing/test.jks','keyAlias':'fixture'}
         (self.root/'signing/keystore.properties').write_text('\n'.join(k+'='+v for k,v in config.items()))
         self.invoke()
+
+    def test_default_requires_terminal_even_with_environment_passwords(self):
+        result=self.invoke('--check',ok=False,non_interactive=False)
+        self.assertIn('requires a terminal',result.stderr)
+        self.assertFalse(any(e['tool']=='gradlew' for e in self.events()))
+
+    def test_stored_passwords_are_not_accepted_in_automation(self):
+        for key in release.PASSWORD_ENV:self.env.pop(key,None)
+        config={'storeFile':'signing/test.jks','keyAlias':'fixture','storePassword':'stored pass','keyPassword':'stored key'}
+        (self.root/'signing/keystore.properties').write_text('\n'.join(k+'='+v for k,v in config.items()))
+        self.assertIn('requires COMICVIEWER_STORE_PASSWORD',self.invoke('--check',ok=False).stderr)
+
+    def test_interactive_passwords_hidden_and_reused(self):
+        for key in release.PASSWORD_ENV:self.env[key]='ignored environment password'
+        self.interactive([b'fixture store pass\n',b'\n'])
+        self.assertTrue(self.bundle().is_dir())
+        events=self.events()
+        self.assertTrue(any(e['tool']=='password-input' and e['reused'] for e in events))
+        self.assertTrue(all(not e.get('signing_env',False) for e in events))
+        for path in self.bundle().iterdir():
+            self.assertNotIn(b'fixture store pass',path.read_bytes())
+
+    def test_interactive_separate_key_password(self):
+        self.interactive([b'fixture store pass\n',b'fixture key pass\n'])
+        self.assertTrue(any(e['tool']=='password-input' and not e['reused'] for e in self.events()))
+
+    def test_interactive_empty_password_cancels_without_building(self):
+        self.interactive([b'\n'],ok=False)
+        self.assertFalse(self.bundle().exists())
+        self.assertFalse(any(e['tool']=='gradlew' for e in self.events()))
+
+    def test_interactive_eof_does_not_fall_back_to_echoed_input(self):
+        self.interactive([b'\x04'],ok=False)
+        self.assertFalse(self.bundle().exists())
+
+    def test_interactive_interrupt_does_not_build(self):
+        self.interactive([b'\x03'],ok=False)
+        self.assertFalse(self.bundle().exists())
+        self.assertFalse(any(e['tool']=='gradlew' for e in self.events()))
+
+    def test_development_preflight_needs_no_terminal_or_password(self):
+        for key in release.PASSWORD_ENV:self.env.pop(key,None)
+        self.invoke('--check','--development',non_interactive=False)
+
+    def test_automation_key_password_can_reuse_store_password(self):
+        self.env.pop('COMICVIEWER_KEY_PASSWORD');self.invoke()
+        self.assertTrue(any(e['tool']=='password-input' and e['reused'] for e in self.events()))
+
+    def test_multiline_environment_password_rejected(self):
+        self.env['COMICVIEWER_STORE_PASSWORD']='fixture store pass\nsecond line'
+        self.assertIn('single-line',self.invoke('--check',ok=False).stderr)
 
     def test_wrong_jdk_fails_preflight(self):
         self.executable(self.bin/'java','#!/bin/sh\necho \'openjdk version "27"\'\n')

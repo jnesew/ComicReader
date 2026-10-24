@@ -3,6 +3,7 @@
 
 import argparse
 import datetime
+import getpass
 import hashlib
 import json
 import os
@@ -13,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import warnings
 
 
 PACKAGE = "io.github.jnesew.comicviewer"
@@ -23,6 +25,7 @@ SIGNING_ENV = {
     "COMICVIEWER_SIGNING_PROPERTIES", "COMICVIEWER_KEYSTORE_PATH",
     "COMICVIEWER_STORE_PASSWORD", "COMICVIEWER_KEY_ALIAS", "COMICVIEWER_KEY_PASSWORD",
 }
+PASSWORD_ENV = {"COMICVIEWER_STORE_PASSWORD", "COMICVIEWER_KEY_PASSWORD"}
 STABLE = r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
 
 
@@ -101,9 +104,12 @@ def normalize_certificate(value):
     return value
 
 
-def run(root, args, env=None, capture=True, check=True):
+def run(root, args, env=None, capture=True, check=True, input_text=None):
     # No shell and no credential values in arguments or printed command lines.
-    result = subprocess.run(list(map(str, args)), cwd=root, env=env, text=True,
+    child_env = {key: value for key, value in (os.environ if env is None else env).items()
+                 if key not in PASSWORD_ENV}
+    result = subprocess.run(list(map(str, args)), cwd=root, env=child_env,
+                            text=True, encoding="utf-8", input=input_text,
                             stdout=subprocess.PIPE if capture else None,
                             stderr=subprocess.PIPE if capture else None)
     if check and result.returncode:
@@ -352,15 +358,14 @@ def bump(root, name, code, history, kind):
     print(f"Prepared v{new_name}, version code {new_code}. Edit the TODO notes, then commit the changes.")
 
 
-def signing(root, env):
+def signing(root, env, non_interactive=False, password_env=None):
     path = Path(env.get("COMICVIEWER_SIGNING_PROPERTIES", "signing/keystore.properties"))
     if not path.is_absolute():
         path = root / path
     require(not env.get("COMICVIEWER_SIGNING_PROPERTIES") or path.is_file(), "Signing properties file is missing.")
     config = properties(path.read_text(encoding="iso-8859-1")) if path.is_file() else {}
     values = {}
-    for key, prop in (("COMICVIEWER_KEYSTORE_PATH", "storeFile"), ("COMICVIEWER_KEY_ALIAS", "keyAlias"),
-                      ("COMICVIEWER_STORE_PASSWORD", "storePassword"), ("COMICVIEWER_KEY_PASSWORD", "keyPassword")):
+    for key, prop in (("COMICVIEWER_KEYSTORE_PATH", "storeFile"), ("COMICVIEWER_KEY_ALIAS", "keyAlias")):
         value = env.get(key, config.get(prop, ""))
         require(value, f"Configure {key} or {prop} in the ignored signing properties file.")
         values[key] = value
@@ -369,16 +374,38 @@ def signing(root, env):
         keystore = root / keystore
     require(keystore.is_file(), "Configured signing keystore does not exist.")
     values["COMICVIEWER_KEYSTORE_PATH"] = str(keystore)
+    if non_interactive:
+        supplied = password_env or {}
+        store_password = supplied.get("COMICVIEWER_STORE_PASSWORD", "")
+        require(store_password, "--non-interactive requires COMICVIEWER_STORE_PASSWORD in the environment.")
+        key_password = supplied.get("COMICVIEWER_KEY_PASSWORD") or store_password
+    else:
+        require(sys.stdin.isatty(), "Password entry requires a terminal; for automation use --non-interactive with environment passwords.")
+        try:
+            # Refuse getpass's plain-input fallback when echo cannot be disabled.
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", getpass.GetPassWarning)
+                store_password = getpass.getpass("Keystore password: ")
+                require(store_password, "Keystore password cannot be empty.")
+                key_password = getpass.getpass("Key password (Enter to reuse keystore password): ") or store_password
+        except (EOFError, getpass.GetPassWarning) as error:
+            raise ReleaseError("Could not read a hidden password from the terminal; no password was saved.") from error
+    require(not any("\n" in value or "\r" in value for value in (store_password, key_password)),
+            "Signing passwords must be single-line values.")
+    values["COMICVIEWER_STORE_PASSWORD"] = store_password
+    values["COMICVIEWER_KEY_PASSWORD"] = key_password
     return values
 
 
 def signing_certificate(root, env, values, expected):
     keytool = Path(env["JAVA_HOME"]) / "bin/keytool"
     require(os.access(keytool, os.X_OK), "JDK 17 keytool is required to verify the configured alias.")
+    # The file reader decodes UTF-8; keytool's raw stdin prompt reads bytes as characters.
     result = subprocess.run(
-        [str(keytool), "-exportcert", "-keystore", values["COMICVIEWER_KEYSTORE_PATH"],
-         "-alias", values["COMICVIEWER_KEY_ALIAS"], "-storepass:env", "COMICVIEWER_STORE_PASSWORD"],
-        cwd=root, env=dict(env, **values), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        [str(keytool), "-J-Dfile.encoding=UTF-8", "-exportcert", "-keystore", values["COMICVIEWER_KEYSTORE_PATH"],
+         "-alias", values["COMICVIEWER_KEY_ALIAS"], "-storepass:file", "/dev/stdin"],
+        cwd=root, env=env, input=(values["COMICVIEWER_STORE_PASSWORD"] + "\n").encode("utf-8"),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     require(result.returncode == 0, "Cannot read the configured signing certificate; check the keystore, alias, and store password.")
     require(hashlib.sha256(result.stdout).hexdigest() == expected,
             "Configured keystore alias has the wrong signing certificate.")
@@ -437,6 +464,7 @@ def check_existing_bundle(destination, commit, name, code, expected):
 
 def prepare(root, args):
     env = os.environ.copy()
+    password_env = {key: env.pop(key) for key in PASSWORD_ENV if key in env}
     name, code = read_version(root)
     commit = clean_commit(root)
     tools, tool_info = toolchain(root, env)
@@ -455,8 +483,6 @@ def prepare(root, args):
         require(latest["certificate_sha256"] == expected,
                 "Expected certificate differs from the latest published APK; verify the fingerprint.")
         require(shutil.which("apksigcopier", path=env.get("PATH")), "Install apksigcopier for signature-aware rebuild verification.")
-        signing_values = signing(root, env)
-        signing_certificate(root, env, signing_values, expected)
         remote_source(root, f"v{name}", commit)
     notes = validate_notes(root, name, code)
     clean_commit(root, commit)
@@ -464,6 +490,9 @@ def prepare(root, args):
     basename = f"ComicViewer-Android-v{name}"
     destination = dist / (f"development-v{name}-{commit[:12]}" if args.development else f"obtainium-v{name}")
     check_existing_bundle(destination, commit, name, code, expected)
+    if not args.development:
+        signing_values = signing(root, env, non_interactive=args.non_interactive, password_env=password_env)
+        signing_certificate(root, env, signing_values, expected)
     if args.check:
         print(f"Preflight passed: v{name}, code {code}, commit {commit}, "
               + ("unsigned development verification" if args.development else "public release"))
@@ -509,13 +538,15 @@ def prepare(root, args):
             if args.development:
                 shutil.copyfile(candidate, apk)
             else:
-                sign_env = dict(env, **signing_values)
                 run(root, [tools / "apksigner", "sign", "--alignment-preserved", "true",
                            "--v4-signing-enabled", "false", "--debuggable-apk-permitted", "false",
                            "--ks", signing_values["COMICVIEWER_KEYSTORE_PATH"],
                            "--ks-key-alias", signing_values["COMICVIEWER_KEY_ALIAS"],
-                           "--ks-pass", "env:COMICVIEWER_STORE_PASSWORD", "--key-pass", "env:COMICVIEWER_KEY_PASSWORD",
-                           "--out", apk, candidate], sign_env, capture=False)
+                           "--ks-pass", "stdin", "--key-pass", "stdin", "--pass-encoding", "utf-8",
+                           "--out", apk, candidate], env, capture=False,
+                    input_text=signing_values["COMICVIEWER_STORE_PASSWORD"] + "\n"
+                    + signing_values["COMICVIEWER_KEY_PASSWORD"] + "\n")
+                signing_values.clear()
                 run(root, [root / "scripts/verify-release-apk.sh", apk, unsigned, expected], env, capture=False)
                 if rebuilding:
                     prior = [r for r in history.records if r["version_name"] == name]
@@ -569,6 +600,7 @@ def main(argv=None, root=None):
     action.add_argument("--check", action="store_true", help="Run preflight only; do not build, sign, or stage.")
     action.add_argument("--bump", choices=("patch", "minor", "major"), help="Explicitly update the version and create TODO release notes.")
     parser.add_argument("--development", action="store_true", help="Verify locally into a separate unsigned, non-publishable bundle; no GitHub access.")
+    parser.add_argument("--non-interactive", action="store_true", help="Read signing passwords from environment variables instead of hidden terminal prompts.")
     args = parser.parse_args(argv)
     if args.bump and args.development:
         parser.error("--bump compares against published releases; it cannot use --development")

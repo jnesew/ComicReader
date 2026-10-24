@@ -89,8 +89,9 @@ SHA-256 against an actual installed or published APK; a reported fingerprint alo
 Confirm that the version code exceeds every previously distributed APK and that the release tag
 matches `v<versionName>` from `gradle.properties`.
 
-Set the following path and credential variables locally. Provide passwords through environment
-references or the signer's interactive prompts, never literal command arguments or tracked files:
+For manual SDK signing, set the following path and credential variables locally.
+Provide passwords through environment references or the signer's interactive
+prompts, never literal command arguments or tracked files:
 
 ```bash
 "$ANDROID_HOME/build-tools/35.0.1/apksigner" sign \
@@ -121,6 +122,9 @@ reviewed notes, the canonical unsigned build, independent reproducibility, local
 signing, APK verification, and safe output staging. Start with
 [RELEASING.md](RELEASING.md) for version bumping, preflight, public preparation,
 and unsigned development verification. It never pushes or publishes automatically.
+Public preparation uses hidden terminal password prompts by default. Its
+`--non-interactive` mode explicitly opts into environment-supplied passwords;
+password fields in properties files are not used by the preparation script.
 
 `scripts/verify-reproducible-build.sh --output <path>` can retain its independently
 verified unsigned APK for signature-aware comparison. The destination must not
