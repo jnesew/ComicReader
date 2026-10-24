@@ -8,4 +8,4 @@ ComicViewer works without an account, network access, advertising, analytics or 
 
 Requires Android 8.0 or later. EPUB support is for image-based comics; this is not a reflowable text ebook reader. The app is available in English and Finnish. No comics are bundled.
 
-Screenshot artwork: Little Nemo in Slumberland (1905), Winsor McCay, public domain. See the repository's docs/STORE-ASSETS.md for source details.
+Screenshot artwork: Pepper & Carrot episode 10, art, scenario and Hereva creation by David Revoy; English translation by Alex Gryson; CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Source and full episode credits: https://www.peppercarrot.com/en/webcomic-sources/ep10_Summer-Special.html. Signal in the Rain is an original AI-generated sample supplied under CC0. Classic comics by Winsor McCay and Gustave Verbeek are catalogued as public domain. Full source details and credits: docs/STORE-ASSETS.md in the source repository.
