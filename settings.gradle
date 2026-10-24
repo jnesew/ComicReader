@@ -159,6 +159,12 @@ dependencyResolutionManagement {
                         'org.sonatype.oss',
                         'org.tensorflow'
                 ].each { groupName -> includeGroup groupName }
+                // Host-only dependencies for Gradle's connected-device test runner.
+                includeModule 'com.google.auto.service', 'auto-service'
+                includeModule 'com.google.auto.service', 'auto-service-aggregator'
+                includeModule 'com.google.auto.service', 'auto-service-annotations'
+                includeModule 'io.opencensus', 'opencensus-api'
+                includeModule 'io.opencensus', 'opencensus-proto'
             }
         }
     }
