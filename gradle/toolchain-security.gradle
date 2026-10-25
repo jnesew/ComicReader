@@ -1,0 +1,88 @@
+import groovy.json.JsonOutput
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.result.UnresolvedDependencyResult
+
+// AGP 8.13.2 and its Unified Test Platform select affected transitive libraries.
+// Apply the same patched versions to the plugin and separate host-tool graphs.
+// These rules replace requested versions; they do not add application dependencies.
+def patchedModules = [
+        'org.bouncycastle:bcprov-jdk18on': '1.86',
+        'org.bouncycastle:bcpkix-jdk18on': '1.86',
+        'org.bouncycastle:bcutil-jdk18on': '1.86',
+        'org.apache.commons:commons-compress': '1.28.0',
+        'org.bitbucket.b_c:jose4j': '0.9.7',
+        'org.jdom:jdom2': '2.0.6.1',
+        'com.google.protobuf:protobuf-java': '3.25.9',
+        'com.google.protobuf:protobuf-java-util': '3.25.9',
+        'com.google.protobuf:protobuf-kotlin': '3.25.9',
+        'com.google.protobuf:protobuf-javalite': '3.25.9',
+        'com.google.protobuf:protobuf-kotlin-lite': '3.25.9'
+]
+def patchedVersion = { requested ->
+    // Keep Netty's Java modules together on the existing 4.1 line. Native
+    // netty-tcnative artifacts have an independent 2.x version scheme.
+    if (requested.group == 'io.netty' && requested.version?.startsWith('4.1.')) {
+        return '4.1.139.Final'
+    }
+    return patchedModules["${requested.group}:${requested.name}".toString()]
+}
+def secureMetadata = { component ->
+    component.allVariants {
+        withDependencies { dependencies ->
+            dependencies.each { dependency ->
+                def version = patchedVersion([group: dependency.group, name: dependency.name,
+                                              version: dependency.versionConstraint.requiredVersion])
+                if (version != null) {
+                    dependency.version { require(version) }
+                    dependency.because('Patched build-tool dependencies; see docs/BUILDING.md')
+                }
+            }
+        }
+    }
+}
+
+// Metadata rules also cover lint's detached configurations, which do not belong
+// to the project's ConfigurationContainer and cannot inherit configureEach rules.
+dependencyResolutionManagement.components.all(secureMetadata)
+
+gradle.beforeProject { project ->
+    project.buildscript.dependencies.components.all(secureMetadata)
+
+    project.tasks.register('verifyToolchainDependencies') {
+        group = 'verification'
+        description = 'Check resolved dependency versions, including isolated Android host tools.'
+        doLast {
+            def graphs = []
+            [buildscript: project.buildscript.configurations, project: project.configurations].each { kind, configurations ->
+                configurations.findAll { it.canBeResolved }.sort { it.name }.each { configuration ->
+                    def resolution = configuration.incoming.resolutionResult
+                    def unresolved = resolution.allDependencies.findAll { it instanceof UnresolvedDependencyResult }
+                    if (!unresolved.isEmpty()) {
+                        throw new GradleException("Unresolved dependencies in ${project.path}:${configuration.name}: " +
+                                unresolved.collect { it.attempted.displayName }.join(', '))
+                    }
+                    def components = resolution.allComponents.collect { it.id }
+                            .findAll { it instanceof ModuleComponentIdentifier }
+                            .collect { [group: it.group, name: it.module, version: it.version] }
+                            .sort { "${it.group}:${it.name}:${it.version}" }
+                    components.each { component ->
+                        def expected = patchedVersion(component)
+                        if (expected != null && component.version != expected) {
+                            throw new GradleException("Unpatched dependency in ${project.path}:${configuration.name}: " +
+                                    "${component.group}:${component.name}:${component.version}; expected ${expected}")
+                        }
+                    }
+                    if (project.path == ':app' && configuration.name in ['debugRuntimeClasspath', 'releaseRuntimeClasspath'] &&
+                            !components.isEmpty()) {
+                        throw new GradleException("Application runtime dependencies must remain empty: ${configuration.name}")
+                    }
+                    graphs.add([configuration: "${kind}:${configuration.name}", components: components])
+                }
+            }
+            def report = project.layout.buildDirectory.file('reports/dependency-security/resolved.json').get().asFile
+            report.parentFile.mkdirs()
+            report.text = JsonOutput.prettyPrint(JsonOutput.toJson([project: project.path, configurations: graphs])) + '\n'
+            logger.lifecycle("Verified ${graphs.size()} dependency graphs for ${project.path}; report: ${report}")
+        }
+    }
+}

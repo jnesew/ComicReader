@@ -20,7 +20,7 @@ fi
 export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
 export TZ=UTC LC_ALL=C.UTF-8
 ./gradlew --no-daemon --dependency-verification strict \
-    -PcomicViewerUnsignedRelease=true clean testDebugUnitTest lintRelease assembleRelease
+    -PcomicViewerUnsignedRelease=true clean verifyToolchainDependencies testDebugUnitTest lintRelease assembleRelease
 version_name="$(sed -n 's/^comicViewerVersionName=//p' gradle.properties | tail -n 1)"
 mkdir -p dist
 if [[ -z "$output" ]]; then

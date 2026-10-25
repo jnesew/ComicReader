@@ -48,6 +48,10 @@ disabled. EPUB may contain the inert HTML5 doctype without an internal subset or
 
 - Gradle 8.14.4's binary distribution and wrapper JAR have pinned published SHA-256 values.
 - Android Gradle Plugin 8.13.2 and JUnit's transitive graph use strict dependency verification.
+- A shared version policy patches affected transitive build-tool libraries in plugin and
+  project configurations, including the separate connected-test runner. The
+  `verifyToolchainDependencies` task checks resolved coordinates and empty application
+  runtime graphs; see [BUILDING.md](BUILDING.md#dependency-verification).
 - Repository filters fail closed: Android build groups resolve only from Google, while test and
   ordinary Java groups resolve from Maven Central. Plugin Portal is not configured.
 - `scripts/verify-source-security.sh` checks the wrapper, dependency metadata, tracked artifacts,
@@ -75,7 +79,7 @@ does not claim control over modified OEM software outside the application sandbo
 ```bash
 scripts/verify-source-security.sh
 scripts/verify-database-roundtrip.sh
-./gradlew --dependency-verification strict testDebugUnitTest lintRelease assembleRelease
+./gradlew --dependency-verification strict verifyToolchainDependencies testDebugUnitTest lintRelease assembleRelease
 scripts/verify-reproducible-build.sh
 ```
 

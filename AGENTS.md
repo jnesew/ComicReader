@@ -14,6 +14,8 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md), [docs/BUILDING.md](docs/BUILDING.md), a
 The pinned toolchain is JDK 17, Gradle 8.14.4, Android Gradle Plugin 8.13.2,
 SDK Platform 36, and Build Tools 35.0.1. Supported Android APIs are 26–36.
 `gradle.properties` is the source of truth for version names and codes.
+`gradle/toolchain-security.gradle` pins patched transitive build-tool versions across
+the plugin and project dependency graphs, including the isolated Android test runner.
 
 ## Local development workflow
 
@@ -138,7 +140,7 @@ For application changes, run the relevant checks. The full release gate is:
 ```bash
 scripts/verify-source-security.sh
 scripts/verify-database-roundtrip.sh
-./gradlew --dependency-verification strict testDebugUnitTest lintRelease assembleRelease
+./gradlew --dependency-verification strict verifyToolchainDependencies testDebugUnitTest lintRelease assembleRelease
 scripts/verify-reproducible-build.sh
 ```
 

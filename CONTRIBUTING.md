@@ -37,7 +37,7 @@ Before submitting an application change, run:
 ```bash
 scripts/verify-source-security.sh
 scripts/verify-database-roundtrip.sh
-./gradlew --dependency-verification strict testDebugUnitTest lintRelease assembleRelease
+./gradlew --dependency-verification strict verifyToolchainDependencies testDebugUnitTest lintRelease assembleRelease
 scripts/verify-reproducible-build.sh
 ```
 

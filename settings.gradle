@@ -84,6 +84,8 @@ pluginManagement {
     }
 }
 
+apply from: file('gradle/toolchain-security.gradle')
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {

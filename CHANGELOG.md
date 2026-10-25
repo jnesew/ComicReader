@@ -2,6 +2,13 @@
 
 All notable public changes to ComicViewer for Android are recorded here.
 
+## Unreleased
+
+### Development
+
+- Updated vulnerable transitive Android build and test-tool libraries, removed obsolete
+  verification pins, and added resolved dependency checks to CI and release builds.
+
 ## 1.3.1 - 2026-10-25
 
 ### Fixes

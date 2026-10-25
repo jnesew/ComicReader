@@ -28,7 +28,7 @@ build tasks locally:
 ```bash
 cp local.properties.example local.properties
 # Edit sdk.dir in local.properties.
-./gradlew --dependency-verification strict testDebugUnitTest lintRelease assembleRelease
+./gradlew --dependency-verification strict verifyToolchainDependencies testDebugUnitTest lintRelease assembleRelease
 ```
 
 Without external signing configuration, `assembleRelease` produces an unsigned APK suitable for
@@ -40,7 +40,7 @@ Run the full local gate with:
 ```bash
 scripts/verify-source-security.sh
 scripts/verify-database-roundtrip.sh
-./gradlew --dependency-verification strict testDebugUnitTest lintRelease assembleRelease
+./gradlew --dependency-verification strict verifyToolchainDependencies testDebugUnitTest lintRelease assembleRelease
 scripts/verify-reproducible-build.sh
 ```
 
@@ -65,6 +65,40 @@ Repository filters allow Android build components only from Google's Maven repos
 Java/test components only from Maven Central. Plugin Portal is not configured. Do not weaken strict
 verification or regenerate `gradle/verification-metadata.xml` without reviewing every changed
 component and checksum.
+
+The pinned AGP 8.13.2 selects older transitive libraries, including through its separate
+Unified Test Platform configurations. `gradle/toolchain-security.gradle`, applied from
+settings before project evaluation, patches their transitive dependency metadata in both
+buildscript and project configurations, including lint's detached configurations.
+It does not add library dependencies. The current pins are:
+
+| Library family | Version | Addressed advisories include |
+| --- | --- | --- |
+| Netty 4.1 modules | 4.1.139.Final | [HTTP/TLS handling](https://github.com/advisories/GHSA-c4c3-7fpv-j4q5) |
+| Bouncy Castle (`jdk18on`) | 1.86 | [Certificate validation](https://github.com/advisories/GHSA-9pwp-9qqc-pr26), [GOST CTR](https://github.com/advisories/GHSA-574f-3g2m-x479) |
+| Commons Compress | 1.28.0 | [Malformed archive processing](https://github.com/advisories/GHSA-4g9r-vxhx-9pgx) |
+| jose4j | 0.9.7 | [Compressed JWE denial of service](https://github.com/advisories/GHSA-3677-xxcr-wjqv) |
+| JDOM | 2.0.6.1 | [External XML entities](https://github.com/advisories/GHSA-2363-cqg2-863c) |
+| Protobuf Java/Kotlin | 3.25.9 | [Unbounded parsing recursion](https://github.com/advisories/GHSA-735f-pc8j-v9w8) |
+
+Netty modules remain on their existing 4.1 line; native `netty-tcnative` artifacts use
+an independent version scheme. Bouncy Castle and Protobuf companion modules stay aligned.
+These overrides can be removed when the pinned upstream toolchain selects safe versions.
+
+`./gradlew --dependency-verification strict verifyToolchainDependencies` checks the
+resolvable configurations in each project's buildscript and project containers,
+including the hidden host-test configurations. It fails on unresolved dependencies,
+unexpected versions of the patched modules, or a nonempty application runtime graph.
+Each project writes the resolved coordinates to
+`build/reports/dependency-security/resolved.json`. Detached configurations are outside
+those containers; the strict `lintRelease` check exercises lint's separate graph.
+CI and `build-release.sh` run both checks. The dependency task checks the reviewed
+version policy, not a live vulnerability database.
+
+When updating the policy, review the advisory ranges and published artifacts, update
+their SHA-256 pins, and remove obsolete pins for the replaced versions. Verify normal
+builds and the real connected Android suite with strict verification. An empty app
+runtime graph does not establish that a host-tool vulnerability is harmless.
 
 ## Reproducibility
 
