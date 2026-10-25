@@ -13,6 +13,6 @@ certs="$("$tools_dir/apksigner" verify --print-certs "$signed")"
 actual="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<<"$certs")"
 [[ "${actual,,}" == "$expected" ]] || { echo 'Signing certificate mismatch.' >&2; exit 1; }
 "$tools_dir/zipalign" -c -P 16 4 "$signed"
-export PATH="$tools_dir:$PATH"
-apksigcopier compare --unsigned "$signed" "$unsigned"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+python3 "$script_dir/compare_apk_signatures.py" --apksigner "$tools_dir/apksigner" "$signed" "$unsigned"
 echo 'Signing certificate and signature-aware rebuild comparison passed.'

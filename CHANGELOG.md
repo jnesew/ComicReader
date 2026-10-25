@@ -19,6 +19,8 @@ All notable public changes to ComicViewer for Android are recorded here.
   before building. Unattended operation requires explicit environment-based configuration.
 - Added one-time signing setup and a tracked public certificate pin, removing
   repeated keystore selection and manual certificate configuration.
+- Fixed signature-aware APK comparison on newer Python versions that clear ZIP
+  filename flags, with real SDK signing and comparison regression tests.
 - Documented release preparation and versioning rules for release staging branches.
 
 ## 1.3.0 - 2026-10-24

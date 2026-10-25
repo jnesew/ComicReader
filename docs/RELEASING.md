@@ -16,9 +16,37 @@ consumes the normal signed APK attached to a matching GitHub release.
   (`gh`). `origin` must identify the project's GitHub repository over HTTPS or SSH.
   Release history and APK downloads use read-only GitHub API requests.
 - Public preparation additionally requires `apksigcopier`, the build-time tool used
-  by `scripts/verify-release-apk.sh`, available on `PATH`.
+  by `scripts/verify-release-apk.sh`, importable by the same `python3` interpreter.
 - Keep a populated Gradle cache: the two independent reproducibility builds run
   with strict offline dependency verification.
+
+A system package providing the Python module works. Alternatively, install the
+pinned, hash-verified release tools in a virtual environment and activate it before
+running preparation (the environment path below is an example):
+
+```bash
+python3 -m venv /path/to/release-tools
+source /path/to/release-tools/bin/activate
+python3 -m pip install --require-hashes --only-binary=:all: -r scripts/release-tools.requirements.txt
+python3 scripts/compare_apk_signatures.py --check
+```
+
+The compatibility helper preserves explicit UTF-8 filename flags when copying APK
+signature metadata. Newer Python ZIP writers can otherwise clear those flags on
+ASCII names, causing a valid signed APK to fail comparison with its own rebuild.
+It still verifies both the original and reconstructed APK signatures with Build
+Tools 35.0.1; it does not accept a content digest mismatch.
+
+Run the release-tool tests with JDK 17 and the pinned SDK configured:
+
+```bash
+COMICVIEWER_REQUIRE_SIGNING_TESTS=1 python3 -m unittest discover -s scripts/tests -v
+```
+
+This includes real signing and comparison using disposable RSA-2048 and RSA-4096
+keys, plus rejection of changed rebuilds, corrupted APKs, and wrong certificates.
+The environment flag makes missing native-test prerequisites an error; without it,
+unavailable native tests are reported as skipped. CI requires these tests.
 
 ## One-time signing setup
 

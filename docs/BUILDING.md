@@ -107,8 +107,12 @@ scripts/verify-release-apk.sh "$SIGNED_APK" "$REBUILT_UNSIGNED_APK" "$VERIFIED_C
 `UNSIGNED_APK` is the Gradle candidate, `SIGNED_APK` is the signed output, and
 `REBUILT_UNSIGNED_APK` is the APK from an independent rebuild of the same commit.
 `VERIFIED_CERT_SHA256` is the expected certificate digest. The verifier requires
-`ANDROID_HOME`, Build Tools 35.0.1, and the external build-time `apksigcopier` command;
+`ANDROID_HOME`, Build Tools 35.0.1, and the external build-time `apksigcopier` Python module
+(see the [release requirements](RELEASING.md#requirements));
 it checks the certificate, ZIP alignment, and signature-aware equality with the rebuild.
+The comparison helper preserves the copier's explicit UTF-8 ZIP filename flags on
+Python versions that otherwise clear them. The original and reconstructed signatures
+must both verify with the pinned SDK signer.
 Neither unsigned reproducibility nor CI alone establishes a matching signed release.
 
 Test upgrading the previous release with the same certificate, retaining library data,

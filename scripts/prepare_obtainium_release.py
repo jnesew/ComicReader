@@ -599,7 +599,7 @@ def prepare(root, args):
         rebuilding = history.validate(name, code, commit)
         expected = expected_certificate(root, env)
         verify_published_certificate(history, expected)
-        require(shutil.which("apksigcopier", path=env.get("PATH")), "Install apksigcopier for signature-aware rebuild verification.")
+        run(root, [sys.executable, root / "scripts/compare_apk_signatures.py", "--check"], env, capture=False)
         remote_source(root, f"v{name}", commit)
     notes = validate_notes(root, name, code)
     clean_commit(root, commit)

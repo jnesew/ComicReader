@@ -95,12 +95,24 @@ if name=='apksigner':
   print('Missing META-INF/MANIFEST.MF',file=sys.stderr);sys.exit(1)
  if '--print-certs' in args:print('Signer #1 certificate SHA-256 digest: '+data['certificate'])
  sys.exit(0)
-if name=='apksigcopier':
- a=json.loads(Path(args[-2]).read_text());a.pop('certificate',None)
- b=json.loads(Path(args[-1]).read_text());assert a==b
- sys.exit(0)
 if name=='zipalign':sys.exit(1 if os.environ.get('FAKE_ALIGNMENT_FAILURE') else 0)
 assert name in ['verify-source-security.sh','verify-database-roundtrip.sh'],name
+'''
+
+# The workflow fixtures replace the external copier API; native SDK tests exercise
+# the actual copier and signature reconstruction in test_apk_signature_comparison.
+COPIER = '''import json,os,zipfile
+from pathlib import Path
+class APKSigCopierError(Exception):pass
+def APKZipInfo(info):return info
+def do_compare(first,second,**options):
+ fixture=Path(os.environ['RELEASE_TEST_FIXTURE'])
+ with (fixture/'events.jsonl').open('a') as f:
+  f.write(json.dumps({'tool':'apksigcopier','args':[first,second],'signing_env':False})+'\\n')
+ if os.environ.get('FAKE_FAIL_GATE')=='apksigcopier':raise APKSigCopierError('fixture comparison failure')
+ a=json.loads(Path(first).read_text());a.pop('certificate',None)
+ b=json.loads(Path(second).read_text())
+ if a!=b:raise APKSigCopierError('fixture content mismatch')
 '''
 
 
@@ -120,17 +132,19 @@ class WorkflowTests(unittest.TestCase):
         platform.mkdir(parents=True)
         (platform/'android.jar').write_bytes(b'fixture')
         for path in [platform, self.tools]:(path/'source.properties').write_text('Pkg.Revision=2\n')
-        for name in ['java','javac','keytool','gh','apksigcopier']:self.executable(self.bin/name, TOOL)
+        for name in ['java','javac','keytool','gh']:self.executable(self.bin/name, TOOL)
+        (self.bin/'apksigcopier.py').write_text(COPIER)
         for name in ['aapt2','apksigner','zipalign']:self.executable(self.tools/name, TOOL)
         self.env = {k:v for k,v in os.environ.items() if k not in release.SIGNING_ENV | {'COMICVIEWER_EXPECTED_CERT_SHA256'}}
         self.env.update(PATH=str(self.bin)+os.pathsep+os.environ['PATH'], JAVA_HOME=str(self.bin.parent),
                         ANDROID_HOME=str(self.sdk), ANDROID_SDK_ROOT=str(self.sdk),
+                        PYTHONPATH=str(self.bin),
                         RELEASE_TEST_FIXTURE=str(self.fixture),
                         COMICVIEWER_KEYSTORE_PATH=str(self.root/'signing/test.jks'),
                         COMICVIEWER_KEY_ALIAS='fixture', COMICVIEWER_STORE_PASSWORD='fixture store pass',
                         COMICVIEWER_KEY_PASSWORD='fixture store pass')
         scripts=self.root/'scripts';scripts.mkdir()
-        for name in ['prepare-obtainium-release.sh','prepare_obtainium_release.py','verify-release-apk.sh','verify-reproducible-build.sh','SigningKeyProbe.java']:
+        for name in ['prepare-obtainium-release.sh','prepare_obtainium_release.py','verify-release-apk.sh','compare_apk_signatures.py','verify-reproducible-build.sh','SigningKeyProbe.java']:
             shutil.copyfile(SOURCE/'scripts'/name,scripts/name);(scripts/name).chmod(0o755)
         (self.root/release.CERTIFICATE_PIN).write_text(CERT+'\n')
         for name in ['verify-source-security.sh','verify-database-roundtrip.sh']:self.executable(scripts/name, TOOL)
@@ -262,6 +276,19 @@ class WorkflowTests(unittest.TestCase):
         self.invoke('--check')
         self.assertFalse(self.bundle().exists())
         self.assertFalse(any(e['tool']=='gradlew' or (e['tool']=='apksigner' and e['args'][0]=='sign') for e in self.events()))
+
+    def test_missing_copier_module_fails_before_password_or_build(self):
+        (self.bin/'apksigcopier.py').write_text("raise ImportError('fixture missing dependency')\n")
+        for key in release.PASSWORD_ENV:self.env.pop(key,None)
+        result=self.invoke('--check',ok=False,non_interactive=False)
+        self.assertIn('Install apksigcopier for',result.stderr)
+        self.assertFalse(any(e['tool']=='java' and '--source' in e['args'] or e['tool']=='gradlew' for e in self.events()))
+
+    def test_signature_comparison_failure_does_not_stage_bundle(self):
+        self.env['FAKE_FAIL_GATE']='apksigcopier'
+        self.assertIn('Signature-aware comparison failed',self.invoke(ok=False).stderr)
+        self.assertFalse(self.bundle().exists())
+        self.assertFalse((self.root/'dist/.release-preparation.lock').exists())
 
     def test_development_offline_unsigned_and_separate(self):
         self.env['FAKE_NETWORK_FAILURE']='1'
