@@ -60,6 +60,11 @@ jobs:
 
       - name: Test release preparation policies with isolated fixtures
         shell: bash
+        env:
+          GIT_AUTHOR_NAME: CI Test
+          GIT_AUTHOR_EMAIL: ci-test@example.invalid
+          GIT_COMMITTER_NAME: CI Test
+          GIT_COMMITTER_EMAIL: ci-test@example.invalid
         run: |
           python3 -m venv "$RUNNER_TEMP/release-tools"
           "$RUNNER_TEMP/release-tools/bin/python3" -m pip install --require-hashes \
