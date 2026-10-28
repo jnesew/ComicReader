@@ -46,7 +46,7 @@ disabled. EPUB may contain the inert HTML5 doctype without an internal subset or
 
 ## Build and release boundary
 
-- Gradle 8.14.4's binary distribution and wrapper JAR have pinned published SHA-256 values.
+- Gradle 8.14.6's binary distribution and wrapper JAR have pinned published SHA-256 values.
 - Android Gradle Plugin 8.13.2 and JUnit's transitive graph use strict dependency verification.
 - A shared version policy patches affected transitive build-tool libraries in plugin and
   project configurations, including the separate connected-test runner. The

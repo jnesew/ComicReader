@@ -6,7 +6,7 @@ into the APK:
 
 | Component | Use | License |
 |---|---|---|
-| Gradle Wrapper 8.14.4 | Reproducible build bootstrap; the wrapper JAR is vendored | Apache License 2.0 |
+| Gradle Wrapper 8.14.6 | Reproducible build bootstrap; the wrapper JAR is vendored | Apache License 2.0 |
 | Android Gradle Plugin 8.13.2 | Build tooling downloaded from Google's Maven repository | Apache License 2.0 (AOSP build tooling) |
 | Android SDK Platform/Build Tools | Compilation, packaging, alignment, and signature verification | Android SDK license terms |
 | JUnit 4.13.2 | Unit tests only | Eclipse Public License 1.0 |

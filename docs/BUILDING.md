@@ -7,7 +7,7 @@
 - Android SDK Build Tools 35.0.1
 - a POSIX shell for the verification scripts
 
-The checked-in wrapper pins Gradle 8.14.4 and its distribution SHA-256. Android Gradle Plugin
+The checked-in wrapper pins Gradle 8.14.6 and its distribution SHA-256. Android Gradle Plugin
 8.13.2 and the test graph are covered by strict dependency verification. The APK has no
 third-party runtime dependency.
 
@@ -74,6 +74,7 @@ It does not add library dependencies. The current pins are:
 
 | Library family | Version | Addressed advisories include |
 | --- | --- | --- |
+| Tink | 1.14.1 | Regenerated Protobuf classes compatible with the pinned 3.x runtime |
 | Netty 4.1 modules | 4.1.139.Final | [HTTP/TLS handling](https://github.com/advisories/GHSA-c4c3-7fpv-j4q5) |
 | Bouncy Castle (`jdk18on`) | 1.86 | [Certificate validation](https://github.com/advisories/GHSA-9pwp-9qqc-pr26), [GOST CTR](https://github.com/advisories/GHSA-574f-3g2m-x479) |
 | Commons Compress | 1.28.0 | [Malformed archive processing](https://github.com/advisories/GHSA-4g9r-vxhx-9pgx) |
@@ -94,6 +95,10 @@ Each project writes the resolved coordinates to
 those containers; the strict `lintRelease` check exercises lint's separate graph.
 CI and `build-release.sh` run both checks. The dependency task checks the reviewed
 version policy, not a live vulnerability database.
+
+The Gradle daemon treats unsafe pre-22 Protobuf generated code as an error through
+`org.gradle.jvmargs` in `gradle.properties`. Updating the runtime alone cannot
+replace generated classes embedded in another library; update that library too.
 
 When updating the policy, review the advisory ranges and published artifacts, update
 their SHA-256 pins, and remove obsolete pins for the replaced versions. Verify normal

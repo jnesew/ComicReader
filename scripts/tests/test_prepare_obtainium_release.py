@@ -151,7 +151,7 @@ class WorkflowTests(unittest.TestCase):
         shutil.copyfile(SOURCE/'build-release.sh',self.root/'build-release.sh');(self.root/'build-release.sh').chmod(0o755)
         self.executable(self.root/'gradlew',TOOL)
         (self.root/'gradle/wrapper').mkdir(parents=True)
-        (self.root/'gradle/wrapper/gradle-wrapper.properties').write_text('distributionUrl=gradle-8.14.4-bin.zip\n')
+        (self.root/'gradle/wrapper/gradle-wrapper.properties').write_text('distributionUrl=gradle-8.14.6-bin.zip\n')
         (self.root/'build.gradle').write_text("id 'com.android.application' version '8.13.2'\n")
         (self.root/'app').mkdir()
         (self.root/'app/build.gradle').write_text("applicationId '"+release.PACKAGE+"'\n")

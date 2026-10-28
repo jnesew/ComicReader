@@ -11,7 +11,7 @@ module, Java 17, native Android Views, platform document APIs, and SQLite.
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md), [docs/BUILDING.md](docs/BUILDING.md), and
 [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) for contribution, build, and input limits.
-The pinned toolchain is JDK 17, Gradle 8.14.4, Android Gradle Plugin 8.13.2,
+The pinned toolchain is JDK 17, Gradle 8.14.6, Android Gradle Plugin 8.13.2,
 SDK Platform 36, and Build Tools 35.0.1. Supported Android APIs are 26–36.
 `gradle.properties` is the source of truth for version names and codes.
 `gradle/toolchain-security.gradle` pins patched transitive build-tool versions across

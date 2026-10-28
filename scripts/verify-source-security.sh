@@ -9,14 +9,14 @@ fail() {
     exit 1
 }
 
-expected_wrapper_sha="7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172"
+expected_wrapper_sha="ad16bca46cb71bb5887c546860d93992aeee35c1fdaf4a242b0a612375d937e0"
 actual_wrapper_sha="$(sha256sum gradle/wrapper/gradle-wrapper.jar | cut -d' ' -f1)"
 [[ "$actual_wrapper_sha" == "$expected_wrapper_sha" ]] || fail "unexpected Gradle wrapper JAR"
 
 grep -Fxq \
-    'distributionSha256Sum=f1771298a70f6db5a29daf62378c4e18a17fc33c9ba6b14362e0cdf40610380d' \
+    'distributionSha256Sum=7988ed071b2a07900e2ec715fca15c6ab72bce6db433af301fa7fa7e9407bd24' \
     gradle/wrapper/gradle-wrapper.properties || fail "Gradle distribution checksum is missing"
-grep -Fxq 'distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.4-bin.zip' \
+grep -Fxq 'distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.6-bin.zip' \
     gradle/wrapper/gradle-wrapper.properties || fail "Gradle distribution URL is not pinned"
 grep -Fxq 'validateDistributionUrl=true' gradle/wrapper/gradle-wrapper.properties ||
     fail "Gradle distribution URL validation is disabled"

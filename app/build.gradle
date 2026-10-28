@@ -38,47 +38,47 @@ if (!unsignedRelease && signingRequested && !releaseSigningConfigured) {
 }
 
 android {
-    namespace 'io.github.jnesew.comicviewer'
-    compileSdk 36
-    buildToolsVersion '35.0.1'
+    namespace = 'io.github.jnesew.comicviewer'
+    compileSdk = 36
+    buildToolsVersion = '35.0.1'
 
     defaultConfig {
-        applicationId 'io.github.jnesew.comicviewer'
-        minSdk 26
-        targetSdk 36
-        testInstrumentationRunner "io.github.jnesew.comicviewer.data.DatabaseTestRunner"
-        versionCode comicViewerVersionCode
-        versionName comicViewerVersionName
+        applicationId = 'io.github.jnesew.comicviewer'
+        minSdk = 26
+        targetSdk = 36
+        testInstrumentationRunner = "io.github.jnesew.comicviewer.data.DatabaseTestRunner"
+        versionCode = comicViewerVersionCode
+        versionName = comicViewerVersionName
     }
 
     signingConfigs {
         if (!unsignedRelease && releaseSigningConfigured) {
             localRelease {
-                storeFile rootProject.file(signingStoreFile)
-                storePassword signingStorePassword
-                keyAlias signingKeyAlias
-                keyPassword signingKeyPassword
+                storeFile = rootProject.file(signingStoreFile)
+                setStorePassword(signingStorePassword)
+                keyAlias = signingKeyAlias
+                setKeyPassword(signingKeyPassword)
             }
         }
     }
 
     buildTypes {
         debug {
-            pseudoLocalesEnabled true
+            pseudoLocalesEnabled = true
         }
         release {
             if (!unsignedRelease && releaseSigningConfigured) {
-                signingConfig signingConfigs.localRelease
+                signingConfig = signingConfigs.localRelease
             }
-            minifyEnabled true
-            shrinkResources true
+            minifyEnabled = true
+            shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     testOptions {
