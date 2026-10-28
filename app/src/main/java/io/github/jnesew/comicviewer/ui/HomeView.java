@@ -106,7 +106,7 @@ public final class HomeView extends FrameLayout {
         this.viewMode = viewPreferences.getString("mode", VIEW_TITLES);
         this.gridDensity = LibraryGridDensity.fromKey(
                 viewPreferences.getString(GRID_DENSITY_PREFERENCE, null));
-        setBackgroundColor(Ui.HOME_BACKGROUND);
+        setBackgroundColor(Ui.background(getContext()));
 
         covers = new CoverThumbnailLoader();
         adapter = new LibraryGridAdapter(context, listener, this::openSeries, covers, gridDensity);
@@ -125,7 +125,7 @@ public final class HomeView extends FrameLayout {
         header.addView(headerBack, new LinearLayout.LayoutParams(
                 Ui.dp(context, 48), Ui.dp(context, 58)));
 
-        headerTitle = Ui.text(context, context.getString(R.string.library_title), 24, Ui.TEXT);
+        headerTitle = Ui.text(context, context.getString(R.string.library_title), 24, Ui.text(getContext()));
         headerTitle.setSingleLine(true);
         headerTitle.setEllipsize(TextUtils.TruncateAt.END);
         header.addView(headerTitle, new LinearLayout.LayoutParams(0, Ui.dp(context, 58), 1f));
@@ -153,11 +153,11 @@ public final class HomeView extends FrameLayout {
         searchInput = new EditText(context);
         searchInput.setSingleLine(true);
         searchInput.setHint(R.string.library_search_hint);
-        searchInput.setTextColor(Ui.TEXT);
-        searchInput.setHintTextColor(Ui.TEXT_MUTED);
+        searchInput.setTextColor(Ui.text(getContext()));
+        searchInput.setHintTextColor(Ui.textMuted(getContext()));
         searchInput.setTextSize(16);
         searchInput.setPadding(Ui.dp(context, 16), 0, Ui.dp(context, 16), 0);
-        searchInput.setBackground(Ui.rounded(Ui.SURFACE, Ui.dp(context, 14), Ui.SURFACE_HIGH, Ui.dp(context, 1)));
+        searchInput.setBackground(Ui.rounded(Ui.surface(getContext()), Ui.dp(context, 14), Ui.surfaceHigh(getContext()), Ui.dp(context, 1)));
         searchInput.setVisibility(GONE);
         searchInput.addTextChangedListener(new TextWatcher() {
             @Override
@@ -182,7 +182,7 @@ public final class HomeView extends FrameLayout {
 
         LinearLayout controls = new LinearLayout(context);
         controls.setGravity(Gravity.CENTER_VERTICAL);
-        controls.setPadding(Ui.dp(context, 16), Ui.dp(context, 6), Ui.dp(context, 16), Ui.dp(context, 8));
+        controls.setPadding(Ui.dp(context, 16), 0, Ui.dp(context, 16), Ui.dp(context, 4));
         sortButton = selectorButton(context);
         sortButton.setContentDescription(context.getString(R.string.library_sort_menu));
         sortButton.setOnClickListener(this::showSortMenu);
@@ -197,12 +197,7 @@ public final class HomeView extends FrameLayout {
         filterParams.leftMargin = Ui.dp(context, 10);
         controls.addView(filterButton, filterParams);
 
-        chrome.addView(controls, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
         viewSelector = new LinearLayout(context);
-        viewSelector.setPadding(Ui.dp(context, 3), Ui.dp(context, 3), Ui.dp(context, 3), Ui.dp(context, 3));
-        viewSelector.setBackground(Ui.rounded(Ui.SURFACE, Ui.dp(context, 13), Ui.SURFACE_HIGH, Ui.dp(context, 1)));
         titlesButton = selectorButton(context);
         seriesButton = selectorButton(context);
         titlesButton.setText(R.string.library_view_titles);
@@ -213,16 +208,18 @@ public final class HomeView extends FrameLayout {
         viewSelector.addView(seriesButton, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         LinearLayout.LayoutParams modeParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        modeParams.setMargins(Ui.dp(context, 16), 0, Ui.dp(context, 16), Ui.dp(context, 10));
+        modeParams.setMargins(Ui.dp(context, 16), 0, Ui.dp(context, 16), 0);
         chrome.addView(viewSelector, modeParams);
+        chrome.addView(controls, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        folderStatus = Ui.text(context, "", 12, Ui.TEXT_MUTED);
+        folderStatus = Ui.text(context, "", 12, Ui.textMuted(getContext()));
         folderStatus.setSingleLine(true);
         folderStatus.setEllipsize(TextUtils.TruncateAt.END);
         folderStatus.setGravity(Gravity.CENTER_VERTICAL);
         folderStatus.setPadding(Ui.dp(context, 12), 0, Ui.dp(context, 12), 0);
         folderStatus.setBackground(Ui.rounded(
-                Ui.SURFACE, Ui.dp(context, 11), Ui.SURFACE_HIGH, Ui.dp(context, 1)));
+                Ui.surface(getContext()), Ui.dp(context, 11), Ui.surfaceHigh(getContext()), Ui.dp(context, 1)));
         folderStatus.setClickable(true);
         folderStatus.setFocusable(true);
         folderStatus.setVisibility(GONE);
@@ -259,12 +256,12 @@ public final class HomeView extends FrameLayout {
         emptyState.setGravity(Gravity.CENTER);
         emptyState.setPadding(Ui.dp(context, 28), Ui.dp(context, 36),
                 Ui.dp(context, 28), Ui.dp(context, 36));
-        emptyTitle = Ui.text(context, context.getString(R.string.library_empty_title), 20, Ui.TEXT);
+        emptyTitle = Ui.text(context, context.getString(R.string.library_empty_title), 20, Ui.text(getContext()));
         Ui.bold(emptyTitle);
         emptyTitle.setGravity(Gravity.CENTER);
         emptyState.addView(emptyTitle, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        emptyBody = Ui.text(context, context.getString(R.string.library_empty_body), 15, Ui.TEXT_MUTED);
+        emptyBody = Ui.text(context, context.getString(R.string.library_empty_body), 15, Ui.textMuted(getContext()));
         emptyBody.setGravity(Gravity.CENTER);
         emptyBody.setPadding(0, Ui.dp(context, 10), 0, 0);
         emptyState.addView(emptyBody, new LinearLayout.LayoutParams(
@@ -508,9 +505,12 @@ public final class HomeView extends FrameLayout {
         };
         sortButton.setText(sortLabel);
         sortButton.setCompoundDrawablesRelative(null, null,
-                Ui.icon(getContext(), R.drawable.ic_chevron_down, 16, Ui.TEXT_MUTED), null);
+                Ui.icon(getContext(), R.drawable.ic_chevron_down, 16, Ui.textMuted(getContext())), null);
         sortButton.setCompoundDrawablePadding(Ui.dp(getContext(), 6));
         filterButton.setText(filterLabel);
+        filterButton.setCompoundDrawablesRelative(null, null,
+                Ui.icon(getContext(), R.drawable.ic_chevron_down, 16, Ui.textMuted(getContext())), null);
+        filterButton.setCompoundDrawablePadding(Ui.dp(getContext(), 6));
         boolean series = VIEW_SERIES.equals(viewMode);
         updateModeButton(titlesButton, !series);
         updateModeButton(seriesButton, series);
@@ -582,9 +582,15 @@ public final class HomeView extends FrameLayout {
 
     private void updateModeButton(TextView button, boolean selected) {
         button.setSelected(selected);
-        button.setTextColor(selected ? Ui.ACCENT : Ui.TEXT_MUTED);
-        button.setBackground(Ui.rounded(selected ? Ui.SURFACE_HIGH : Color.TRANSPARENT,
-                Ui.dp(getContext(), 10), 0, 0));
+        button.setTextColor(selected ? Ui.accent(getContext()) : Ui.textMuted(getContext()));
+        android.graphics.drawable.GradientDrawable underline = Ui.rounded(
+                selected ? Ui.accent(getContext()) : Color.TRANSPARENT, 0, 0, 0);
+        android.graphics.drawable.LayerDrawable background = new android.graphics.drawable.LayerDrawable(
+                new android.graphics.drawable.Drawable[]{underline});
+        background.setLayerGravity(0, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        background.setLayerWidth(0, Ui.dp(getContext(), 56));
+        background.setLayerHeight(0, Ui.dp(getContext(), 2));
+        button.setBackground(background);
         button.setContentDescription(button.getText());
     }
 
@@ -593,7 +599,7 @@ public final class HomeView extends FrameLayout {
     }
 
     private TextView selectorButton(Context context) {
-        TextView button = Ui.text(context, "", 14, Ui.TEXT);
+        TextView button = Ui.text(context, "", 14, Ui.text(getContext()));
         button.setGravity(Gravity.CENTER);
         button.setPadding(Ui.dp(context, 12), Ui.dp(context, 10), Ui.dp(context, 12), Ui.dp(context, 10));
         button.setMinimumHeight(Ui.dp(context, 48));
@@ -601,8 +607,7 @@ public final class HomeView extends FrameLayout {
         button.setEllipsize(TextUtils.TruncateAt.END);
         button.setClickable(true);
         button.setFocusable(true);
-        button.setBackground(Ui.rounded(
-                Color.TRANSPARENT, Ui.dp(context, 12), Ui.TEXT_MUTED, Ui.dp(context, 1)));
+        button.setBackgroundResource(android.R.drawable.list_selector_background);
         return button;
     }
 

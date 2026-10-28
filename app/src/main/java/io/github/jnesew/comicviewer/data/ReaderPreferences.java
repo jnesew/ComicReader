@@ -37,6 +37,16 @@ public final class ReaderPreferences {
         this.deviceBufferingDefault = BufferingPolicy.normalize(deviceBufferingDefault);
     }
 
+    public String appearance() {
+        String mode = values.getString("appearance", "system");
+        return "light".equals(mode) || "dark".equals(mode) ? mode : "system";
+    }
+
+    public void setAppearance(String mode) {
+        values.edit().putString("appearance",
+                "light".equals(mode) || "dark".equals(mode) ? mode : "system").apply();
+    }
+
     public boolean tapZones() {
         return values.getBoolean("tap_zones", true);
     }

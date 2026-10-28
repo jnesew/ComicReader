@@ -6,6 +6,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
@@ -90,7 +91,7 @@ final class LibraryGridAdapter extends BaseAdapter {
                 R.string.comic_accessibility_progress, item.title, item.percent()));
         holder.root.setOnClickListener(view -> listener.onRecentRequested(item));
         holder.root.setOnLongClickListener(view -> {
-            listener.onForgetRequested(item);
+            showComicMenu(holder.options, item);
             return true;
         });
         holder.options.setContentDescription(context.getResources().getString(R.string.comic_options));
@@ -125,8 +126,8 @@ final class LibraryGridAdapter extends BaseAdapter {
         }
         holder.root.setOnClickListener(view -> onSeries.accept(group));
         holder.root.setOnLongClickListener(view -> {
-            if (standalone != null) listener.onForgetRequested(standalone);
-            else listener.onSeriesForgetRequested(group);
+            if (standalone != null) showComicMenu(holder.options, standalone);
+            else showSeriesMenu(holder.options, group);
             return true;
         });
         holder.options.setContentDescription(context.getResources().getString(
@@ -229,7 +230,7 @@ final class LibraryGridAdapter extends BaseAdapter {
 
     private void bindTitle(TextView title, String value, boolean favorite) {
         if (favorite) {
-            android.graphics.drawable.Drawable marker = Ui.icon(context, R.drawable.ic_star_filled, 14, Ui.ACCENT);
+            android.graphics.drawable.Drawable marker = Ui.icon(context, R.drawable.ic_star_filled, 14, Ui.accent(context));
             // A marker taller than the text ascent makes favorite cards taller in Dense view.
             int size = Math.min(Ui.dp(context, 14), -title.getPaint().getFontMetricsInt().ascent);
             marker.setBounds(0, 0, size, size);
@@ -251,7 +252,7 @@ final class LibraryGridAdapter extends BaseAdapter {
     private void bindProgress(ProgressBar progress, int percent, boolean complete, boolean started) {
         // GridView fills rows from either edge while scrolling. Keep the card height stable
         // when the track is hidden so covers cannot shift relative to neighboring cards.
-        progress.setVisibility(complete || (started && percent > 0) ? View.VISIBLE : View.INVISIBLE);
+        progress.setVisibility(!complete && started && percent > 0 ? View.VISIBLE : View.INVISIBLE);
         progress.setProgress(complete ? 100 : percent);
     }
 
@@ -266,11 +267,22 @@ final class LibraryGridAdapter extends BaseAdapter {
         ImageView cover = new ImageView(context);
         cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
         cover.setClipToOutline(true);
-        cover.setBackground(Ui.rounded(Ui.SURFACE, Ui.dp(context, 12), Ui.SURFACE_HIGH, Ui.dp(context, 1)));
-        root.addView(cover, new LinearLayout.LayoutParams(
+        cover.setBackground(Ui.rounded(Ui.surface(context), Ui.dp(context, 12), Ui.surfaceHigh(context), Ui.dp(context, 1)));
+        FrameLayout coverFrame = new FrameLayout(context);
+        coverFrame.addView(cover, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        ImageButton options = Ui.iconButton(context, R.drawable.ic_more, context.getString(R.string.comic_options));
+        options.setImageTintList(ColorStateList.valueOf(android.graphics.Color.WHITE));
+        options.setPadding(Ui.dp(context, 14), Ui.dp(context, 14), Ui.dp(context, 14), Ui.dp(context, 14));
+        options.setBackground(new android.graphics.drawable.InsetDrawable(
+                Ui.rounded(0xB30B0D10, Ui.dp(context, 16), 0, 0), Ui.dp(context, 8)));
+        FrameLayout.LayoutParams optionsParams = new FrameLayout.LayoutParams(
+                Ui.dp(context, 48), Ui.dp(context, 48), Gravity.TOP | Gravity.END);
+        coverFrame.addView(options, optionsParams);
+        root.addView(coverFrame, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, density.coverHeightDp)));
 
-        TextView title = Ui.text(context, "", density.titleTextSp, Ui.TEXT);
+        TextView title = Ui.text(context, "", density.titleTextSp, Ui.text(context));
         Ui.bold(title);
         title.setIncludeFontPadding(true);
         title.setLines(2);
@@ -280,7 +292,7 @@ final class LibraryGridAdapter extends BaseAdapter {
         root.addView(title, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        TextView issue = Ui.text(context, "", density.detailTextSp, Ui.TEXT_MUTED);
+        TextView issue = Ui.text(context, "", density.detailTextSp, Ui.textMuted(context));
         issue.setSingleLine(true);
         issue.setEllipsize(TextUtils.TruncateAt.END);
         root.addView(issue, new LinearLayout.LayoutParams(
@@ -288,25 +300,21 @@ final class LibraryGridAdapter extends BaseAdapter {
 
         ProgressBar progress = new ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(100);
-        progress.setProgressTintList(ColorStateList.valueOf(Ui.ACCENT));
-        progress.setProgressBackgroundTintList(ColorStateList.valueOf(Ui.SURFACE_HIGH));
+        progress.setProgressTintList(ColorStateList.valueOf(Ui.accent(context)));
+        progress.setProgressBackgroundTintList(ColorStateList.valueOf(Ui.surfaceHigh(context)));
         LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 4));
         progressParams.topMargin = Ui.dp(context, 5);
         root.addView(progress, progressParams);
 
-        LinearLayout statusRow = new LinearLayout(context);
-        statusRow.setGravity(Gravity.CENTER_VERTICAL);
-        TextView details = Ui.text(context, "", density.detailTextSp, Ui.TEXT_MUTED);
-        details.setLines(3);
-        details.setGravity(Gravity.CENTER_VERTICAL);
+        TextView details = Ui.text(context, "", density.detailTextSp, Ui.textMuted(context));
+        // Full card width normally fits one line; retain room for Finnish, large fonts and dense grids.
+        // Equal line counts keep neighboring cover rows aligned when GridView fills in either direction.
+        details.setLines(2);
+        details.setGravity(Gravity.TOP);
+        details.setPadding(0, Ui.dp(context, 6), 0, 0);
         details.setEllipsize(TextUtils.TruncateAt.END);
-        statusRow.addView(details, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        ImageButton options = Ui.iconButton(context, R.drawable.ic_more, context.getString(R.string.comic_options));
-        options.setImageTintList(ColorStateList.valueOf(Ui.TEXT_MUTED));
-        options.setPadding(Ui.dp(context, 12), Ui.dp(context, 12), Ui.dp(context, 12), Ui.dp(context, 12));
-        statusRow.addView(options, new LinearLayout.LayoutParams(Ui.dp(context, 48), Ui.dp(context, 48)));
-        root.addView(statusRow, new LinearLayout.LayoutParams(
+        root.addView(details, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return new CardHolder(root, cover, title, issue, options, progress, details);
     }

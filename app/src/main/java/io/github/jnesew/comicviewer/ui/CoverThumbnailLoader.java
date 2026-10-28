@@ -54,7 +54,7 @@ public final class CoverThumbnailLoader implements AutoCloseable {
                 (file != null && file.isFile() ? file.lastModified() + ":" + file.length() : "missing");
         image.setTag(key);
         image.setImageDrawable(null);
-        image.setBackground(Ui.rounded(Ui.SURFACE, Ui.dp(image.getContext(), 12), Ui.SURFACE_HIGH,
+        image.setBackground(Ui.rounded(Ui.surface(image.getContext()), Ui.dp(image.getContext(), 12), Ui.surfaceHigh(image.getContext()),
                 Ui.dp(image.getContext(), 1)));
         Bitmap cached = coverCache.get(key);
         if (cached != null && !cached.isRecycled()) {

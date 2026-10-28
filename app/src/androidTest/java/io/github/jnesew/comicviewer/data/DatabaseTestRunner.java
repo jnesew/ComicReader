@@ -24,7 +24,7 @@ public final class DatabaseTestRunner extends Instrumentation {
     private LibraryDatabase db;
     private int current;
     private int failed;
-    private static final int TOTAL = 43;
+    private static final int TOTAL = 44;
 
     @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
 
@@ -71,6 +71,7 @@ public final class DatabaseTestRunner extends Instrumentation {
         run("independentManualCopySurvivesFolderRemoval", () -> new LibraryFeatureTests(this, db).independentManualCopy());
         run("removeSourceDuringActiveProviderTraversal", () -> new LibraryFeatureTests(this, db).removeDuringTraversal());
         run("restartDuringScanAndCoalesceRepeatedRequests", () -> new LibraryFeatureTests(this, db).restartDuringTraversal());
+        run("appearancePreservesReaderBackgroundAndContrast", () -> AppearanceTests.preferencesAndPalettes(this));
         run("seriesSearchAndFilterSurviveRecreation", () -> LibraryNavigationTests.recreation(this, db));
         run("compactSeriesCoverAlignmentAfterScrolling", () -> LibraryNavigationTests.seriesCoversStayAligned(this, db));
         run("rescanReaddsForgottenComics", () -> new LibraryFeatureTests(this, db).rescanReaddsForgottenComics());

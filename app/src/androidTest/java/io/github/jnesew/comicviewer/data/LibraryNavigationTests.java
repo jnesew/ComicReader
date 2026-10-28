@@ -138,7 +138,9 @@ final class LibraryNavigationTests {
                 check(search.getText().toString().isEmpty());
                 search.setVisibility(View.GONE);
                 Bundle saved = new Bundle(); home.saveState(saved); home.close();
-                restored = new HomeView(context, new LibraryQueryController(database), null);
+                Context light = new ContextThemeWrapper(context, R.style.Theme_ComicViewer_Light);
+                restored = new HomeView(light, new LibraryQueryController(database), null);
+                check(Ui.background(light) != Ui.background(context));
                 restored.restoreState(saved); layout(restored);
                 check(find(restored, GridView.class).getAdapter().getCount() == 2);
                 check(restored.handleBack()); layout(restored);

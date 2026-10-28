@@ -43,11 +43,12 @@ view's search, filter, and scroll position. Use each card's options menu to chan
 a small star beside its title indicates a favorite without covering the artwork.
 
 **Unread** is the explicit read status, independent of saved reading position. Progress tracks appear
-only after reading has started or the title is marked read. Cards show a separate issue number when
-structured metadata supplies one. Dates embedded in filenames or titles remain part of the title;
+only while reading has started and the title or series is not marked read. Cards show a separate
+issue number when structured metadata supplies one. Dates embedded in filenames or titles remain part of the title;
 ComicViewer does not guess publication dates from them.
 
-Long-press a title or series, or use its options menu, to forget it. Forgetting deletes
+Tap the options button on a cover, or long-press a title or series, to open its action menu.
+Choose **Forget** in that menu to remove the entry. Forgetting deletes
 ComicViewer's local reading state and caches but never the original comic files. Tapping an
 unavailable title also offers the same choice while retaining the option to reconnect or rescan
 its source folder instead.
@@ -65,6 +66,10 @@ After a complete folder scan proves that files are no longer present, **Review u
 comics** appears in the library menu. It allows selecting and forgetting those stale entries in
 one operation. ComicViewer excludes titles made unavailable merely because folder access was
 stopped, revoked, or could not be verified by a complete scan.
+
+Use **Library menu → Appearance** to choose **System default**, **Light**, or **Dark**.
+System default follows Android's light/dark preference. The reader controls stay dark, and the
+page background remains the independent **Reader options → Background color** choice.
 
 ## Reading modes
 

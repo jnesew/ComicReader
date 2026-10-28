@@ -1,0 +1,7 @@
+<resources>
+    <attr name="comicBackground" format="color" />
+    <attr name="comicSurface" format="color" />
+    <attr name="comicSurfaceHigh" format="color" />
+    <attr name="comicText" format="color" />
+    <attr name="comicTextMuted" format="color" />
+</resources>

@@ -12,16 +12,30 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 import android.widget.ImageButton;
+import io.github.jnesew.comicviewer.R;
 
 public final class Ui {
-    public static final int HOME_BACKGROUND = Color.rgb(11, 13, 16);
-    public static final int SURFACE = Color.rgb(25, 29, 36);
-    public static final int SURFACE_HIGH = Color.rgb(36, 41, 50);
-    public static final int TEXT = Color.rgb(244, 247, 255);
-    public static final int TEXT_MUTED = Color.rgb(177, 185, 199);
-    public static final int ACCENT = Color.rgb(155, 190, 255);
-
     private Ui() {}
+
+    public static int background(Context context) { return color(context, R.attr.comicBackground, 0xFF0B0D10); }
+    public static int surface(Context context) { return color(context, R.attr.comicSurface, 0xFF191D24); }
+    public static int surfaceHigh(Context context) { return color(context, R.attr.comicSurfaceHigh, 0xFF242932); }
+    public static int text(Context context) { return color(context, R.attr.comicText, 0xFFF4F7FF); }
+    public static int textMuted(Context context) { return color(context, R.attr.comicTextMuted, 0xFFB1B9C7); }
+    public static int accent(Context context) { return color(context, android.R.attr.colorAccent, 0xFF9BBEFF); }
+
+    public static boolean lightAppearance(Context context, String mode) {
+        if ("light".equals(mode)) return true;
+        if ("dark".equals(mode)) return false;
+        return (context.getResources().getConfiguration().uiMode
+                & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                != android.content.res.Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    private static int color(Context context, int attribute, int fallback) {
+        TypedValue value = new TypedValue();
+        return context.getTheme().resolveAttribute(attribute, value, true) ? value.data : fallback;
+    }
 
     public static int dp(Context context, float value) {
         return Math.round(TypedValue.applyDimension(
@@ -38,7 +52,7 @@ public final class Ui {
     }
 
     public static TextView iconButton(Context context, String glyph, String description) {
-        TextView button = text(context, glyph, 24, TEXT);
+        TextView button = text(context, glyph, 24, text(context));
         button.setGravity(Gravity.CENTER);
         button.setContentDescription(description);
         button.setFocusable(true);
@@ -51,7 +65,7 @@ public final class Ui {
     public static ImageButton iconButton(Context context, int icon, String description) {
         ImageButton button = new ImageButton(context);
         button.setImageResource(icon);
-        button.setImageTintList(ColorStateList.valueOf(TEXT));
+        button.setImageTintList(ColorStateList.valueOf(text(context)));
         button.setContentDescription(description);
         button.setTooltipText(description);
         button.setFocusable(true);
@@ -70,15 +84,15 @@ public final class Ui {
     }
 
     public static TextView actionButton(Context context, int label, int icon) {
-        TextView button = text(context, context.getString(label), 15, ACCENT);
+        TextView button = text(context, context.getString(label), 15, accent(context));
         button.setGravity(Gravity.CENTER);
         button.setPadding(dp(context, 16), dp(context, 10), dp(context, 16), dp(context, 10));
         button.setMinimumHeight(dp(context, 48));
-        button.setCompoundDrawablesRelative(icon(context, icon, 22, ACCENT), null, null, null);
+        button.setCompoundDrawablesRelative(icon(context, icon, 22, accent(context)), null, null, null);
         button.setCompoundDrawablePadding(dp(context, 10));
         button.setFocusable(true);
         button.setClickable(true);
-        button.setBackground(rounded(SURFACE, dp(context, 12), SURFACE_HIGH, dp(context, 1)));
+        button.setBackground(rounded(surface(context), dp(context, 12), surfaceHigh(context), dp(context, 1)));
         return button;
     }
 

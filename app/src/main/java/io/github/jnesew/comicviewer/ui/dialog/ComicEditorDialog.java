@@ -45,7 +45,7 @@ public final class ComicEditorDialog {
         fields.addView(title, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 54)));
         TextView useOriginal = Ui.text(
-                context, context.getString(R.string.comic_use_original_title), 14, Ui.ACCENT);
+                context, context.getString(R.string.comic_use_original_title), 14, Ui.accent(context));
         useOriginal.setGravity(Gravity.CENTER_VERTICAL);
         useOriginal.setPadding(0, 0, 0, Ui.dp(context, 8));
         useOriginal.setClickable(true);
@@ -152,7 +152,7 @@ public final class ComicEditorDialog {
     }
 
     private TextView editorLabel(int text) {
-        TextView label = Ui.text(context, context.getString(text), 13, Ui.TEXT_MUTED);
+        TextView label = Ui.text(context, context.getString(text), 13, Ui.textMuted(context));
         label.setPadding(0, Ui.dp(context, 8), 0, 0);
         return label;
     }
@@ -161,12 +161,12 @@ public final class ComicEditorDialog {
         RadioButton choice = new RadioButton(context);
         choice.setId(id);
         choice.setText(text);
-        choice.setTextColor(Ui.TEXT);
+        choice.setTextColor(Ui.text(context));
         choice.setTextSize(15);
         choice.setMinHeight(Ui.dp(context, 44));
         choice.setButtonTintList(new ColorStateList(
                 new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
-                new int[]{Ui.ACCENT, Ui.TEXT_MUTED}));
+                new int[]{Ui.accent(context), Ui.textMuted(context)}));
         return choice;
     }
 }

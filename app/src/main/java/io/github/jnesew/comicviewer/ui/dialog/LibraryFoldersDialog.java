@@ -72,7 +72,7 @@ public final class LibraryFoldersDialog {
             rows.addView(rescan, rescanParams);
         }
         if (folders.isEmpty()) {
-            TextView empty = Ui.text(context, context.getString(R.string.library_no_folders), 15, Ui.TEXT_MUTED);
+            TextView empty = Ui.text(context, context.getString(R.string.library_no_folders), 15, Ui.textMuted(context));
             empty.setPadding(0, Ui.dp(context, 16), 0, Ui.dp(context, 16));
             rows.addView(empty);
         }
@@ -81,11 +81,11 @@ public final class LibraryFoldersDialog {
             LinearLayout row = new LinearLayout(context);
             row.setOrientation(LinearLayout.VERTICAL);
             row.setPadding(Ui.dp(context, 12), Ui.dp(context, 8), Ui.dp(context, 6), Ui.dp(context, 8));
-            row.setBackground(Ui.rounded(Ui.SURFACE, Ui.dp(context, 12), Ui.SURFACE_HIGH, Ui.dp(context, 1)));
+            row.setBackground(Ui.rounded(Ui.surface(context), Ui.dp(context, 12), Ui.surfaceHigh(context), Ui.dp(context, 1)));
             LinearLayout titleRow = new LinearLayout(context);
             titleRow.setGravity(Gravity.CENTER_VERTICAL);
             String label = folder.label.isEmpty() ? context.getString(R.string.library_unnamed_folder) : folder.label;
-            TextView title = Ui.text(context, label, 16, Ui.TEXT);
+            TextView title = Ui.text(context, label, 16, Ui.text(context));
             Ui.bold(title);
             titleRow.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             ImageButton remove = Ui.iconButton(context, R.drawable.ic_close,
@@ -103,12 +103,12 @@ public final class LibraryFoldersDialog {
             } catch (RuntimeException invalid) {
                 if (location.isEmpty()) location = folder.uri;
             }
-            TextView secondary = Ui.text(context, location, 12, Ui.TEXT_MUTED);
+            TextView secondary = Ui.text(context, location, 12, Ui.textMuted(context));
             secondary.setMaxLines(3);
             row.addView(secondary);
             TextView status = Ui.text(context, state.detail().isEmpty()
                     ? context.getString(R.string.library_folder_ready) : state.detail(), 13,
-                    state.unavailable() ? Ui.ACCENT : Ui.TEXT_MUTED);
+                    state.unavailable() ? Ui.accent(context) : Ui.textMuted(context));
             status.setPadding(0, Ui.dp(context, 8), 0, 0);
             row.addView(status);
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(

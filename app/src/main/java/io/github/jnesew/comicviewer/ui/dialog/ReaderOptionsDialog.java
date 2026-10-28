@@ -66,7 +66,7 @@ public final class ReaderOptionsDialog {
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(Ui.dp(context, 22), Ui.dp(context, 4), Ui.dp(context, 22), Ui.dp(context, 4));
         TextView explanation = Ui.text(
-                context, context.getString(R.string.reading_direction_message), 14, Ui.TEXT_MUTED);
+                context, context.getString(R.string.reading_direction_message), 14, Ui.textMuted(context));
         explanation.setPadding(0, 0, 0, Ui.dp(context, 8));
         content.addView(explanation, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -78,12 +78,12 @@ public final class ReaderOptionsDialog {
             ids[index] = View.generateViewId();
             choice.setId(ids[index]);
             choice.setText(labels[index]);
-            choice.setTextColor(Ui.TEXT);
+            choice.setTextColor(Ui.text(context));
             choice.setTextSize(16);
             choice.setMinHeight(Ui.dp(context, 52));
             choice.setButtonTintList(new ColorStateList(
                     new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
-                    new int[]{Ui.ACCENT, Ui.TEXT_MUTED}));
+                    new int[]{Ui.accent(context), Ui.textMuted(context)}));
             choices.addView(choice, new RadioGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 52)));
             if (java.util.Objects.equals(values[index], current)) choice.setChecked(true);
@@ -142,11 +142,11 @@ public final class ReaderOptionsDialog {
         options.addView(remember);
 
         TextView defaultZoomTitle = Ui.text(
-                context, context.getString(R.string.option_default_zoom), 15, Ui.TEXT);
+                context, context.getString(R.string.option_default_zoom), 15, Ui.text(context));
         defaultZoomTitle.setPadding(0, Ui.dp(context, 12), 0, Ui.dp(context, 2));
         options.addView(defaultZoomTitle);
         TextView defaultZoomExplanation = Ui.text(
-                context, context.getString(R.string.option_default_zoom_description), 13, Ui.TEXT_MUTED);
+                context, context.getString(R.string.option_default_zoom_description), 13, Ui.textMuted(context));
         defaultZoomExplanation.setPadding(0, 0, 0, Ui.dp(context, 4));
         options.addView(defaultZoomExplanation);
 
@@ -168,12 +168,12 @@ public final class ReaderOptionsDialog {
             defaultZoomIds[index] = View.generateViewId();
             choice.setId(defaultZoomIds[index]);
             choice.setText(defaultZoomLabels[index]);
-            choice.setTextColor(Ui.TEXT);
+            choice.setTextColor(Ui.text(context));
             choice.setTextSize(15);
             choice.setMinHeight(Ui.dp(context, 44));
             choice.setButtonTintList(new ColorStateList(
                     new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
-                    new int[]{Ui.ACCENT, Ui.TEXT_MUTED}));
+                    new int[]{Ui.accent(context), Ui.textMuted(context)}));
             defaultZoomChoices.addView(choice, new RadioGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 44)));
             if (defaultZoomValues[index].equals(selectedDefaultZoom)) choice.setChecked(true);
@@ -212,7 +212,7 @@ public final class ReaderOptionsDialog {
         RadioGroup bufferingChoices = addChoices(options, R.string.option_buffering,
                 bufferingValues, bufferingLabels, preferences.bufferingChoice());
         TextView bufferingHint = Ui.text(context,
-                context.getString(R.string.option_buffering_description), 13, Ui.TEXT_MUTED);
+                context.getString(R.string.option_buffering_description), 13, Ui.textMuted(context));
         bufferingHint.setPadding(0, 0, 0, Ui.dp(context, 6));
         options.addView(bufferingHint);
 
@@ -249,7 +249,7 @@ public final class ReaderOptionsDialog {
 
     private RadioGroup addChoices(LinearLayout options, int title,
             String[] values, int[] labels, String selected) {
-        TextView heading = Ui.text(context, context.getString(title), 15, Ui.TEXT);
+        TextView heading = Ui.text(context, context.getString(title), 15, Ui.text(context));
         heading.setPadding(0, Ui.dp(context, 12), 0, Ui.dp(context, 2));
         options.addView(heading);
         RadioGroup group = new RadioGroup(context);
@@ -258,12 +258,12 @@ public final class ReaderOptionsDialog {
             choice.setId(View.generateViewId());
             choice.setTag(values[index]);
             choice.setText(labels[index]);
-            choice.setTextColor(Ui.TEXT);
+            choice.setTextColor(Ui.text(context));
             choice.setTextSize(15);
             choice.setMinHeight(Ui.dp(context, 44));
             choice.setButtonTintList(new ColorStateList(
                     new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
-                    new int[]{Ui.ACCENT, Ui.TEXT_MUTED}));
+                    new int[]{Ui.accent(context), Ui.textMuted(context)}));
             group.addView(choice, new RadioGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 44)));
             if (values[index].equals(selected)) choice.setChecked(true);
@@ -278,10 +278,10 @@ public final class ReaderOptionsDialog {
     }
 
     private TextView optionsButton(int text) {
-        TextView button = Ui.text(context, context.getString(text), 15, Ui.TEXT);
+        TextView button = Ui.text(context, context.getString(text), 15, Ui.text(context));
         button.setGravity(Gravity.CENTER_VERTICAL);
         button.setPadding(Ui.dp(context, 14), Ui.dp(context, 6), Ui.dp(context, 14), Ui.dp(context, 6));
-        button.setBackground(Ui.rounded(Ui.SURFACE_HIGH, Ui.dp(context, 12), 0, 0));
+        button.setBackground(Ui.rounded(Ui.surfaceHigh(context), Ui.dp(context, 12), 0, 0));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 48));
         params.topMargin = Ui.dp(context, 8);
@@ -296,10 +296,10 @@ public final class ReaderOptionsDialog {
         AlertDialog[] holder = new AlertDialog[1];
         for (String action : SHORTCUT_ACTIONS) {
             TextView button = Ui.text(context,
-                    shortcutLabel(action) + "\n" + preferences.shortcut(action).label(), 15, Ui.TEXT);
+                    shortcutLabel(action) + "\n" + preferences.shortcut(action).label(), 15, Ui.text(context));
             button.setGravity(Gravity.CENTER_VERTICAL);
             button.setPadding(Ui.dp(context, 14), Ui.dp(context, 8), Ui.dp(context, 14), Ui.dp(context, 8));
-            button.setBackground(Ui.rounded(Ui.SURFACE_HIGH, Ui.dp(context, 12), 0, 0));
+            button.setBackground(Ui.rounded(Ui.surfaceHigh(context), Ui.dp(context, 12), 0, 0));
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 64));
             params.bottomMargin = Ui.dp(context, 8);
@@ -324,7 +324,7 @@ public final class ReaderOptionsDialog {
 
     @SuppressLint("GestureBackNavigation")
     private void captureShortcut(String action, Runnable onSaved) {
-        TextView prompt = Ui.text(context, context.getString(R.string.shortcuts_press_combination), 17, Ui.TEXT);
+        TextView prompt = Ui.text(context, context.getString(R.string.shortcuts_press_combination), 17, Ui.text(context));
         prompt.setGravity(Gravity.CENTER);
         prompt.setPadding(Ui.dp(context, 24), Ui.dp(context, 28), Ui.dp(context, 24), Ui.dp(context, 28));
         AlertDialog dialog = new AlertDialog.Builder(context)
@@ -360,12 +360,12 @@ public final class ReaderOptionsDialog {
     private CheckBox checkBox(int label, boolean checked) {
         CheckBox box = new CheckBox(context);
         box.setText(label);
-        box.setTextColor(Ui.TEXT);
+        box.setTextColor(Ui.text(context));
         box.setTextSize(15);
         box.setChecked(checked);
         box.setButtonTintList(new ColorStateList(
                 new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
-                new int[]{Ui.ACCENT, Ui.TEXT_MUTED}));
+                new int[]{Ui.accent(context), Ui.textMuted(context)}));
         box.setMinHeight(Ui.dp(context, 52));
         return box;
     }

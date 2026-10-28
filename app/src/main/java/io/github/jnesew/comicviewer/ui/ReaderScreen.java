@@ -72,10 +72,11 @@ public final class ReaderScreen extends FrameLayout {
     public final ComicCanvasView canvas;
 
     public ReaderScreen(
-            Context context,
+            Context baseContext,
             ReaderPreferences preferences,
             Listener listener) {
-        super(context);
+        super(new android.view.ContextThemeWrapper(baseContext, R.style.Theme_ComicViewer));
+        Context context = getContext();
         this.preferences = preferences;
         this.listener = listener;
         setBackgroundColor(Color.BLACK);
@@ -94,7 +95,7 @@ public final class ReaderScreen extends FrameLayout {
             listener.onHome();
         });
         topBar.addView(home);
-        title = Ui.text(context, context.getString(R.string.reader_default_title), 16, Ui.TEXT);
+        title = Ui.text(context, context.getString(R.string.reader_default_title), 16, Ui.text(getContext()));
         Ui.bold(title);
         title.setSingleLine(true);
         title.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -128,9 +129,9 @@ public final class ReaderScreen extends FrameLayout {
 
         LinearLayout status = new LinearLayout(context);
         status.setGravity(Gravity.CENTER_VERTICAL);
-        pageLabel = Ui.text(context, context.getString(R.string.reader_page_label, 1, 1), 13, Ui.TEXT);
+        pageLabel = Ui.text(context, context.getString(R.string.reader_page_label, 1, 1), 13, Ui.text(getContext()));
         status.addView(pageLabel, new LinearLayout.LayoutParams(0, Ui.dp(context, 30), 1f));
-        retry = Ui.text(context, context.getString(R.string.reader_retry), 14, Ui.ACCENT);
+        retry = Ui.text(context, context.getString(R.string.reader_retry), 14, Ui.accent(getContext()));
         retry.setPadding(Ui.dp(context, 8), 0, Ui.dp(context, 8), 0);
         retry.setMinHeight(Ui.dp(context, 48));
         retry.setClickable(true);
@@ -138,7 +139,7 @@ public final class ReaderScreen extends FrameLayout {
         retry.setVisibility(GONE);
         retry.setOnClickListener(view -> listener.onRetryUnavailable());
         status.addView(retry);
-        zoomLabel = Ui.text(context, context.getString(R.string.reader_fit_width), 13, Ui.ACCENT);
+        zoomLabel = Ui.text(context, context.getString(R.string.reader_fit_width), 13, Ui.accent(getContext()));
         zoomLabel.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         zoomLabel.setPadding(Ui.dp(context, 12), 0, Ui.dp(context, 4), 0);
         zoomLabel.setClickable(true);
@@ -195,11 +196,11 @@ public final class ReaderScreen extends FrameLayout {
             listener.onPrevious();
         });
         controls.addView(previous, new LinearLayout.LayoutParams(0, Ui.dp(context, 52), 1f));
-        modeLabel = Ui.text(context, context.getString(R.string.reader_layout_single), 12, Ui.TEXT);
+        modeLabel = Ui.text(context, context.getString(R.string.reader_layout_single), 12, Ui.text(getContext()));
         modeLabel.setGravity(Gravity.CENTER);
         modeLabel.setClickable(true);
         modeLabel.setFocusable(true);
-        modeLabel.setBackground(Ui.rounded(Ui.SURFACE_HIGH, Ui.dp(context, 18), 0, 0));
+        modeLabel.setBackground(Ui.rounded(Ui.surfaceHigh(getContext()), Ui.dp(context, 18), 0, 0));
         modeLabel.setContentDescription(context.getString(R.string.reader_choose_layout));
         modeLabel.setMaxLines(2);
         modeLabel.setOnClickListener(view -> {
@@ -229,14 +230,14 @@ public final class ReaderScreen extends FrameLayout {
         previewCard.setPadding(
                 Ui.dp(context, 8), Ui.dp(context, 8), Ui.dp(context, 8), Ui.dp(context, 6));
         previewCard.setBackground(Ui.rounded(
-                Ui.SURFACE_HIGH, Ui.dp(context, 14), Ui.ACCENT, Ui.dp(context, 1)));
+                Ui.surfaceHigh(getContext()), Ui.dp(context, 14), Ui.accent(getContext()), Ui.dp(context, 1)));
         previewCard.setElevation(Ui.dp(context, 14));
         previewCard.setVisibility(INVISIBLE);
         previewCard.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
 
         FrameLayout imageFrame = new FrameLayout(context);
         imageFrame.setBackground(Ui.rounded(
-                Ui.HOME_BACKGROUND, Ui.dp(context, 9), 0, 0));
+                Ui.background(getContext()), Ui.dp(context, 9), 0, 0));
         previewImage = new ImageView(context);
         previewImage.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         imageFrame.addView(previewImage, new FrameLayout.LayoutParams(
@@ -246,7 +247,7 @@ public final class ReaderScreen extends FrameLayout {
                 Ui.dp(context, 32), Ui.dp(context, 32), Gravity.CENTER);
         imageFrame.addView(previewLoading, loadingParams);
         previewUnavailable = Ui.text(
-                context, context.getString(R.string.reader_preview_unavailable), 11, Ui.TEXT_MUTED);
+                context, context.getString(R.string.reader_preview_unavailable), 11, Ui.textMuted(getContext()));
         previewUnavailable.setGravity(Gravity.CENTER);
         previewUnavailable.setPadding(Ui.dp(context, 6), 0, Ui.dp(context, 6), 0);
         previewUnavailable.setVisibility(GONE);
@@ -257,7 +258,7 @@ public final class ReaderScreen extends FrameLayout {
         previewCard.addView(imageFrame, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 144)));
         previewLabel = Ui.text(
-                context, context.getString(R.string.reader_page_label, 1, 1), 12, Ui.TEXT);
+                context, context.getString(R.string.reader_page_label, 1, 1), 12, Ui.text(getContext()));
         previewLabel.setGravity(Gravity.CENTER);
         Ui.bold(previewLabel);
         previewCard.addView(previewLabel, new LinearLayout.LayoutParams(
@@ -334,7 +335,7 @@ public final class ReaderScreen extends FrameLayout {
     public void updateBookmark(boolean bookmarked) {
         bookmark.setImageResource(bookmarked ? R.drawable.ic_bookmark_filled : R.drawable.ic_bookmark_outline);
         bookmark.setSelected(bookmarked);
-        bookmark.setImageTintList(android.content.res.ColorStateList.valueOf(bookmarked ? Ui.ACCENT : Ui.TEXT));
+        bookmark.setImageTintList(android.content.res.ColorStateList.valueOf(bookmarked ? Ui.accent(getContext()) : Ui.text(getContext())));
         bookmark.setContentDescription(getResources().getString(bookmarked ?
                 R.string.reader_remove_bookmark : R.string.reader_add_bookmark));
     }
@@ -342,7 +343,7 @@ public final class ReaderScreen extends FrameLayout {
     public void updateFavorite(boolean favorited) {
         favorite.setImageResource(favorited ? R.drawable.ic_star_filled : R.drawable.ic_star_outline);
         favorite.setSelected(favorited);
-        favorite.setImageTintList(android.content.res.ColorStateList.valueOf(favorited ? Ui.ACCENT : Ui.TEXT));
+        favorite.setImageTintList(android.content.res.ColorStateList.valueOf(favorited ? Ui.accent(getContext()) : Ui.text(getContext())));
         favorite.setContentDescription(getResources().getString(favorited
                 ? R.string.title_remove_favorite_named : R.string.title_add_favorite_named, title.getText()));
     }

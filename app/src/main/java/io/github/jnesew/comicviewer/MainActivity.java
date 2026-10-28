@@ -73,19 +73,25 @@ public final class MainActivity extends Activity implements
     private TextView loadingLabel;
 
     private boolean destroyed;
+    private boolean lightAppearance;
+    private String folderDetail = "";
+    private boolean folderScanning;
+    private boolean folderPersistent;
     private Object platformBackCallback;
     private LibraryFoldersDialog foldersDialog;
     private boolean reopenFoldersAfterPicker;
 
     @Override
     protected void onCreate(Bundle state) {
+        preferences = new ReaderPreferences(this);
+        lightAppearance = Ui.lightAppearance(this, preferences.appearance());
+        setTheme(lightAppearance ? R.style.Theme_ComicViewer_Light : R.style.Theme_ComicViewer);
         super.onCreate(state);
         if (state != null) {
             reopenFoldersAfterPicker = state.getBoolean("reopen_folders", false);
         }
         configureEdgeToEdge();
         database = new LibraryDatabase(this);
-        preferences = new ReaderPreferences(this);
         migrateLegacyReadingDirection();
 
         imports = new LibraryImportCoordinator(this, database, new LibraryImportCoordinator.Listener() {
@@ -109,7 +115,10 @@ public final class MainActivity extends Activity implements
         home.restoreState(state);
         session = new ReaderSession(this, database, preferences, imports, new ReaderSession.Host() {
             @Override public boolean isFinishing() { return MainActivity.this.isFinishing(); }
-            @Override public void onReaderActivated() { home.setVisibility(View.GONE); }
+            @Override public void onReaderActivated() {
+                home.setVisibility(View.GONE);
+                showSystemBars(true);
+            }
             @Override public void onLibraryChanged() { if (!destroyed) home.refresh(); }
             @Override public void onKeepScreenOnChanged() { applyKeepScreenOn(); }
             @Override public void onOpening(String message) { showLoading(message); }
@@ -210,10 +219,55 @@ public final class MainActivity extends Activity implements
     @Override
     protected void onResume() {
         super.onResume();
+        applyAppearance();
         session.resumeSpeculative();
         if (database != null && !session.isActive()) {
             mainHandler.postDelayed(() -> scans.maybeScanLibraryFolder(false), 350L);
         }
+    }
+
+    @Override
+    public void onConfigurationChanged(android.content.res.Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        applyAppearance();
+    }
+
+    private void showAppearanceDialog() {
+        String[] modes = {"system", "light", "dark"};
+        String[] labels = {getString(R.string.appearance_system), getString(R.string.appearance_light),
+                getString(R.string.appearance_dark)};
+        int checked = java.util.Arrays.asList(modes).indexOf(preferences.appearance());
+        new AlertDialog.Builder(this).setTitle(R.string.appearance)
+                .setSingleChoiceItems(labels, checked, (dialog, which) -> {
+                    preferences.setAppearance(modes[which]);
+                    dialog.dismiss();
+                    applyAppearance();
+                })
+                .setNegativeButton(R.string.cancel, null).show();
+    }
+
+    private void applyAppearance() {
+        // A system theme change must not reopen an adopted document or interrupt an open request.
+        // The reader keeps its dark controls and independently selected canvas background.
+        if (home == null || session.isBusy()) return;
+        boolean light = Ui.lightAppearance(this, preferences.appearance());
+        if (light == lightAppearance) return;
+        lightAppearance = light;
+        setTheme(light ? R.style.Theme_ComicViewer_Light : R.style.Theme_ComicViewer);
+        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Ui.background(this)));
+        boolean foldersOpen = foldersDialog != null && foldersDialog.isShowing();
+        if (foldersOpen) foldersDialog.dismiss();
+        Bundle saved = new Bundle();
+        home.saveState(saved);
+        home.close();
+        root.removeView(home);
+        home = new HomeView(this, new LibraryQueryController(database), this);
+        home.restoreState(saved);
+        root.addView(home, 0, matchParent());
+        home.requestApplyInsets();
+        updateLibraryFolderUi(folderDetail, folderScanning, folderPersistent);
+        if (foldersOpen) showLibraryFolders();
+        showSystemBars(true);
     }
 
     @Override
@@ -424,6 +478,10 @@ public final class MainActivity extends Activity implements
             home.showCoverSizeDialog();
             return true;
         });
+        menu.getMenu().add(R.string.appearance).setOnMenuItemClickListener(item -> {
+            showAppearanceDialog();
+            return true;
+        });
         menu.getMenu().add(R.string.reader_options).setOnMenuItemClickListener(item -> {
             readerController.showReaderOptions();
             return true;
@@ -503,6 +561,7 @@ public final class MainActivity extends Activity implements
 
     public void onHome() {
         session.leaveReader();
+        applyAppearance();
         reader.setVisibility(View.GONE);
         home.setVisibility(View.VISIBLE);
         home.refresh();
@@ -532,6 +591,9 @@ public final class MainActivity extends Activity implements
 
     private void updateLibraryFolderUi(
             String detail, boolean scanning, boolean persistent) {
+        folderDetail = detail;
+        folderScanning = scanning;
+        folderPersistent = persistent;
         if (home == null || preferences == null) return;
         List<LibraryFolder> folders = preferences.libraryFolders();
         String label = folders.size() == 1 ? folders.get(0).label : folders.isEmpty() ? ""
@@ -596,16 +658,17 @@ public final class MainActivity extends Activity implements
     }
 
     private View createLoadingOverlay() {
-        FrameLayout overlay = new FrameLayout(this);
+        android.content.Context context = new android.view.ContextThemeWrapper(this, R.style.Theme_ComicViewer);
+        FrameLayout overlay = new FrameLayout(context);
         overlay.setBackgroundColor(Color.argb(230, 8, 10, 13));
         overlay.setClickable(true);
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setGravity(Gravity.CENTER);
         ProgressBar spinner = new ProgressBar(this);
-        spinner.setIndeterminateTintList(ColorStateList.valueOf(Ui.ACCENT));
+        spinner.setIndeterminateTintList(ColorStateList.valueOf(Ui.accent(context)));
         content.addView(spinner, new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 52)));
-        loadingLabel = Ui.text(this, getString(R.string.reader_opening), 16, Ui.TEXT);
+        loadingLabel = Ui.text(context, getString(R.string.reader_opening), 16, Ui.text(context));
         loadingLabel.setGravity(Gravity.CENTER);
         loadingLabel.setPadding(Ui.dp(this, 24), Ui.dp(this, 18), Ui.dp(this, 24), 0);
         content.addView(loadingLabel, new LinearLayout.LayoutParams(
@@ -624,6 +687,7 @@ public final class MainActivity extends Activity implements
 
     private void hideLoading() {
         loadingOverlay.setVisibility(View.GONE);
+        applyAppearance();
     }
 
     private void persistReadAccess(Uri uri, int flags) {
@@ -669,9 +733,15 @@ public final class MainActivity extends Activity implements
     }
 
     private void showSystemBars(boolean visible) {
+        boolean light = lightAppearance && (session == null || !session.isActive());
         if (Build.VERSION.SDK_INT >= 30) {
             WindowInsetsController controller = getWindow().getInsetsController();
             if (controller == null) return;
+            controller.setSystemBarsAppearance(light
+                            ? WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                                    | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS : 0,
+                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                            | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
             controller.setSystemBarsBehavior(
                     WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
             if (visible) controller.show(WindowInsets.Type.systemBars());
@@ -680,6 +750,8 @@ public final class MainActivity extends Activity implements
             int layout = View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
                     View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
                     View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
+            if (light) layout |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            getWindow().setNavigationBarColor(light ? Ui.background(this) : Color.BLACK);
             int hidden = View.SYSTEM_UI_FLAG_FULLSCREEN |
                     View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
                     View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;

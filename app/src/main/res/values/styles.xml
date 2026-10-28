@@ -1,5 +1,5 @@
 <resources>
-    <style name="Theme.ComicViewer" parent="android:style/Theme.Material.NoActionBar">
+    <style name="Theme.ComicViewer.Base" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowNoTitle">true</item>
@@ -8,5 +8,27 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:colorAccent">#9BBEFF</item>
         <item name="android:windowBackground">#0B0D10</item>
+        <item name="comicBackground">#0B0D10</item>
+        <item name="comicSurface">#191D24</item>
+        <item name="comicSurfaceHigh">#242932</item>
+        <item name="comicText">#F4F7FF</item>
+        <item name="comicTextMuted">#B1B9C7</item>
     </style>
+    <style name="Theme.ComicViewer" parent="Theme.ComicViewer.Base" />
+    <style name="Theme.ComicViewer.Light.Base" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:colorAccent">#365FAD</item>
+        <item name="android:windowBackground">#F7F8FA</item>
+        <item name="comicBackground">#F7F8FA</item>
+        <item name="comicSurface">#EEF0F4</item>
+        <item name="comicSurfaceHigh">#DCE1EA</item>
+        <item name="comicText">#20242C</item>
+        <item name="comicTextMuted">#596272</item>
+    </style>
+    <style name="Theme.ComicViewer.Light" parent="Theme.ComicViewer.Light.Base" />
 </resources>
