@@ -43,10 +43,17 @@ view's search, filter, and scroll position. Use each card's options menu to chan
 a small star beside its title indicates a favorite without covering the artwork.
 
 **Unread** is the explicit read status, independent of saved reading position. Title cards show
-**Unread**, the current page and page count, or **Completed**. Series cards show issue totals and
-unread counts, or **Caught up**. Cards show a separate issue number when structured metadata
-supplies one. Dates embedded in filenames or titles remain part of the title; ComicViewer does not
-guess publication dates from them.
+**Unread** or **Completed**; comics in progress show a thin bar in the same space below the title.
+The bar estimates position using both the saved page and the scroll position within that page, so
+it also moves while reading a single long strip. Pages have equal weight, so the estimate is
+approximate when their heights differ. Reaching the end of the bar does not itself mark a comic
+completed. The reader still shows the page counter, and accessibility descriptions include both
+the library percentage and the page counter.
+
+Series cards show issue totals and unread counts, or **Caught up**. Individual issue numbers,
+when supplied by structured metadata, appear as small badges over the bottom of the cover.
+Missing issue numbers do not leave a blank line beneath the title. Dates embedded in filenames
+or titles remain part of the title; ComicViewer does not guess publication dates from them.
 
 Tap the options button on a cover, or long-press a title or series, to open its action menu.
 Choose **Forget** in that menu to remove the entry. Forgetting deletes

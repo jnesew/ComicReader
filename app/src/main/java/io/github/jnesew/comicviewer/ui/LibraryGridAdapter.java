@@ -11,6 +11,7 @@ import android.widget.ImageView;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import io.github.jnesew.comicviewer.R;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
@@ -31,7 +32,6 @@ final class LibraryGridAdapter extends BaseAdapter {
     private List<ReadingProgress> rows = Collections.emptyList();
     private List<SeriesGroup> seriesRows = Collections.emptyList();
     private boolean seriesGrid;
-    private boolean reserveIssueLine;
 
     LibraryGridAdapter(Context context, HomeView.Listener listener, Consumer<SeriesGroup> onSeries,
             CoverThumbnailLoader covers, LibraryGridDensity density) {
@@ -45,24 +45,6 @@ final class LibraryGridAdapter extends BaseAdapter {
         this.rows = rows;
         this.seriesRows = seriesRows;
         this.seriesGrid = seriesGrid;
-        // Every card in this snapshot needs the same optional metadata space. GridView
-        // positions rows from the bottom when scrolling back toward earlier results.
-        reserveIssueLine = false;
-        if (seriesGrid) {
-            for (SeriesGroup group : seriesRows) {
-                if (group.isStandalone() && hasIssueNumber(group.issues.get(0))) {
-                    reserveIssueLine = true;
-                    break;
-                }
-            }
-        } else {
-            for (ReadingProgress item : rows) {
-                if (hasIssueNumber(item)) {
-                    reserveIssueLine = true;
-                    break;
-                }
-            }
-        }
         notifyDataSetChanged();
     }
     void setDensity(LibraryGridDensity density) { gridDensity = density; }
@@ -105,8 +87,6 @@ final class LibraryGridAdapter extends BaseAdapter {
         }
         ReadingProgress item = rows.get(position);
         holder.root.setAlpha(item.available ? 1f : 0.62f);
-        holder.root.setContentDescription(context.getResources().getString(
-                R.string.comic_accessibility_progress, item.title, item.percent()));
         holder.root.setOnClickListener(view -> listener.onRecentRequested(item));
         holder.root.setOnLongClickListener(view -> {
             showComicMenu(holder.options, item);
@@ -120,18 +100,14 @@ final class LibraryGridAdapter extends BaseAdapter {
         covers.bindCover(holder.cover, item);
         bindTitle(holder.title, item.title, item.favorite);
         bindIssue(holder.issue, item);
-        bindTitleDetails(holder.details, item);
+        bindTitleDetails(holder, item);
         return convertView;
     }
 
     private void bindSeriesCard(CardHolder holder, SeriesGroup group) {
         ReadingProgress standalone = group.isStandalone() ? group.issues.get(0) : null;
         holder.root.setAlpha(group.isUnavailable() ? 0.62f : 1f);
-        if (standalone != null) {
-            holder.root.setContentDescription(context.getResources().getString(
-                    R.string.comic_accessibility_progress,
-                    standalone.title, standalone.percent()));
-        } else {
+        if (standalone == null) {
             String seriesDescription = context.getResources().getQuantityString(
                     R.plurals.series_accessibility_issues, group.issues.size(),
                     group.title, group.issues.size());
@@ -159,10 +135,12 @@ final class LibraryGridAdapter extends BaseAdapter {
         covers.bindCover(holder.cover, group.cover);
         bindTitle(holder.title, group.title, group.favorite);
         if (standalone != null) bindIssue(holder.issue, standalone);
-        else holder.issue.setVisibility(reserveIssueLine ? View.INVISIBLE : View.GONE);
+        else holder.issue.setVisibility(View.GONE);
         if (standalone != null) {
-            bindTitleDetails(holder.details, standalone);
+            bindTitleDetails(holder, standalone);
         } else {
+            holder.progress.setVisibility(View.GONE);
+            holder.details.setVisibility(View.VISIBLE);
             String total = context.getResources().getQuantityString(
                     R.plurals.series_issue_count, group.issues.size(), group.issues.size());
             String status = group.isCaughtUp()
@@ -179,20 +157,37 @@ final class LibraryGridAdapter extends BaseAdapter {
         }
     }
 
-    private void bindTitleDetails(TextView details, ReadingProgress item) {
-        if (!item.available) {
-            details.setText(R.string.comic_status_unavailable);
-        } else if (item.isCompleted()) {
-            details.setText(R.string.comic_status_completed);
-        } else if (item.isNew()) {
-            details.setText(R.string.comic_status_new);
-        } else if (item.pageCount > 0) {
-            details.setText(context.getResources().getString(
-                    R.string.comic_page_progress,
-                    Math.min(item.page + 1, item.pageCount), item.pageCount));
+    private void bindTitleDetails(CardHolder holder, ReadingProgress item) {
+        TextView details = holder.details;
+        boolean inProgress = item.available && !item.isCompleted() && !item.isNew() && item.pageCount > 0;
+        // The label continues to reserve the same two-line area while a bar replaces its first line.
+        // Neither reading state nor a missing cover badge can change the height of a recycled card.
+        details.setVisibility(inProgress ? View.INVISIBLE : View.VISIBLE);
+        holder.progress.setVisibility(inProgress ? View.VISIBLE : View.GONE);
+        String status;
+        if (inProgress) {
+            int percent = Math.min(99, item.positionPercent());
+            holder.progress.setProgress(percent);
+            details.setText("");
+            status = context.getString(R.string.comic_in_progress_percent, percent) + ", "
+                    + context.getString(R.string.comic_page_progress,
+                            Math.max(0, Math.min(item.page, item.pageCount - 1)) + 1, item.pageCount);
+            holder.progress.setContentDescription(status);
         } else {
-            details.setText(R.string.comic_status_indexing);
+            if (!item.available) {
+                details.setText(R.string.comic_status_unavailable);
+            } else if (item.isCompleted()) {
+                details.setText(R.string.comic_status_completed);
+            } else if (item.isNew()) {
+                details.setText(R.string.comic_status_new);
+            } else {
+                details.setText(R.string.comic_status_indexing);
+            }
+            status = details.getText().toString();
         }
+        String title = item.title;
+        if (hasIssueNumber(item)) title += ", " + context.getString(R.string.comic_issue_number, item.seriesNumber);
+        holder.root.setContentDescription(title + ", " + status);
     }
 
     private void showComicMenu(View anchor, ReadingProgress item) {
@@ -261,8 +256,9 @@ final class LibraryGridAdapter extends BaseAdapter {
 
     private void bindIssue(TextView subtitle, ReadingProgress item) {
         boolean structured = hasIssueNumber(item);
-        subtitle.setVisibility(structured ? View.VISIBLE : reserveIssueLine ? View.INVISIBLE : View.GONE);
-        subtitle.setText(structured ? context.getString(R.string.comic_issue_number, item.seriesNumber) : "");
+        subtitle.setVisibility(structured ? View.VISIBLE : View.GONE);
+        subtitle.setText(structured ? item.seriesNumber.trim() : "");
+        subtitle.setContentDescription(structured ? context.getString(R.string.comic_issue_number, item.seriesNumber) : null);
     }
 
     private static boolean hasIssueNumber(ReadingProgress item) {
@@ -292,6 +288,17 @@ final class LibraryGridAdapter extends BaseAdapter {
         FrameLayout.LayoutParams optionsParams = new FrameLayout.LayoutParams(
                 Ui.dp(context, 48), Ui.dp(context, 48), Gravity.TOP | Gravity.END);
         coverFrame.addView(options, optionsParams);
+        TextView issue = Ui.text(context, "", Math.max(11, density.detailTextSp - 1), android.graphics.Color.WHITE);
+        issue.setSingleLine(true);
+        issue.setEllipsize(TextUtils.TruncateAt.END);
+        issue.setIncludeFontPadding(false);
+        issue.setPadding(Ui.dp(context, 6), Ui.dp(context, 3), Ui.dp(context, 6), Ui.dp(context, 3));
+        issue.setBackground(Ui.rounded(0xB30B0D10, Ui.dp(context, 5), 0, 0));
+        issue.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        FrameLayout.LayoutParams issueParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.START);
+        issueParams.setMargins(Ui.dp(context, 6), Ui.dp(context, 6), Ui.dp(context, 6), Ui.dp(context, 6));
+        coverFrame.addView(issue, issueParams);
         root.addView(coverFrame, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, density.coverHeightDp)));
 
@@ -305,12 +312,6 @@ final class LibraryGridAdapter extends BaseAdapter {
         root.addView(title, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        TextView issue = Ui.text(context, "", density.detailTextSp, Ui.textMuted(context));
-        issue.setSingleLine(true);
-        issue.setEllipsize(TextUtils.TruncateAt.END);
-        root.addView(issue, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
         TextView details = Ui.text(context, "", density.detailTextSp, Ui.textMuted(context));
         // Full card width normally fits one line; retain room for Finnish, large fonts and dense grids.
         // Equal line counts keep neighboring cover rows aligned when GridView fills in either direction.
@@ -318,9 +319,24 @@ final class LibraryGridAdapter extends BaseAdapter {
         details.setGravity(Gravity.TOP);
         details.setPadding(0, Ui.dp(context, 6), 0, 0);
         details.setEllipsize(TextUtils.TruncateAt.END);
-        root.addView(details, new LinearLayout.LayoutParams(
+        FrameLayout status = new FrameLayout(context);
+        status.addView(details, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        return new CardHolder(root, cover, title, issue, options, details);
+        ProgressBar progress = new ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setIndeterminate(false);
+        progress.setMax(100);
+        progress.setProgressTintList(ColorStateList.valueOf(Ui.accent(context)));
+        progress.setProgressBackgroundTintList(ColorStateList.valueOf(Ui.surfaceHigh(context)));
+        progress.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        int barHeight = Ui.dp(context, 4);
+        FrameLayout.LayoutParams progressParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, barHeight);
+        android.graphics.Paint.FontMetricsInt metrics = details.getPaint().getFontMetricsInt();
+        progressParams.topMargin = details.getPaddingTop() + Math.max(0, (metrics.bottom - metrics.top - barHeight) / 2);
+        status.addView(progress, progressParams);
+        root.addView(status, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return new CardHolder(root, cover, title, issue, options, details, progress);
     }
 
     private static final class CardHolder {
@@ -330,14 +346,16 @@ final class LibraryGridAdapter extends BaseAdapter {
         final TextView issue;
         final ImageButton options;
         final TextView details;
+        final ProgressBar progress;
         CardHolder(LinearLayout root, ImageView cover, TextView title, TextView issue,
-                ImageButton options, TextView details) {
+                ImageButton options, TextView details, ProgressBar progress) {
             this.root = root;
             this.cover = cover;
             this.title = title;
             this.issue = issue;
             this.options = options;
             this.details = details;
+            this.progress = progress;
         }
     }
 }

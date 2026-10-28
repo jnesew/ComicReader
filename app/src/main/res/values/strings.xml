@@ -57,6 +57,7 @@
     <string name="cover_description">Cover of %1$s</string>
     <string name="comic_accessibility_progress">%1$s, reading position %2$d percent</string>
     <string name="comic_page_progress">Page %1$d / %2$d</string>
+    <string name="comic_in_progress_percent">In progress, %1$d%%</string>
     <string name="comic_status_new">Unread</string>
     <string name="comic_status_completed">Completed</string>
     <string name="comic_mark_read">Mark read</string>

@@ -45,6 +45,14 @@ public final class ReadingProgress {
         return Math.round(100f * Math.max(0, Math.min(page, pageCount - 1)) / (pageCount - 1));
     }
 
+    /** Approximate position including the saved offset within a page; each page has equal weight. */
+    public int positionPercent() {
+        if (pageCount <= 0) return 0;
+        int currentPage = Math.max(0, Math.min(page, pageCount - 1));
+        double withinPage = Float.isFinite(scrollRatio) ? Math.max(0f, Math.min(scrollRatio, 1f)) : 0d;
+        return (int) Math.round(100d * (currentPage + withinPage) / pageCount);
+    }
+
     public boolean isNew() {
         return lastOpened <= 0L && !read;
     }

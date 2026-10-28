@@ -57,6 +57,7 @@
     <string name="cover_description">Sarjakuvan %1$s kansi</string>
     <string name="comic_accessibility_progress">%1$s, lukukohta %2$d prosenttia</string>
     <string name="comic_page_progress">Sivu %1$d / %2$d</string>
+    <string name="comic_in_progress_percent">Kesken, %1$d %%</string>
     <string name="comic_status_new">Lukematon</string>
     <string name="comic_status_completed">Valmis</string>
     <string name="comic_mark_read">Merkitse luetuksi</string>
