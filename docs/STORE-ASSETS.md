@@ -2,7 +2,7 @@
 
 ## Screenshot captures
 
-The README gallery and fastlane screenshot selection show ComicViewer v1.4.0 on an
+The [screenshot gallery](SCREENSHOTS.md) and fastlane selection show ComicViewer v1.4.0 on an
 Android 16 (API 36) emulator. Portrait captures are 1080 × 2400 pixels; the landscape
 spread is 2400 × 1080. Libraries use Compact cover size with three columns at
 420 dpi and the default font scale. All captures are unedited PNGs from the app,
@@ -27,8 +27,9 @@ the English captures are Finnish. The 512 px icon is existing project artwork, u
 | 6.png | [light-library.png](screenshots/light-library.png) | Light appearance, issue badges, and hybrid status |
 | 7.png | [title-library.png](screenshots/title-library.png) | Matching Dark title library |
 
-Additional README captures show immersive continuous reading, reader options,
-comic metadata editing, and a landscape spread.
+The README previews the title library in both appearances, single-page reading,
+and continuous series reading. The full gallery also shows library management,
+immersive reading, reader options, and a landscape spread.
 
 ## Artwork sources
 
