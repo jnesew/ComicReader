@@ -15,7 +15,7 @@ final class BenchPolicy {
         BenchPolicy combined = new BenchPolicy("combined_original_cap", true, true, true, true, 0);
         BenchPolicy cap = new BenchPolicy("combined_96_mib_requested", true, true, true, true, 96);
         if ("smoke".equals(suite)) return List.of(baseline, combined);
-        if (!"individual".equals(suite)) return List.of(baseline, combined, cap);
+        if (!"individual".equals(suite) && !"smoke_all".equals(suite)) return List.of(baseline, combined, cap);
         return List.of(baseline,
                 new BenchPolicy("lookahead_only", true, false, false, false, 0),
                 new BenchPolicy("refill_only", false, true, false, false, 0),

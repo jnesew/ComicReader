@@ -34,7 +34,7 @@ final class BenchRunner {
 
     void run() throws Exception {
         List<BenchPolicy> policies = BenchPolicy.policies(suite);
-        String[][] cases = "smoke".equals(suite)
+        String[][] cases = suite.startsWith("smoke")
                 ? new String[][]{{"raster.cbz", "single"}, {"vector.pdf", "spread"}, {"strips.cbz", "continuous"},
                         {"images.epub", "continuous"}, {"fallback.cbz", "single"}, {"issue-a.cbz", "series"}}
                 : "individual".equals(suite)
@@ -45,7 +45,7 @@ final class BenchRunner {
         for (String name : new String[]{"raster.cbz", "strips.cbz", "vector.pdf", "images.epub", "fallback.cbz", "issue-a.cbz", "issue-b.cbz", "issue-c.cbz"}) {
             check(); preparedFixtures.put(name, BenchFiles.fixture(host, name));
         }
-        int repeats = "smoke".equals(suite) ? 1 : "soak".equals(suite) ? 8 : 2;
+        int repeats = suite.startsWith("smoke") ? 1 : "soak".equals(suite) ? 8 : 2;
         for (int repeat = 0; repeat < repeats; repeat++) {
             List<BenchPolicy> order = new ArrayList<>(policies);
             if ((repeat & 1) != 0) Collections.reverse(order);
@@ -53,7 +53,7 @@ final class BenchRunner {
                 if (repeat == 0) one(policies.get(0), scenario[0], scenario[1], -1);
                 for (BenchPolicy policy : order) {
                     check(); one(policy, scenario[0], scenario[1], repeat);
-                    Thread.sleep("smoke".equals(suite) ? 150 : 600);
+                    Thread.sleep(suite.startsWith("smoke") ? 150 : 600);
                 }
             }
         }
@@ -114,19 +114,19 @@ final class BenchRunner {
                 result.put("status", timeouts == 0 ? "warmup" : "readiness_timeout");
                 return;
             }
-            dwell("smoke".equals(suite) ? 250 : 1200);
+            dwell(suite.startsWith("smoke") ? 250 : 1200);
             int last = documents.get(0).count() - 1;
             if (ComicCanvasView.CONTINUOUS.equals(position.readingMode)) {
-                int steps = "smoke".equals(suite) ? 2 : 5;
+                int steps = suite.startsWith("smoke") ? 2 : 5;
                 for (int i = 0; i < steps; i++) gesture(true, renderError);
                 for (int i = 0; i < 2; i++) gesture(false, renderError);
                 action("zoom_in", () -> view.multiplyZoom(1.25f), renderError);
                 action("zoom_out", view::fitWidth, renderError);
             } else {
-                int steps = "smoke".equals(suite) ? 2 : 4;
+                int steps = suite.startsWith("smoke") ? 2 : 4;
                 for (int i = 0; i < steps; i++) {
                     action("next", () -> view.showPage(view.navigationTarget(1), 0), renderError);
-                    dwell("smoke".equals(suite) ? 100 : 450);
+                    dwell(suite.startsWith("smoke") ? 100 : 450);
                 }
                 for (int i = 0; i < 2; i++) action("reverse", () -> view.showPage(view.navigationTarget(-1), 0), renderError);
                 action("zoom_in", () -> view.multiplyZoom(1.25f), renderError);
@@ -134,7 +134,7 @@ final class BenchRunner {
             }
             action("jump", () -> view.showPage(last, 0), renderError);
             action("return", () -> view.showPage(0, 0), renderError);
-            dwell("smoke".equals(suite) ? 150 : 600);
+            dwell(suite.startsWith("smoke") ? 150 : 600);
             if (renderError.get() != null) throw new IllegalStateException(renderError.get());
             if (shared.usedBytes() + shared.reservedBytes() > shared.limitBytes()) throw new AssertionError("Shared retained+pending ceiling exceeded");
             result.put("status", timeouts == 0 ? "completed" : "readiness_timeout");
@@ -207,7 +207,7 @@ final class BenchRunner {
         float start = bounds.height() * (forward ? .8f : .2f);
         float end = bounds.height() * (forward ? .2f : .8f);
         touch(down, down, MotionEvent.ACTION_DOWN, bounds.width() / 2f, start);
-        long duration = "smoke".equals(suite) ? 180 : 650;
+        long duration = suite.startsWith("smoke") ? 180 : 650;
         for (int i = 1; i <= 15; i++) {
             dwell(duration / 15);
             touch(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_MOVE, bounds.width() / 2f, start + (end - start) * i / 15f);

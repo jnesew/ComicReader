@@ -174,6 +174,9 @@ For emulator automation only, the test launcher accepts `--es suite smoke` throu
 `am start`; the regular launcher requires a user tap. Smoke exercises the core formats
 and series scenario once with baseline/combined at original capacity. It is a functional
 check, not a hardware benchmark. Inspect/export results through the same app UI.
+`--es suite smoke_all` exercises all nine configurations with the same shortened
+gestures and one repeat. Warm-up cases remain separate. These automation-only modes
+do not replace the full-length on-device comparisons.
 
 Before distributing, verify the benchmark is non-debuggable, requests no permissions,
 and contains the expected fixture hashes. Verify the normal release APK contains no

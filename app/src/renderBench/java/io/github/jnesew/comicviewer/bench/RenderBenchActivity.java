@@ -44,7 +44,7 @@ public final class RenderBenchActivity extends Activity {
         home(lastRun == null ? getString(R.string.bench_ready) : getString(R.string.bench_incomplete));
         // Explicit emulator automation entry. Normal launcher use never starts tests automatically.
         String requested = getIntent().getStringExtra("suite");
-        if ("smoke".equals(requested)) main.postDelayed(() -> start("smoke"), 600);
+        if ("smoke".equals(requested) || "smoke_all".equals(requested)) main.postDelayed(() -> start(requested), 600);
     }
 
     private void home(String message) {
