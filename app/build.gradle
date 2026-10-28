@@ -43,12 +43,13 @@ android {
     buildToolsVersion = '35.0.1'
 
     defaultConfig {
-        applicationId = 'io.github.jnesew.comicviewer'
+        applicationId = providers.gradleProperty('comicViewerApplicationId').orElse('io.github.jnesew.comicviewer').get()
         minSdk = 26
         targetSdk = 36
         testInstrumentationRunner = "io.github.jnesew.comicviewer.data.DatabaseTestRunner"
         versionCode = comicViewerVersionCode
         versionName = comicViewerVersionName
+        manifestPlaceholders = [comicViewerFixtureAuthority: "${applicationId}.test.documents"]
     }
 
     signingConfigs {

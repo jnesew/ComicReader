@@ -33,14 +33,18 @@ cleanup() {
 trap cleanup EXIT
 
 commit="$(git rev-parse HEAD)"
+origin_url="$(git remote get-url origin)"
 for checkout in "$work_dir/one" "$work_dir/two"; do
     git clone --quiet --no-local --no-checkout "$project_dir" "$checkout"
     git -C "$checkout" checkout --quiet --detach "$commit"
-    git -C "$checkout" remote set-url origin https://github.com/jnesew/ComicReader.git
+    git -C "$checkout" remote set-url origin "$origin_url"
     test -z "$(git -C "$checkout" status --porcelain)"
 done
 
 version_name="$(sed -n 's/^comicViewerVersionName=//p' gradle.properties | tail -n 1)"
+artifact_prefix="$(sed -n 's/^comicViewerArtifactPrefix=//p' gradle.properties | tail -n 1 | tr -d '\r')"
+artifact_prefix="${artifact_prefix:-ComicViewer-Android}"
+[[ "$artifact_prefix" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { echo 'Invalid comicViewerArtifactPrefix.' >&2; exit 1; }
 export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
 export TZ=UTC
 export LC_ALL=C.UTF-8
@@ -66,7 +70,7 @@ build_one() {
             cd "$checkout"
             ./build-local.sh --unsigned
         )
-        cp "$checkout/dist/ComicViewer-Android-v${version_name}-unsigned.apk" "$output"
+        cp "$checkout/dist/${artifact_prefix}-v${version_name}-unsigned.apk" "$output"
     fi
 }
 

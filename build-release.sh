@@ -22,9 +22,12 @@ export TZ=UTC LC_ALL=C.UTF-8
 ./gradlew --no-daemon --dependency-verification strict \
     -PcomicViewerUnsignedRelease=true clean verifyToolchainDependencies testDebugUnitTest lintRelease assembleRelease
 version_name="$(sed -n 's/^comicViewerVersionName=//p' gradle.properties | tail -n 1)"
+artifact_prefix="$(sed -n 's/^comicViewerArtifactPrefix=//p' gradle.properties | tail -n 1 | tr -d '\r')"
+artifact_prefix="${artifact_prefix:-ComicViewer-Android}"
+[[ "$artifact_prefix" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { echo 'Invalid comicViewerArtifactPrefix.' >&2; exit 1; }
 mkdir -p dist
 if [[ -z "$output" ]]; then
-    output="dist/ComicViewer-Android-v${version_name}-unsigned.apk"
+    output="dist/${artifact_prefix}-v${version_name}-unsigned.apk"
     cp app/build/outputs/apk/release/app-release-unsigned.apk "$output"
 else
     (set -o noclobber; cat app/build/outputs/apk/release/app-release-unsigned.apk > "$output")

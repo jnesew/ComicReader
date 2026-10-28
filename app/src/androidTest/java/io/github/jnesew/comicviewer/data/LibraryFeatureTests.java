@@ -22,20 +22,22 @@ final class LibraryFeatureTests {
     private final Instrumentation instrumentation;
     private final Context context;
     private final LibraryDatabase db;
+    private final String authority;
 
     LibraryFeatureTests(Instrumentation instrumentation, LibraryDatabase db) {
         this.instrumentation = instrumentation; this.context = instrumentation.getTargetContext(); this.db = db;
+        this.authority = FixtureDocumentsProvider.authority(context.getPackageName());
     }
-    private static Uri tree(String id) {
-        return DocumentsContract.buildTreeDocumentUri(FixtureDocumentsProvider.AUTHORITY, id);
+    private Uri tree(String id) {
+        return DocumentsContract.buildTreeDocumentUri(authority, id);
     }
-    private static Uri manual() {
-        return DocumentsContract.buildDocumentUri(FixtureDocumentsProvider.AUTHORITY, "m-book");
+    private Uri manual() {
+        return DocumentsContract.buildDocumentUri(authority, "m-book");
     }
     private ReaderPreferences preferences() { return new ReaderPreferences(context, PREFS, BufferingPolicy.STANDARD); }
     private void main(Runnable action) { instrumentation.runOnMainSync(action); }
     private Bundle fixture(String method, Bundle options) {
-        return context.getContentResolver().call(Uri.parse("content://" + FixtureDocumentsProvider.AUTHORITY),
+        return context.getContentResolver().call(Uri.parse("content://" + authority),
                 "fixture-" + method, null, options);
     }
     private void options(String... enabled) {
@@ -164,6 +166,7 @@ final class LibraryFeatureTests {
             context.deleteSharedPreferences(PREFS); prefs = preferences();
             android.content.Intent grant = new android.content.Intent();
             grant.setClassName(instrumentation.getContext().getPackageName(), FixtureGrantActivity.class.getName());
+            grant.putExtra("targetPackage", context.getPackageName());
             grant.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
             context.startActivity(grant);
             long end = System.currentTimeMillis() + 5_000;

@@ -76,11 +76,8 @@ does not claim control over modified OEM software outside the application sandbo
 
 ## Local verification
 
-```bash
-scripts/verify-source-security.sh
-scripts/verify-database-roundtrip.sh
-./gradlew --dependency-verification strict verifyToolchainDependencies testDebugUnitTest lintRelease assembleRelease
-scripts/verify-reproducible-build.sh
-```
+Follow the [build verification gate](BUILDING.md#verification), including actual
+Android and manual device checks appropriate to the change. Release identity,
+certificate pins, and publication checks are described in [RELEASING.md](RELEASING.md).
 
 Vulnerability reports follow the root [security policy](../SECURITY.md).

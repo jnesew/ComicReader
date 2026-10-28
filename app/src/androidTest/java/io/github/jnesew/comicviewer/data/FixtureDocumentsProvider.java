@@ -18,7 +18,7 @@ import java.util.zip.ZipOutputStream;
 
 /** A real, test-APK-only provider with opaque IDs and controllable source failures. */
 public final class FixtureDocumentsProvider extends DocumentsProvider {
-    static final String AUTHORITY = "io.github.jnesew.comicviewer.test.documents";
+    static String authority(String targetPackage) { return targetPackage + ".test.documents"; }
     private static final String[] COLUMNS = { Document.COLUMN_DOCUMENT_ID,
             Document.COLUMN_DISPLAY_NAME, Document.COLUMN_MIME_TYPE, Document.COLUMN_SIZE,
             Document.COLUMN_LAST_MODIFIED, Document.COLUMN_FLAGS };

@@ -8,6 +8,7 @@ into the APK:
 |---|---|---|
 | Gradle Wrapper 8.14.6 | Reproducible build bootstrap; the wrapper JAR is vendored | Apache License 2.0 |
 | Android Gradle Plugin 8.13.2 | Build tooling downloaded from Google's Maven repository | Apache License 2.0 (AOSP build tooling) |
+| Tink 1.14.1 | Transitive build-tool cryptography and generated Protobuf classes | Apache License 2.0 |
 | Android SDK Platform/Build Tools | Compilation, packaging, alignment, and signature verification | Android SDK license terms |
 | JUnit 4.13.2 | Unit tests only | Eclipse Public License 1.0 |
 | Hamcrest Core 1.3 | Transitive unit-test assertions only | BSD 3-Clause License |
@@ -20,8 +21,11 @@ ComicViewer's source tree or APK.
 The Android Gradle Plugin is AOSP build tooling; see the
 [upstream Gradle task source license](https://android.googlesource.com/platform/tools/base/+/studio-master-dev/build-system/gradle-core/src/main/java/com/android/build/gradle/internal/TaskManager.java).
 SDK package distribution terms are distinct from the licenses of their individual components.
-The pinned AGP artifact's POM/NOTICE was unavailable during the preparation review, so
-artifact-specific notice verification remains incomplete.
+The pinned AGP POM declares Apache License 2.0, and its JAR includes a `NOTICE` file.
+Resolved transitive coordinates and SHA-256 pins are recorded in
+`gradle/verification-metadata.xml`; the dependency-security build reports show the
+versions actually selected. Inspect artifact licenses/notices when redistributing
+the development tools themselves.
 
 ## Visual assets
 

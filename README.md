@@ -61,6 +61,7 @@ management, and reader controls. See the [changelog](CHANGELOG.md) for release h
 
 For development, see [building from source](docs/BUILDING.md),
 [contributing](CONTRIBUTING.md), and [release preparation](docs/RELEASING.md).
+For an independently branded app, see [forking and publishing](docs/FORKING.md).
 Build-time and test-only components are listed in [third-party notices](THIRD_PARTY_NOTICES.md).
 
 ## Privacy and security

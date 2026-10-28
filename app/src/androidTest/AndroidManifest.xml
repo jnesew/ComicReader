@@ -3,7 +3,7 @@
         <activity android:name="io.github.jnesew.comicviewer.data.FixtureGrantActivity"
             android:exported="true" android:theme="@android:style/Theme.NoDisplay" />
         <provider android:name="io.github.jnesew.comicviewer.data.FixtureDocumentsProvider"
-            android:authorities="io.github.jnesew.comicviewer.test.documents"
+            android:authorities="${comicViewerFixtureAuthority}"
             android:exported="true" android:grantUriPermissions="true"
             android:permission="android.permission.MANAGE_DOCUMENTS">
             <intent-filter>

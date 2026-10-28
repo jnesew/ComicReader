@@ -57,8 +57,8 @@ if name=='gradlew':
  if ':app:dependencies' in args:
   print('+--- unexpected:library:1.0' if os.environ.get('FAKE_RUNTIME_DEPENDENCY') else 'No dependencies')
   sys.exit(0)
- props=dict(re.findall(r'^(comicViewerVersion\w+)=(.+)$',Path('gradle.properties').read_text(),re.M))
- data={'package':'io.github.jnesew.comicviewer','version_name':props['comicViewerVersionName'],
+ props=dict(re.findall(r'^(comicViewer\w+)=(.*)$',Path('gradle.properties').read_text(),re.M))
+ data={'package':props.get('comicViewerApplicationId','io.github.jnesew.comicviewer'),'version_name':props['comicViewerVersionName'],
        'version_code':int(props['comicViewerVersionCode']),'debuggable':False,'content':'fixture comic viewer'}
  if os.environ.get('FAKE_APK_VERSION'):data['version_code']=999
  if os.environ.get('FAKE_DEBUGGABLE'):data['debuggable']=True
@@ -271,6 +271,50 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(len(list(bundle.iterdir())),6)
         builds=[event for event in self.events() if event['tool']=='gradlew']
         self.assertTrue(builds);self.assertTrue(all(not event['signing_env'] for event in builds))
+
+    def test_fork_identity_artifacts_and_release_branch(self):
+        package='org.example.myreader'
+        path=self.root/'gradle.properties'
+        path.write_text(path.read_text()+f'comicViewerApplicationId={package}\n'
+                        'comicViewerArtifactPrefix=MyReader-Android\ncomicViewerReleaseName=MyReader\n'
+                        'comicViewerReleaseBranch=stable\ncomicViewerRetiredApplicationIds=\n')
+        notes=self.root/'docs/RELEASE-NOTES-1.3.1.md'
+        notes.write_text(notes.read_text().replace('# ComicViewer','# MyReader',1))
+        asset=self.fixture/'asset-1.json';payload=json.loads(asset.read_text());payload['package']=package
+        asset.write_text(json.dumps(payload,sort_keys=True)+'\n')
+        releases=self.fixture/'releases.json';history=json.loads(releases.read_text())
+        history[0]['assets'][0]['digest']='sha256:'+release.digest(asset)
+        releases.write_text(json.dumps(history))
+        self.retag()
+        self.git('branch','stable');self.git('push','origin','stable')
+        self.git('push','--force','origin',self.previous+':refs/heads/main')
+        output=self.invoke().stdout
+        manifest=json.loads((self.bundle()/'release.json').read_text())
+        self.assertEqual(manifest['package'],package)
+        self.assertTrue((self.bundle()/'MyReader-Android-v1.3.1.apk').is_file())
+        self.assertIn('MyReader-Android-v1.3.1.apk',output)
+        self.assertTrue((self.bundle()/'release-notes.md').read_text().startswith('# MyReader 1.3.1\n'))
+
+    def test_fork_does_not_adopt_another_app_release_history(self):
+        path=self.root/'gradle.properties'
+        path.write_text(path.read_text()+'comicViewerApplicationId=org.example.myreader\ncomicViewerRetiredApplicationIds=\n')
+        self.retag()
+        self.assertIn('Unexpected package in published',self.invoke('--check',ok=False).stderr)
+
+    def test_fork_bump_uses_configured_release_name(self):
+        path=self.root/'gradle.properties'
+        path.write_text(path.read_text()+'comicViewerReleaseName=MyReader\n')
+        self.retag();self.invoke('--bump','patch')
+        self.assertTrue((self.root/'docs/RELEASE-NOTES-1.3.2.md').read_text().startswith('# MyReader 1.3.2\n'))
+
+    def test_invalid_public_settings_stop_before_network_or_signing(self):
+        original=(self.root/'gradle.properties').read_text()
+        for value in ['comicViewerArtifactPrefix=../escape','comicViewerApplicationId=not-a-package',
+                      'comicViewerRetiredApplicationIds='+release.PACKAGE,'comicViewerReleaseBranch=../bad']:
+            with self.subTest(value=value):
+                (self.root/'gradle.properties').write_text(original+value+'\n')
+                self.retag();self.invoke('--check',ok=False)
+                self.assertFalse(any(event['tool']=='gh' for event in self.events()))
 
     def test_preflight_never_builds_or_signs(self):
         self.invoke('--check')

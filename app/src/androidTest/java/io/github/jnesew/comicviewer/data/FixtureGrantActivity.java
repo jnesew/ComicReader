@@ -9,14 +9,17 @@ import android.provider.DocumentsContract;
 public final class FixtureGrantActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        String targetPackage = getIntent().getStringExtra("targetPackage");
+        if (targetPackage == null) throw new IllegalArgumentException("Missing test target package");
+        String authority = FixtureDocumentsProvider.authority(targetPackage);
         for (String id : new String[]{"a", "b", "a-series"}) {
-            grantUriPermission("io.github.jnesew.comicviewer",
-                    DocumentsContract.buildTreeDocumentUri(FixtureDocumentsProvider.AUTHORITY, id),
+            grantUriPermission(targetPackage,
+                    DocumentsContract.buildTreeDocumentUri(authority, id),
                     Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
                             | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         }
-        grantUriPermission("io.github.jnesew.comicviewer",
-                DocumentsContract.buildDocumentUri(FixtureDocumentsProvider.AUTHORITY, "m-book"),
+        grantUriPermission(targetPackage,
+                DocumentsContract.buildDocumentUri(authority, "m-book"),
                 Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         finish();
     }

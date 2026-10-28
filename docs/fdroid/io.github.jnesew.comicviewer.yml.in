@@ -1,22 +1,22 @@
-# Review template. Substitute verified release values before copying to fdroiddata.
+# Review template. Rename to <your-application-id>.yml and substitute every placeholder.
 Categories:
   - Reading
 License: MIT
-SourceCode: https://github.com/jnesew/ComicReader
-IssueTracker: https://github.com/jnesew/ComicReader/issues
-Changelog: https://github.com/jnesew/ComicReader/releases
+SourceCode: https://github.com/OWNER/REPOSITORY
+IssueTracker: https://github.com/OWNER/REPOSITORY/issues
+Changelog: https://github.com/OWNER/REPOSITORY/releases
 
-AutoName: ComicViewer
+AutoName: REPLACE_WITH_APP_NAME
 RepoType: git
-Repo: https://github.com/jnesew/ComicReader.git
+Repo: https://github.com/OWNER/REPOSITORY.git
 
-Binaries: https://github.com/jnesew/ComicReader/releases/download/v%v/ComicViewer-Android-v%v.apk
+Binaries: https://github.com/OWNER/REPOSITORY/releases/download/v%v/ARTIFACT_PREFIX-v%v.apk
 AllowedAPKSigningKeys:
   - REPLACE_WITH_VERIFIED_CERTIFICATE_SHA256
 
 Builds:
-  - versionName: 1.3.0
-    versionCode: 5
+  - versionName: REPLACE_WITH_VERSION_NAME
+    versionCode: REPLACE_WITH_VERSION_CODE
     commit: REPLACE_WITH_FULL_COMMIT_SHA
     subdir: app
     gradle:
@@ -27,5 +27,5 @@ Builds:
 AutoUpdateMode: Version v%v
 UpdateCheckMode: Tags ^v[0-9]+\.[0-9]+\.[0-9]+$
 UpdateCheckData: 'gradle.properties|comicViewerVersionCode=(\d+)|.|comicViewerVersionName=([0-9.]+)'
-CurrentVersion: 1.3.0
-CurrentVersionCode: 5
+CurrentVersion: REPLACE_WITH_VERSION_NAME
+CurrentVersionCode: REPLACE_WITH_VERSION_CODE

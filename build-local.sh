@@ -42,6 +42,13 @@ property_value() {
 version_properties="$project_dir/gradle.properties"
 version_code="$(property_value comicViewerVersionCode "$version_properties")"
 version_name="$(property_value comicViewerVersionName "$version_properties")"
+artifact_prefix="$(property_value comicViewerArtifactPrefix "$version_properties")"
+artifact_prefix="${artifact_prefix:-ComicViewer-Android}"
+[[ "$artifact_prefix" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { echo 'Invalid comicViewerArtifactPrefix.' >&2; exit 1; }
+manifest="$project_dir/app/src/main/AndroidManifest.xml"
+source_namespace="$(sed -n 's/.*package="\([^"]*\)".*/\1/p' "$manifest")"
+application_id="$(property_value comicViewerApplicationId "$version_properties")"
+application_id="${application_id:-$source_namespace}"
 if [[ ! "$version_code" =~ ^[1-9][0-9]*$ ]]; then
     echo "gradle.properties has an invalid comicViewerVersionCode." >&2
     exit 1
@@ -65,7 +72,9 @@ find "$generated_dir" "$classes_dir" "$dex_dir" -mindepth 1 -delete
 
 "$build_tools/aapt2" link \
     -I "$android_jar" \
-    --manifest "$project_dir/app/src/main/AndroidManifest.xml" \
+    --manifest "$manifest" \
+    --custom-package "$source_namespace" \
+    --rename-manifest-package "$application_id" \
     --java "$generated_dir" \
     --min-sdk-version 26 \
     --target-sdk-version 36 \
@@ -105,7 +114,7 @@ zip -q -X -j "$build_dir/with-dex.apk" "$dex_dir/classes.dex"
     "$build_dir/with-dex.apk" "$build_dir/aligned.apk"
 
 if [[ "$signing_mode" == "unsigned" ]]; then
-    apk="$dist_dir/ComicViewer-Android-v${version_name}-unsigned.apk"
+    apk="$dist_dir/${artifact_prefix}-v${version_name}-unsigned.apk"
     cp "$build_dir/aligned.apk" "$apk"
     "$build_tools/zipalign" -c -p 4 "$apk"
     echo "Built unsigned $apk"
@@ -137,7 +146,7 @@ if [[ ! -f "$keystore" || -z "$store_password" || -z "$key_alias" || -z "$key_pa
     exit 1
 fi
 
-apk="$dist_dir/ComicViewer-Android-v${version_name}.apk"
+apk="$dist_dir/${artifact_prefix}-v${version_name}.apk"
 export COMICVIEWER_APKSIGNER_STORE_PASSWORD="$store_password"
 export COMICVIEWER_APKSIGNER_KEY_PASSWORD="$key_password"
 trap 'unset COMICVIEWER_APKSIGNER_STORE_PASSWORD COMICVIEWER_APKSIGNER_KEY_PASSWORD' EXIT

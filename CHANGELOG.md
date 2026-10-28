@@ -21,6 +21,8 @@ All notable public changes to ComicViewer for Android are recorded here.
 
 ### Development
 
+- Consolidated build/release instructions and added a fork publication guide, with
+  configurable distribution identity and test fixtures that follow the application ID.
 - Updated Gradle to 8.14.6 and Tink's generated Protobuf classes, and replaced
   deprecated Gradle property syntax. Unsafe legacy generated code now fails the build.
 - Updated vulnerable transitive Android build and test-tool libraries, removed obsolete

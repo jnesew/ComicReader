@@ -22,7 +22,7 @@
         tools:targetApi="tiramisu">
 
         <activity
-            android:name=".MainActivity"
+            android:name="io.github.jnesew.comicviewer.MainActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize|keyboard|keyboardHidden|uiMode"
             android:exported="true">
             <intent-filter>

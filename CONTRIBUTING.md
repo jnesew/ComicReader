@@ -32,14 +32,10 @@ Keep personal checklists, device results, and local work notes in the root `priv
 which is excluded from Git. Public build tools and documentation must work without that folder.
 Repository instructions for AI agents are maintained in [AGENTS.md](AGENTS.md).
 
-Before submitting an application change, run:
-
-```bash
-scripts/verify-source-security.sh
-scripts/verify-database-roundtrip.sh
-./gradlew --dependency-verification strict verifyToolchainDependencies testDebugUnitTest lintRelease assembleRelease
-scripts/verify-reproducible-build.sh
-```
+Before submitting an application change, run the
+[verification gate](docs/BUILDING.md#verification). Database, rendering, and resource
+ownership changes also need the real connected Android suite described there.
+For your own distribution, follow [forking and publishing](docs/FORKING.md).
 
 Add or update focused tests for behavior changes. Keep user-visible strings in resources and update
 both English and Finnish resources when practical. For documentation-only changes, check references

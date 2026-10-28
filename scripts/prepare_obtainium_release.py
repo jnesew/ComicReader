@@ -94,6 +94,31 @@ def read_version(root):
     return name, int(code)
 
 
+def project_settings(root):
+    defaults = {"comicViewerApplicationId": PACKAGE,
+                "comicViewerArtifactPrefix": "ComicViewer-Android",
+                "comicViewerReleaseName": "ComicViewer", "comicViewerReleaseBranch": "main",
+                "comicViewerRetiredApplicationIds": RETIRED_PACKAGE}
+    data = properties((root / "gradle.properties").read_text(encoding="utf-8"), unique=defaults)
+    values = {key: data.get(key, default) for key, default in defaults.items()}
+    package = values["comicViewerApplicationId"]
+    retired = tuple(value.strip() for value in values["comicViewerRetiredApplicationIds"].split(",") if value.strip())
+    pattern = r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+"
+    require(re.fullmatch(pattern, package) and all(re.fullmatch(pattern, value) for value in retired),
+            "Application IDs must be valid dotted Android package names.")
+    require(package not in retired, "The current application ID cannot also be retired.")
+    prefix = values["comicViewerArtifactPrefix"]
+    require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", prefix), "Invalid comicViewerArtifactPrefix.")
+    title = values["comicViewerReleaseName"]
+    require(title.strip() == title and 0 < len(title) <= 120 and not re.search(r"[\r\n]", title),
+            "comicViewerReleaseName must be a nonempty single line.")
+    branch = values["comicViewerReleaseBranch"]
+    require(not branch.startswith("-") and run(root, ["git", "check-ref-format", "--branch", branch], check=False).returncode == 0,
+            "Invalid comicViewerReleaseBranch.")
+    return {"package": package, "artifact_prefix": prefix, "title": title,
+            "branch": branch, "retired_packages": retired}
+
+
 def digest(path):
     with path.open("rb") as source:
         return hashlib.file_digest(source, "sha256").hexdigest()
@@ -220,13 +245,14 @@ def certificate(root, tools, apk, env):
 
 
 class PublishedHistory:
-    def __init__(self, root, tools, env):
+    def __init__(self, root, tools, env, project=None):
         self.root, self.tools, self.env = root, tools, env
+        self.project = project or project_settings(root)
         require(shutil.which("gh", path=env.get("PATH")), "Install GitHub CLI (gh) and authenticate it.")
         self.repo = repository(root)
         pages = self.api(f"repos/{self.repo}/releases", "--paginate", "--slurp")
         self.releases = [item for page in pages for item in page if not item["draft"]]
-        require(self.releases, "No published releases found; initial publication needs a separate bootstrap.")
+        require(self.releases, "No published releases found; follow docs/FORKING.md#publish-the-first-release.")
         refs = git(root, "ls-remote", "--tags", "origin")
         self.refs = dict(line.split()[::-1] for line in refs.splitlines())
         self.records = []
@@ -239,11 +265,17 @@ class PublishedHistory:
             assets = [a for a in release["assets"] if a["name"].lower().endswith(".apk")]
             require(len(assets) <= 1, f"Release {tag} has multiple APKs; inspect its version history.")
             if not assets:
-                # The retired v1.0.0 release now has only a checksum asset. Establish
-                # its application ID from the remote tagged source instead of guessing.
+                # Historical releases may retain only a checksum asset. Prove their
+                # retired application ID from tagged source before excluding them.
                 commit = self.tag_commit(tag)
                 build = git(root, "show", f"{commit}:app/build.gradle")
-                require(re.search(r"applicationId\s+['\"]" + re.escape(RETIRED_PACKAGE) + r"['\"]", build),
+                retired = self.project["retired_packages"]
+                literal = re.search(r"applicationId\s*(?:=\s*)?['\"]([^'\"]+)['\"]", build)
+                old_package = literal.group(1) if literal else None
+                if not old_package and re.search(r"gradleProperty\(['\"]comicViewerApplicationId['\"]\)", build):
+                    tagged_properties = git(root, "show", f"{commit}:gradle.properties")
+                    old_package = properties(tagged_properties, unique=("comicViewerApplicationId",)).get("comicViewerApplicationId")
+                require(old_package in retired,
                         f"Published {tag} has no APK; restore its artifact before comparing versions.")
                 continue
             asset = assets[0]
@@ -266,9 +298,9 @@ class PublishedHistory:
                 finally:
                     Path(temporary).unlink(missing_ok=True)
             info = apk_info(root, tools, path, env)
-            if info["package"] == RETIRED_PACKAGE:
+            if info["package"] in self.project["retired_packages"]:
                 continue
-            require(info["package"] == PACKAGE, f"Unexpected package in published {tag}.")
+            require(info["package"] == self.project["package"], f"Unexpected package in published {tag}.")
             require(info["version_name"] == tag[1:], f"Published APK and tag disagree for {tag}.")
             info.update(tag=tag, sha256=expected_digest[7:],
                         certificate_sha256=certificate(root, tools, path, env), prerelease=release["prerelease"])
@@ -303,11 +335,12 @@ class PublishedHistory:
         return False
 
 
-def validate_notes(root, name, code):
+def validate_notes(root, name, code, project=None):
+    project = project or project_settings(root)
     notes = root / f"docs/RELEASE-NOTES-{name}.md"
     require(notes.is_file(), f"Missing {notes.relative_to(root)}.")
     text = notes.read_text(encoding="utf-8")
-    require(text.startswith(f"# ComicViewer {name}\n"), "Release notes have the wrong version heading.")
+    require(text.startswith(f"# {project['title']} {name}\n"), "Release notes have the wrong version heading.")
     changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
     match = re.search(r"^## " + re.escape(name) + r" - (\d{4}-\d{2}-\d{2})\n(.*?)(?=^## |\Z)",
                       changelog, re.M | re.S)
@@ -329,7 +362,8 @@ def validate_notes(root, name, code):
     return notes
 
 
-def bump(root, name, code, history, kind):
+def bump(root, name, code, history, kind, project=None):
+    project = project or project_settings(root)
     base = max([stable_version(name)] + [published_version(r["version_name"])[0] for r in history.records])
     parts = list(base)
     index = {"major": 0, "minor": 1, "patch": 2}[kind]
@@ -346,7 +380,7 @@ def bump(root, name, code, history, kind):
         files[path] = text + "\n"
     notes = root / f"docs/RELEASE-NOTES-{new_name}.md"
     require(not notes.exists(), f"Refusing to overwrite {notes.relative_to(root)}.")
-    files[notes] = f"# ComicViewer {new_name}\n\nTODO: Write reviewed release notes.\n"
+    files[notes] = f"# {project['title']} {new_name}\n\nTODO: Write reviewed release notes.\n"
     changelog = root / "CHANGELOG.md"
     text = changelog.read_text(encoding="utf-8")
     require(not re.search(r"^## " + re.escape(new_name) + r"(?: |$)", text, re.M),
@@ -522,10 +556,11 @@ def save_signing_setup(root, values):
     print(f"Saved keystore path and alias to {LOCAL_SIGNING}. No password was saved.")
 
 
-def remote_source(root, tag, commit):
-    git(root, "fetch", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main")
-    result = run(root, ["git", "merge-base", "--is-ancestor", commit, "refs/remotes/origin/main"], check=False)
-    require(result.returncode == 0, "Release commit is not on remote main; push/merge the source first.")
+def remote_source(root, tag, commit, branch="main"):
+    remote_ref = f"refs/remotes/origin/{branch}"
+    git(root, "fetch", "--no-tags", "origin", f"+refs/heads/{branch}:{remote_ref}")
+    result = run(root, ["git", "merge-base", "--is-ancestor", commit, remote_ref], check=False)
+    require(result.returncode == 0, f"Release commit is not on remote {branch}; push/merge the source first.")
     local = run(root, ["git", "rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}"], check=False)
     require(local.returncode == 0 and local.stdout.strip() == commit, f"HEAD needs the exact local tag {tag}.")
     refs = dict(line.split()[::-1] for line in git(root, "ls-remote", "--tags", "origin", f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}").splitlines())
@@ -585,26 +620,27 @@ def prepare(root, args):
         values.clear()
         return
     name, code = read_version(root)
+    project = project_settings(root)
     commit = clean_commit(root)
     tools, tool_info = toolchain(root, env)
     history = None
     rebuilding = False
     expected = None
     if not args.development:
-        history = PublishedHistory(root, tools, env)
+        history = PublishedHistory(root, tools, env, project)
         if args.bump:
             clean_commit(root, commit)
-            bump(root, name, code, history, args.bump)
+            bump(root, name, code, history, args.bump, project)
             return
         rebuilding = history.validate(name, code, commit)
         expected = expected_certificate(root, env)
         verify_published_certificate(history, expected)
         run(root, [sys.executable, root / "scripts/compare_apk_signatures.py", "--check"], env, capture=False)
-        remote_source(root, f"v{name}", commit)
-    notes = validate_notes(root, name, code)
+        remote_source(root, f"v{name}", commit, project["branch"])
+    notes = validate_notes(root, name, code, project)
     clean_commit(root, commit)
     dist = root / "dist"
-    basename = f"ComicViewer-Android-v{name}"
+    basename = f"{project['artifact_prefix']}-v{name}"
     destination = dist / (f"development-v{name}-{commit[:12]}" if args.development else f"obtainium-v{name}")
     check_existing_bundle(destination, commit, name, code, expected)
     if not args.development:
@@ -642,7 +678,7 @@ def prepare(root, args):
             require("No dependencies" in runtime and not re.search(r"^[+\\]---", runtime, re.M),
                     "Release runtime dependencies are not empty.")
             info = apk_info(root, tools, candidate, env)
-            require(info == {"package": PACKAGE, "version_name": name, "version_code": code, "debuggable": False},
+            require(info == {"package": project["package"], "version_name": name, "version_code": code, "debuggable": False},
                     "APK package, version, or debuggable flag does not match the release.")
             permissions = run(root, [tools / "aapt2", "dump", "permissions", candidate], env).stdout
             require(not re.search(r"^uses-permission(?:\S*)?:", permissions, re.M), "Release APK requests Android permissions.")
@@ -680,17 +716,17 @@ def prepare(root, args):
             clean_commit(root, commit)
             if history:
                 # A newer APK may have been published while the local build ran.
-                history = PublishedHistory(root, tools, env)
+                history = PublishedHistory(root, tools, env, project)
                 verify_published_certificate(history, expected)
                 rebuilding = history.validate(name, code, commit)
                 if rebuilding:
                     require(all(digest(apk) == r["sha256"] for r in history.records
                                 if r["version_name"] == name),
                             "Published APK changed during preparation; nothing was staged.")
-                remote_source(root, f"v{name}", commit)
+                remote_source(root, f"v{name}", commit, project["branch"])
             baseline = [r for r in history.records if r["version_name"] != name] if history else []
             manifest = {"schema": 1, "publishable": not args.development, "tag": None if args.development else f"v{name}",
-                        "commit": commit, "package": PACKAGE, "version_name": name, "version_code": code,
+                        "commit": commit, "package": project["package"], "version_name": name, "version_code": code,
                         "certificate_sha256": expected, "unsigned_sha256": digest(unsigned), "toolchain": tool_info,
                         "checks": checks, "published_baseline": baseline,
                         "files": {p.name: digest(p) for p in sorted(staging.iterdir())}}
