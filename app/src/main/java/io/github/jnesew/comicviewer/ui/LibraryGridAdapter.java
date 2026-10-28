@@ -11,7 +11,6 @@ import android.widget.ImageView;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
-import android.widget.ProgressBar;
 import android.widget.TextView;
 import io.github.jnesew.comicviewer.R;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
@@ -121,7 +120,6 @@ final class LibraryGridAdapter extends BaseAdapter {
         covers.bindCover(holder.cover, item);
         bindTitle(holder.title, item.title, item.favorite);
         bindIssue(holder.issue, item);
-        bindProgress(holder.progress, item.percent(), item.isCompleted(), !item.isNew() && item.page > 0);
         bindTitleDetails(holder.details, item);
         return convertView;
     }
@@ -162,7 +160,6 @@ final class LibraryGridAdapter extends BaseAdapter {
         bindTitle(holder.title, group.title, group.favorite);
         if (standalone != null) bindIssue(holder.issue, standalone);
         else holder.issue.setVisibility(reserveIssueLine ? View.INVISIBLE : View.GONE);
-        bindProgress(holder.progress, group.percent, group.isCaughtUp(), group.percent > 0);
         if (standalone != null) {
             bindTitleDetails(holder.details, standalone);
         } else {
@@ -272,13 +269,6 @@ final class LibraryGridAdapter extends BaseAdapter {
         return !item.seriesNumber.trim().isEmpty();
     }
 
-    private void bindProgress(ProgressBar progress, int percent, boolean complete, boolean started) {
-        // GridView fills rows from either edge while scrolling. Keep the card height stable
-        // when the track is hidden so covers cannot shift relative to neighboring cards.
-        progress.setVisibility(!complete && started && percent > 0 ? View.VISIBLE : View.INVISIBLE);
-        progress.setProgress(complete ? 100 : percent);
-    }
-
     private CardHolder createCard() {
         LibraryGridDensity density = gridDensity;
         LinearLayout root = new LinearLayout(context);
@@ -321,15 +311,6 @@ final class LibraryGridAdapter extends BaseAdapter {
         root.addView(issue, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        ProgressBar progress = new ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal);
-        progress.setMax(100);
-        progress.setProgressTintList(ColorStateList.valueOf(Ui.accent(context)));
-        progress.setProgressBackgroundTintList(ColorStateList.valueOf(Ui.surfaceHigh(context)));
-        LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 4));
-        progressParams.topMargin = Ui.dp(context, 5);
-        root.addView(progress, progressParams);
-
         TextView details = Ui.text(context, "", density.detailTextSp, Ui.textMuted(context));
         // Full card width normally fits one line; retain room for Finnish, large fonts and dense grids.
         // Equal line counts keep neighboring cover rows aligned when GridView fills in either direction.
@@ -339,7 +320,7 @@ final class LibraryGridAdapter extends BaseAdapter {
         details.setEllipsize(TextUtils.TruncateAt.END);
         root.addView(details, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        return new CardHolder(root, cover, title, issue, options, progress, details);
+        return new CardHolder(root, cover, title, issue, options, details);
     }
 
     private static final class CardHolder {
@@ -348,16 +329,14 @@ final class LibraryGridAdapter extends BaseAdapter {
         final TextView title;
         final TextView issue;
         final ImageButton options;
-        final ProgressBar progress;
         final TextView details;
         CardHolder(LinearLayout root, ImageView cover, TextView title, TextView issue,
-                ImageButton options, ProgressBar progress, TextView details) {
+                ImageButton options, TextView details) {
             this.root = root;
             this.cover = cover;
             this.title = title;
             this.issue = issue;
             this.options = options;
-            this.progress = progress;
             this.details = details;
         }
     }

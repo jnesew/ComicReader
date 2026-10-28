@@ -42,10 +42,11 @@ all its issues; you can then apply search or reading-status filters. Returning r
 view's search, filter, and scroll position. Use each card's options menu to change its favorite state;
 a small star beside its title indicates a favorite without covering the artwork.
 
-**Unread** is the explicit read status, independent of saved reading position. Progress tracks appear
-only while reading has started and the title or series is not marked read. Cards show a separate
-issue number when structured metadata supplies one. Dates embedded in filenames or titles remain part of the title;
-ComicViewer does not guess publication dates from them.
+**Unread** is the explicit read status, independent of saved reading position. Title cards show
+**Unread**, the current page and page count, or **Completed**. Series cards show issue totals and
+unread counts, or **Caught up**. Cards show a separate issue number when structured metadata
+supplies one. Dates embedded in filenames or titles remain part of the title; ComicViewer does not
+guess publication dates from them.
 
 Tap the options button on a cover, or long-press a title or series, to open its action menu.
 Choose **Forget** in that menu to remove the entry. Forgetting deletes
