@@ -93,6 +93,10 @@ public final class ComicCanvasView extends View {
     private boolean tapZones = true;
     private boolean rightToLeft;
     private String bufferingLevel = BufferingPolicy.STANDARD;
+    private RenderTuning renderTuning = RenderTuning.BASELINE;
+    private RenderMetrics renderMetrics;
+    private int travelDirection = 1;
+    private double lastPrefetchScroll;
     private int canvasColor = Color.BLACK;
 
     // Paged transform. zoom is a multiplier relative to fit-width.
@@ -140,6 +144,12 @@ public final class ComicCanvasView extends View {
 
     public void setListener(Listener listener) {
         this.listener = listener;
+    }
+
+    /** Explicit experiment seam; ordinary readers never enable it. Call on the main thread. */
+    public void setRenderExperiment(RenderTuning tuning, RenderMetrics metrics) {
+        renderTuning = tuning;
+        renderMetrics = metrics;
     }
 
     public void setBufferingLevel(String level) {
@@ -399,6 +409,7 @@ public final class ComicCanvasView extends View {
 
     public void showPage(int targetPage, float restoreRatio) {
         if (pages.isEmpty()) return;
+        if (targetPage != page()) travelDirection = targetPage > page() ? 1 : -1;
         if (renderer != null) renderer.cancelPrefetch();
         page = continuous
                 ? globalPageFor(continuousDocumentKey(), targetPage)
@@ -492,8 +503,10 @@ public final class ComicCanvasView extends View {
         canvas.drawColor(canvasColor);
         if (renderer == null || pages.isEmpty() || getWidth() <= 0 || getHeight() <= 0) return;
 
+        if (renderMetrics != null) renderMetrics.beginFrame(android.os.SystemClock.elapsedRealtimeNanos());
         if (continuous) drawContinuous(canvas);
         else drawPaged(canvas);
+        if (renderMetrics != null) renderMetrics.endFrame();
     }
 
     private void drawPaged(Canvas canvas) {
@@ -526,6 +539,7 @@ public final class ComicCanvasView extends View {
 
     private void prefetchPaged() {
         if (BufferingPolicy.lookaheadViewports(bufferingLevel) == 0) return;
+        if (renderTuning.byteLookahead) { prefetchPagedCandidates(); return; }
         int next = navigationTarget(1);
         if (next == page || next < 0 || next >= pages.size()) return;
         boolean nextSpread = spread && spreadLayout.endFor(next) > next;
@@ -560,6 +574,38 @@ public final class ComicCanvasView extends View {
                         (rightToLeft ? 0x512L : 0L) ^ (spread ? 0x924L : 0L) ^
                         zoomMode.hashCode(),
                 BufferingPolicy.queuedTiles(bufferingLevel));
+    }
+
+    private void prefetchPagedCandidates() {
+        ArrayList<TileRenderer.PageRequest> requests = new ArrayList<>();
+        int target = page;
+        for (int frame = 0; frame < 6; frame++) {
+            int next = spread ? spreadLayout.adjacentAnchor(target, travelDirection)
+                    : clamp(target + travelDirection, 0, pages.size() - 1);
+            if (next == target) break;
+            target = next;
+            int end = spread ? spreadLayout.endFor(target) : target;
+            float sourceHeight = Math.max(pages.get(target).height, pages.get(end).height);
+            int left = spread ? spreadLayout.leftPage(target, rightToLeft) : target;
+            int right = spread ? spreadLayout.rightPage(target, rightToLeft) : target;
+            float lw = normalizedPageWidth(left, sourceHeight);
+            float rw = end == target ? 0 : normalizedPageWidth(right, sourceHeight);
+            float gap = end == target ? 0 : pageGap;
+            float scale = Math.max(1, getWidth() - gap) / (lw + rw);
+            if (FIT_PAGE.equals(zoomMode)) scale = Math.min(scale, getHeight() / sourceHeight);
+            if (MANUAL.equals(zoomMode)) scale *= clamp(zoom, .1f, 12f);
+            for (int index = target; index <= end; index++) {
+                float x = index == right && end != target ? lw * scale + gap : 0;
+                float width = normalizedPageWidth(index, sourceHeight) * scale;
+                requests.add(new TileRenderer.PageRequest(index,
+                        new RectF(x, 0, x + width, sourceHeight * scale),
+                        new RectF(0, 0, getWidth(), getHeight()), frame));
+            }
+        }
+        long signature = (((long) page) << 32) ^ Float.floatToIntBits(zoom) ^
+                (((long) getWidth()) << 16) ^ getHeight() ^ (travelDirection < 0 ? 0x191L : 0) ^
+                (rightToLeft ? 0x512L : 0) ^ (spread ? 0x924L : 0) ^ zoomMode.hashCode();
+        renderer.prefetchPages(requests, signature, BufferingPolicy.queuedTiles(bufferingLevel));
     }
 
     private void drawContinuous(Canvas canvas) {
@@ -601,6 +647,7 @@ public final class ComicCanvasView extends View {
     private void prefetchContinuous() {
         int ahead = BufferingPolicy.lookaheadViewports(bufferingLevel);
         if (ahead == 0) return;
+        if (renderTuning.byteLookahead) { prefetchContinuousCandidates(); return; }
         float height = getHeight();
         double end = Math.min(continuousLayout.documentHeight(),
                 documentScroll + height * (1f + ahead));
@@ -625,6 +672,44 @@ public final class ComicCanvasView extends View {
                 nearby.entrySet()) {
             item.getKey().prefetchPages(item.getValue(), signature,
                     BufferingPolicy.queuedTiles(bufferingLevel));
+        }
+    }
+
+    private void prefetchContinuousCandidates() {
+        float height = getHeight();
+        if (Math.abs(documentScroll - lastPrefetchScroll) > height * .1) {
+            travelDirection = documentScroll > lastPrefetchScroll ? 1 : -1;
+            lastPrefetchScroll = documentScroll;
+        }
+        float pageWidth = contentWidth() * continuousZoom;
+        float x = (getWidth() - pageWidth) / 2 + continuousPanX;
+        java.util.Map<TileRenderer, List<TileRenderer.PageRequest>> nearby = new java.util.LinkedHashMap<>();
+        int examined = 0;
+        for (int frame = 0; frame < 6 && examined < 128; frame++) {
+            double start = travelDirection > 0 ? documentScroll + height * (1 + frame)
+                    : documentScroll - height * (1 + frame);
+            double end = start + height;
+            if (end <= 0 || start >= continuousLayout.documentHeight()) break;
+            double boundedStart = Math.max(0, start);
+            double boundedEnd = Math.min(continuousLayout.documentHeight(), end);
+            int first = continuousLayout.pageAt(boundedStart);
+            int last = continuousLayout.pageAt(boundedEnd);
+            for (int index = first; index <= last && examined++ < 128; index++) {
+                TileRenderer owner = rendererForPage(index);
+                if (owner == null || owner.isUnavailable()) continue;
+                float top = (float) (continuousLayout.top(index) - documentScroll);
+                nearby.computeIfAbsent(owner, ignored -> new ArrayList<>()).add(
+                        new TileRenderer.PageRequest(index < pageMap.size() ? pageMap.localPageFor(index) : index,
+                                new RectF(x, top, x + pageWidth, top + continuousLayout.height(index)),
+                                new RectF(0, (float) (boundedStart - documentScroll), getWidth(),
+                                        (float) (boundedEnd - documentScroll)), frame));
+            }
+        }
+        long signature = (((long) (documentScroll / Math.max(1, height / 2))) << 32) ^
+                Float.floatToIntBits(continuousZoom) ^ (((long) getWidth()) << 16) ^ pageMap.size() ^
+                (travelDirection < 0 ? 0x191L : 0);
+        for (java.util.Map.Entry<TileRenderer, List<TileRenderer.PageRequest>> item : nearby.entrySet()) {
+            item.getKey().prefetchPages(item.getValue(), signature, BufferingPolicy.queuedTiles(bufferingLevel));
         }
     }
 

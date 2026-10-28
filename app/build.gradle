@@ -75,7 +75,22 @@ android {
             shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+        renderBench {
+            initWith release
+            applicationIdSuffix '.renderbench'
+            versionNameSuffix ''
+            signingConfig = signingConfigs.debug
+            debuggable = false
+            matchingFallbacks = ['release']
+            def source = providers.gradleProperty('renderBenchSource').orElse('unknown').get()
+            if (!(source ==~ /(?:[0-9a-f]{7,40}(?:-dirty)?|unknown)/)) {
+                throw new GradleException('renderBenchSource must be a Git revision with an optional -dirty suffix')
+            }
+            buildConfigField 'String', 'BENCH_SOURCE', '"' + source + '"'
+        }
     }
+
+    buildFeatures { buildConfig = true }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -84,6 +99,15 @@ android {
 
     testOptions {
         unitTests.returnDefaultValues = true
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType('renderBench')) { variant ->
+        variant.outputs.each { output ->
+            output.versionName.set(providers.gradleProperty('comicViewerBenchVersionName'))
+            output.versionCode.set(providers.gradleProperty('comicViewerBenchVersionCode').map { it.toInteger() })
+        }
     }
 }
 

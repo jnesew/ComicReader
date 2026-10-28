@@ -1,0 +1,17 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application android:label="@string/bench_app_name" tools:replace="android:label">
+        <activity android:name="io.github.jnesew.comicviewer.MainActivity"
+            android:exported="false" tools:replace="android:exported">
+            <intent-filter tools:node="removeAll" />
+        </activity>
+        <activity android:name="io.github.jnesew.comicviewer.bench.RenderBenchActivity"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustResize"
+            android:exported="true" android:configChanges="orientation|screenSize|smallestScreenSize|keyboard|keyboardHidden|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

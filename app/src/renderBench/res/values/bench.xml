@@ -1,0 +1,21 @@
+<resources>
+    <string name="bench_app_name">ComicViewer Render Bench</string>
+    <string name="bench_intro">Offline rendering comparison. Uses synthetic comics and isolated app data. Keep brightness, refresh rate and charging conditions consistent. Leave the app visible; changing orientation or backgrounding stops the run. Results measure exact-resolution readiness; cached softer pixels can still be visible while detail loads.</string>
+    <string name="bench_quick">Quick comparison (about 3–5 minutes)</string>
+    <string name="bench_full">Individual changes (about 10–20 minutes)</string>
+    <string name="bench_soak">Repeated comparison (about 8–15 minutes)</string>
+    <string name="bench_smoke">Smoke check</string>
+    <string name="bench_run">Run comparison</string>
+    <string name="bench_stop">Stop</string>
+    <string name="bench_export">Export results ZIP</string>
+    <string name="bench_fixtures">Export synthetic comics ZIP</string>
+    <string name="bench_os_hint">OS label, e.g. GrapheneOS (optional)</string>
+    <string name="bench_ready">Ready. Results stay on this device until you export them.</string>
+    <string name="bench_running">Preparing / running: %1$s</string>
+    <string name="bench_finished">Run finished. %1$s</string>
+    <string name="bench_incomplete">Previous run may be incomplete. Export includes its last saved checkpoint.</string>
+    <string name="bench_error">Test/export error: %1$s</string>
+    <string name="bench_saved">Saved.</string>
+    <string name="bench_no_results">No recorded results yet.</string>
+    <string name="bench_manual">Manual follow-up: inspect seams/blur; open exported fixtures through your usual document provider; check rotation and background/resume in the normal reader. Simulated pressure is not evidence of real OS memory pressure. No full GPU/process-memory or battery-energy trace is collected.</string>
+</resources>

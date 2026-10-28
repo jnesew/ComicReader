@@ -23,6 +23,23 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /** Real Android decoder/canvas coverage for the reported 1988 x 3056 raster-page shape. */
 public final class RasterRenderingTests {
+    public static void stationaryRefill(android.app.Instrumentation instrumentation) {
+        try (Fixture fixture = new Fixture(instrumentation,
+                new RenderTuning(false, true, false, false, 64))) {
+            java.util.List<TileRenderer.PageRequest> requests = java.util.List.of(
+                    new TileRenderer.PageRequest(0, new RectF(0, 0, WIDTH, HEIGHT), new RectF(0, 0, WIDTH, HEIGHT)),
+                    new TileRenderer.PageRequest(1, new RectF(0, 0, WIDTH, HEIGHT), new RectF(0, 0, WIDTH, HEIGHT)));
+            instrumentation.runOnMainSync(() -> fixture.renderer.prefetchPages(requests, 991L, 4));
+            long deadline = android.os.SystemClock.elapsedRealtime() + 10000;
+            while (fixture.shared.snapshot(fixture.renderer).size() < 24 && android.os.SystemClock.elapsedRealtime() < deadline) {
+                check(fixture.shared.usedBytes() + fixture.shared.reservedBytes() <= fixture.shared.limitBytes(),
+                        "Retained plus pending output exceeded cap");
+                android.os.SystemClock.sleep(20);
+            }
+            check(fixture.shared.snapshot(fixture.renderer).size() == 24,
+                    "Stationary prefetch did not fill beyond the first four-tile batch");
+        }
+    }
     private static final int WIDTH = 1988;
     private static final int HEIGHT = 3056;
     private static final float SCALE = 1080f / WIDTH;
@@ -80,15 +97,19 @@ public final class RasterRenderingTests {
 
     private static final class Fixture implements AutoCloseable {
         final Instrumentation instrumentation;
-        final SpeculativeTileCache shared = new SpeculativeTileCache(
-                512L * 1024L * 1024L, BufferingPolicy.HIGH, () -> true, () -> 0L);
+        final SpeculativeTileCache shared;
         final AtomicReference<String> error = new AtomicReference<>();
         final Bitmap output = Bitmap.createBitmap(1080, 2100, Bitmap.Config.ARGB_8888);
         final RasterDocument document = new RasterDocument();
         final TileRenderer renderer;
 
         Fixture(Instrumentation instrumentation) {
+            this(instrumentation, RenderTuning.BASELINE);
+        }
+        Fixture(Instrumentation instrumentation, RenderTuning tuning) {
             this.instrumentation = instrumentation;
+            shared = new SpeculativeTileCache(512L * 1024L * 1024L, BufferingPolicy.HIGH,
+                    () -> true, () -> 0L, tuning, null);
             renderer = new TileRenderer(instrumentation.getTargetContext(), document,
                     () -> { }, error::set, shared, 32 * 1024);
         }

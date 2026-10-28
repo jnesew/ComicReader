@@ -35,6 +35,10 @@ public final class AndroidBufferingMemory implements BooleanSupplier {
     }
 
     @Override public synchronized boolean getAsBoolean() {
+        return hasRoomFor(0L);
+    }
+
+    public synchronized boolean hasRoomFor(long additionalBytes) {
         long now = SystemClock.elapsedRealtime();
         if (now >= nextSystemSample) {
             nextSystemSample = now + SYSTEM_SAMPLE_INTERVAL_MS;
@@ -53,7 +57,8 @@ public final class AndroidBufferingMemory implements BooleanSupplier {
         Runtime runtime = Runtime.getRuntime();
         long availableHeap = runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory());
         return BufferingPolicy.hasMemoryRoom(heapBytes, availableHeap,
-                Debug.getNativeHeapAllocatedSize(), system.totalMem, system.availMem,
+                Debug.getNativeHeapAllocatedSize() + Math.max(0L, additionalBytes),
+                system.totalMem, Math.max(0L, system.availMem - Math.max(0L, additionalBytes)),
                 system.threshold, system.lowMemory, lowRam);
     }
 }

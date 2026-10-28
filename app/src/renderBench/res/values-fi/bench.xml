@@ -1,0 +1,21 @@
+<resources>
+    <string name="bench_app_name">ComicViewer Render Bench</string>
+    <string name="bench_intro">Paikallinen renderöintivertailu. Käyttää synteettisiä sarjakuvia ja erillisiä sovellustietoja. Pidä kirkkaus, virkistystaajuus ja lataustila samoina. Pidä sovellus näkyvissä; kääntäminen tai taustalle siirtäminen pysäyttää testin. Tulokset mittaavat tavoitetarkkuuden valmistumista; välimuistin pehmeämmät kuvat voivat näkyä yksityiskohtien latautuessa.</string>
+    <string name="bench_quick">Pikavertailu (noin 3–5 minuuttia)</string>
+    <string name="bench_full">Yksittäiset muutokset (noin 10–20 minuuttia)</string>
+    <string name="bench_soak">Toistettu vertailu (noin 8–15 minuuttia)</string>
+    <string name="bench_smoke">Toimivuustarkistus</string>
+    <string name="bench_run">Aloita vertailu</string>
+    <string name="bench_stop">Pysäytä</string>
+    <string name="bench_export">Vie tulokset ZIP-tiedostona</string>
+    <string name="bench_fixtures">Vie synteettiset sarjakuvat ZIP-tiedostona</string>
+    <string name="bench_os_hint">Käyttöjärjestelmä, esim. GrapheneOS (valinnainen)</string>
+    <string name="bench_ready">Valmis. Tulokset säilyvät laitteella, kunnes viet ne.</string>
+    <string name="bench_running">Valmistelu / testi: %1$s</string>
+    <string name="bench_finished">Testi päättyi. %1$s</string>
+    <string name="bench_incomplete">Edellinen testi on voinut keskeytyä. Vientiin sisältyy viimeisin tallennettu tarkistuspiste.</string>
+    <string name="bench_error">Testin tai viennin virhe: %1$s</string>
+    <string name="bench_saved">Tallennettu.</string>
+    <string name="bench_no_results">Tuloksia ei ole vielä tallennettu.</string>
+    <string name="bench_manual">Käsin tarkistettavaa: saumat ja pehmeys, vietyjen tiedostojen avaaminen tavallisella tiedostopalvelulla, kääntäminen sekä taustalle siirtyminen tavallisessa lukijassa. Simuloitu muistipaine ei osoita todellista järjestelmän muistipainetta. Kattavaa GPU-, prosessimuisti- tai energiaseurantaa ei kerätä.</string>
+</resources>

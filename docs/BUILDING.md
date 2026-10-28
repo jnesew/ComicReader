@@ -72,6 +72,10 @@ an independently verified APK without overwriting an existing file.
 
 ### Android instrumentation tests
 
+For a separate, tap-to-run rendering comparison APK with bundled synthetic comics
+and user-exported results, see [Standalone rendering comparison](RENDER_BENCH.md).
+That device workflow needs no ADB and is separate from the connected suite below.
+
 Run on a connected emulator or test device:
 
 ```bash

@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "seed": 77001,
+  "fixtures": [
+    {
+      "name": "fallback.cbz",
+      "bytes": 2883842,
+      "sha256": "b43c0735354b0ab1653f27b83e293929a89e8b3bf2d68659c470b0c6c956e565"
+    },
+    {
+      "name": "images.epub",
+      "bytes": 949720,
+      "sha256": "fa545419d0189b42d146cc4fcb6cf9fc8ab098f8ef66563630de8d7c4a644f77"
+    },
+    {
+      "name": "issue-a.cbz",
+      "bytes": 1057563,
+      "sha256": "4cff4b97bb31a289cb6267996f57a611f42ab2f61e1f53b1b04a1637890199b4"
+    },
+    {
+      "name": "issue-b.cbz",
+      "bytes": 1056764,
+      "sha256": "88fbb408052129c5f702de202f1db36153b12c171d757cb396aaaf0f8e1fdb3d"
+    },
+    {
+      "name": "issue-c.cbz",
+      "bytes": 1056163,
+      "sha256": "4cfe074684db060393b02f1cc7dac3c974797939d53a350cf3da6873a5f7780f"
+    },
+    {
+      "name": "raster.cbz",
+      "bytes": 5291485,
+      "sha256": "a34acdaa72e83be4cdc89be1bab3108e8ccff9ae49f81bfd80360c737ea4adfd"
+    },
+    {
+      "name": "strips.cbz",
+      "bytes": 10115525,
+      "sha256": "fe94336427058411a6a7e57368d15bb3548d299451348f68883d9d9586c73c95"
+    },
+    {
+      "name": "vector.pdf",
+      "bytes": 18374,
+      "sha256": "28a9044059a6a9e619fc2c6c506341d9e7056a09349f05a05c099a03b27a39cb"
+    }
+  ]
+}

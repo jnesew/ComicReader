@@ -61,6 +61,13 @@ public final class TileRenderer implements AutoCloseable {
     private final ErrorListener errorListener;
     private final LruCache<TileKey, Bitmap> tiles;
     private final SpeculativeTileCache speculativeTiles;
+    private final RenderTuning tuning;
+    private final RenderMetrics metrics;
+    private volatile java.util.List<PageRequest> refillRequests = java.util.Collections.emptyList();
+    private long refillSignature;
+    private int refillMaxTiles;
+    private final AtomicBoolean refillPosted = new AtomicBoolean();
+    private final java.util.Set<TileKey> refusedPrefetch = new java.util.HashSet<>();
     private final Map<TileKey, TileTask> pending = new HashMap<>();
     private volatile boolean retainEvictedTiles = true;
     private int speculativeQueued;
@@ -77,11 +84,16 @@ public final class TileRenderer implements AutoCloseable {
         final int page;
         final RectF destination;
         final RectF clip;
+        final int frame;
 
         public PageRequest(int page, RectF destination, RectF clip) {
+            this(page, destination, clip, 0);
+        }
+        public PageRequest(int page, RectF destination, RectF clip, int frame) {
             this.page = page;
             this.destination = new RectF(destination);
             this.clip = new RectF(clip);
+            this.frame = frame;
         }
     }
 
@@ -173,6 +185,8 @@ public final class TileRenderer implements AutoCloseable {
         this.invalidator = invalidator;
         this.errorListener = errorListener;
         this.speculativeTiles = speculativeTiles;
+        this.tuning = speculativeTiles == null ? RenderTuning.BASELINE : speculativeTiles.tuning();
+        this.metrics = speculativeTiles == null ? null : speculativeTiles.metrics();
         this.pageCacheDirectory = new File(
                 context.getCacheDir(), "page_tiles/session-" + Long.toUnsignedString(System.nanoTime()));
         if (!pageCacheDirectory.mkdirs() && !pageCacheDirectory.isDirectory()) {
@@ -192,10 +206,34 @@ public final class TileRenderer implements AutoCloseable {
                 // Recently visible pages compete with ahead-of-reader tiles within the same
                 // existing speculative ceiling, rather than disappearing on a backward turn.
                 if (evicted && retainEvictedTiles && !closed && speculativeTiles != null) {
-                    speculativeTiles.put(TileRenderer.this, key, oldValue);
+                    speculativeTiles.putHistory(TileRenderer.this, key, oldValue);
                 }
             }
         };
+        if (speculativeTiles != null) {
+            speculativeTiles.registerOwner(this, cacheKb * 1024L,
+                    archive.supportsRenderedTiles() ? 0 : cacheKb * 1024L);
+            if (tuning.refill) speculativeTiles.onWorkAvailable(this, this::scheduleRefill);
+        }
+    }
+
+    private void residentBytes() {
+        if (speculativeTiles == null) return;
+        long backing = 0;
+        for (DecoderHolder holder : decoders.values()) {
+            if (holder.fallback != null) backing += holder.fallback.getAllocationByteCount();
+        }
+        speculativeTiles.residentBytes(this, tiles.size() * 1024L, backing);
+    }
+
+    private void scheduleRefill() {
+        if (closed || !tuning.refill || !refillPosted.compareAndSet(false, true)) return;
+        mainHandler.post(() -> {
+            refillPosted.set(false);
+            if (!closed && !refillRequests.isEmpty()) {
+                prefetchPages(refillRequests, refillSignature, refillMaxTiles);
+            }
+        });
     }
 
     private static Paint createImagePaint() {
@@ -256,6 +294,13 @@ public final class TileRenderer implements AutoCloseable {
                     bitmap = speculativeTiles.take(this, key);
                     if (bitmap != null) tiles.put(key, bitmap);
                 }
+                if (metrics != null) {
+                    RectF measured = new RectF(tileDestination);
+                    if (measured.intersect(visible)) {
+                        metrics.area(measured.width() * (double) measured.height(),
+                                bitmap == null || bitmap.isRecycled());
+                    }
+                }
                 if (bitmap != null && !bitmap.isRecycled()) {
                     canvas.drawBitmap(bitmap, null, tileDestination, imagePaint);
                 } else {
@@ -286,6 +331,7 @@ public final class TileRenderer implements AutoCloseable {
         discardVisibleTiles();
         for (DecoderHolder holder : decoders.values()) holder.close();
         decoders.clear();
+        residentBytes();
     }
 
     @Override
@@ -302,6 +348,7 @@ public final class TileRenderer implements AutoCloseable {
         if (speculativeTiles != null) speculativeTiles.removeOwner(this);
         for (DecoderHolder holder : decoders.values()) holder.close();
         decoders.clear();
+        if (speculativeTiles != null) speculativeTiles.unregisterOwner(this);
         deleteTree(pageCacheDirectory);
     }
 
@@ -309,7 +356,48 @@ public final class TileRenderer implements AutoCloseable {
     public void prefetchPages(java.util.List<PageRequest> requests, long signature, int maxTiles) {
         if (closed || archive.isUnavailable() || speculativeTiles == null ||
                 !speculativeTiles.enabled() || maxTiles <= 0) return;
-        if (prefetchGeneration.begin(signature)) dropQueuedPrefetch();
+        if (prefetchGeneration.begin(signature)) {
+            dropQueuedPrefetch();
+            synchronized (pending) { refusedPrefetch.clear(); }
+        }
+        if (tuning.refill) {
+            refillRequests = new ArrayList<>(requests);
+            refillSignature = signature;
+            refillMaxTiles = maxTiles;
+        }
+        Map<PageRequest, Float> predictedScales = tuning.predictedFrame
+                ? new java.util.IdentityHashMap<>() : java.util.Collections.emptyMap();
+        if (tuning.predictedFrame) {
+            Map<Integer, java.util.List<PageRequest>> frames = new LinkedHashMap<>();
+            for (PageRequest request : requests) {
+                if (request.destination.width() > 0 && request.destination.height() > 0 &&
+                        RectF.intersects(request.destination, request.clip)) {
+                    frames.computeIfAbsent(request.frame, ignored -> new ArrayList<>()).add(request);
+                }
+            }
+            for (java.util.List<PageRequest> frame : frames.values()) {
+                java.util.List<RenderedTilePolicy.Region> regions = new ArrayList<>();
+                for (PageRequest request : frame) {
+                    RectF area = new RectF(request.destination);
+                    area.intersect(request.clip);
+                    PageInfo info = archive.page(request.page);
+                    float scale = request.destination.width() / info.width;
+                    regions.add(new RenderedTilePolicy.Region(
+                            clamp((int) Math.floor((area.left - request.destination.left) / scale), 0, info.width - 1),
+                            clamp((int) Math.floor((area.top - request.destination.top) / scale), 0, info.height - 1),
+                            clamp((int) Math.ceil((area.right - request.destination.left) / scale), 1, info.width),
+                            clamp((int) Math.ceil((area.bottom - request.destination.top) / scale), 1, info.height),
+                            info.width, info.height, scale));
+                }
+                float[] scales = archive.supportsRenderedTiles()
+                        ? RenderedTilePolicy.frameScales(regions, tiles.maxSize() * 1024L * 3L / 4L)
+                        : RenderedTilePolicy.rasterFrameScales(regions, tiles.maxSize() * 1024L * 3L / 4L);
+                for (int i = 0; i < frame.size(); i++) predictedScales.put(frame.get(i), scales[i]);
+            }
+        }
+        java.util.Set<TileKey> plannedKeys = tuning.boundedAdmission()
+                ? new java.util.HashSet<>() : java.util.Collections.emptySet();
+        long planBytes = 0;
         int considered = 0;
         for (PageRequest request : requests) {
             if (considered >= maxTiles || request.destination.width() <= 0f ||
@@ -328,7 +416,9 @@ public final class TileRenderer implements AutoCloseable {
             float planned = archive.supportsRenderedTiles()
                     ? RenderedTilePolicy.frameScales(single, tiles.maxSize() * 1024L * 3L / 4L)[0]
                     : RenderedTilePolicy.rasterFrameScales(single, tiles.maxSize() * 1024L * 3L / 4L)[0];
-            if (!Float.isNaN(visibleRenderScale)) {
+            if (predictedScales.containsKey(request)) {
+                planned = predictedScales.get(request);
+            } else if (!Float.isNaN(visibleRenderScale)) {
                 planned = Math.min(planned, visibleRenderScale);
             }
             boolean rendered = archive.supportsRenderedTiles();
@@ -340,19 +430,28 @@ public final class TileRenderer implements AutoCloseable {
                 for (int tileX = left / sourceTile; tileX <= (right - 1) / sourceTile; tileX++) {
                     if (considered >= maxTiles) return;
                     TileKey key = key(request.page, page, sample, renderScale, tileX, tileY);
-                    if (tiles.get(key) != null || speculativeTiles.contains(this, key)) continue;
-                    considered++;
                     int x = tileX * sourceTile;
                     int y = tileY * sourceTile;
+                    Rect source = new Rect(x, y, Math.min(page.width, x + sourceTile),
+                            Math.min(page.height, y + sourceTile));
+                    long estimated = estimateBytes(source, renderScale);
+                    if (tuning.boundedAdmission() && !plannedKeys.add(key)) continue;
+                    if (tuning.boundedAdmission()) {
+                        planBytes += estimated;
+                        if (planBytes > speculativeTiles.limitBytes()) return;
+                    }
+                    if (tiles.get(key) != null || speculativeTiles.contains(this, key)) continue;
+                    synchronized (pending) { if (tuning.boundedAdmission() && refusedPrefetch.contains(key)) continue; }
+                    considered++;
                     requestTile(key, request.page, sample, renderScale,
-                            new Rect(x, y, Math.min(page.width, x + sourceTile),
-                                    Math.min(page.height, y + sourceTile)), true);
+                            source, true);
                 }
             }
         }
     }
 
     public void cancelPrefetch() {
+        refillRequests = java.util.Collections.emptyList();
         prefetchGeneration.cancel();
         dropQueuedPrefetch();
     }
@@ -377,9 +476,11 @@ public final class TileRenderer implements AutoCloseable {
                     else return; // The running tile will invalidate when finished.
                 } else return;
             }
+            long reservation = speculative && tuning.boundedAdmission() ? estimateBytes(source, renderScale) : 0L;
+            if (reservation > 0 && !speculativeTiles.reserve(reservation)) return;
             TileTask task = new TileTask(key, pageIndex, sample,
                     renderScale, new Rect(source), speculative, prefetchGeneration.current(),
-                    taskOrder.incrementAndGet());
+                    taskOrder.incrementAndGet(), reservation);
             pending.put(key, task);
             if (speculative) speculativeQueued++;
             else if (speculativeTiles != null) speculativeTiles.visibleQueued();
@@ -391,8 +492,14 @@ public final class TileRenderer implements AutoCloseable {
         }
     }
 
+    private static long estimateBytes(Rect source, float scale) {
+        return 4L * (long) Math.ceil(source.width() * (double) scale)
+                * (long) Math.ceil(source.height() * (double) scale);
+    }
+
     private void completeTask(TileTask task) {
         if (!task.finished.compareAndSet(false, true)) return;
+        task.releaseReservation();
         synchronized (pending) {
             pending.remove(task.key, task);
             if (task.speculative) speculativeQueued--;
@@ -409,11 +516,14 @@ public final class TileRenderer implements AutoCloseable {
         final boolean speculative;
         final long epoch;
         final long order;
+        final long reservation;
+        final long queuedAt;
         final AtomicBoolean finished = new AtomicBoolean();
+        final AtomicBoolean reservationReleased = new AtomicBoolean();
         volatile boolean seenVisible;
 
         TileTask(TileKey key, int pageIndex, int sample, float renderScale,
-                Rect source, boolean speculative, long epoch, long order) {
+                Rect source, boolean speculative, long epoch, long order, long reservation) {
             this.key = key;
             this.pageIndex = pageIndex;
             this.sample = sample;
@@ -422,14 +532,23 @@ public final class TileRenderer implements AutoCloseable {
             this.speculative = speculative;
             this.epoch = epoch;
             this.order = order;
+            this.reservation = reservation;
+            this.queuedAt = metrics == null ? 0 : android.os.SystemClock.elapsedRealtimeNanos();
         }
 
         @Override public int compareTo(TileTask other) {
             return BufferingPolicy.compareTasks(speculative, order, other.speculative, other.order);
         }
 
+        void releaseReservation() {
+            if (reservation > 0 && reservationReleased.compareAndSet(false, true)) {
+                speculativeTiles.release(reservation);
+            }
+        }
+
         @Override public void run() {
             boolean slot = false;
+            long started = metrics == null ? 0 : android.os.SystemClock.elapsedRealtimeNanos();
             try {
                 if (closed || !matchesPageDimensions(key)) return;
                 if (speculative) {
@@ -438,29 +557,48 @@ public final class TileRenderer implements AutoCloseable {
                     slot = true;
                 }
                 Bitmap decoded = decodeTile(pageIndex, sample, renderScale, source);
+                if (metrics != null) metrics.decode(speculative,
+                        android.os.SystemClock.elapsedRealtimeNanos() - started, started - queuedAt);
                 synchronized (TileRenderer.this) {
+                    residentBytes();
+                    releaseReservation();
                     if (decoded != null && !closed && matchesPageDimensions(key)) {
                         if (speculative) {
-                            if (!prefetchGeneration.publishIfCurrent(epoch,
-                                    () -> speculativeTiles.put(TileRenderer.this, key, decoded))) {
+                            final boolean[] adopted = {false};
+                            boolean current = prefetchGeneration.publishIfCurrent(epoch,
+                                    () -> adopted[0] = speculativeTiles.offer(TileRenderer.this, key, decoded, false));
+                            if (!current || !adopted[0]) {
+                                if (metrics != null && !current) metrics.stale();
+                                if (current && tuning.boundedAdmission()) synchronized (pending) {
+                                    if (prefetchGeneration.isCurrent(epoch)) refusedPrefetch.add(key);
+                                }
                                 decoded.recycle();
                             }
                         } else {
                             tiles.put(key, decoded);
+                            residentBytes();
                             mainHandler.post(invalidator);
                         }
                     } else if (decoded != null) decoded.recycle();
                 }
             } catch (OutOfMemoryError error) {
+                if (metrics != null) metrics.failure();
                 if (speculativeTiles != null) speculativeTiles.onMemoryPressure();
                 trimMemory();
                 if (!speculative) reportError(context.getString(R.string.error_tile_memory));
             } catch (IOException | RuntimeException error) {
+                if (metrics != null) metrics.failure();
+                if (speculative && tuning.boundedAdmission()) {
+                    synchronized (pending) {
+                        if (prefetchGeneration.isCurrent(epoch)) refusedPrefetch.add(key);
+                    }
+                }
                 if (!speculative) reportError(context.getString(R.string.error_render_page, pageIndex + 1));
             } finally {
                 if (slot) speculativeTiles.endSpeculativeDecode();
                 if (speculative && seenVisible && !closed) mainHandler.post(invalidator);
                 completeTask(this);
+                if (tuning.refill && (slot || !speculative)) speculativeTiles.workFinished();
             }
         }
     }
@@ -523,7 +661,11 @@ public final class TileRenderer implements AutoCloseable {
         String extension = extension(page.name);
         File file = new File(pageCacheDirectory, String.format(java.util.Locale.ROOT,
                 "page-%05d%s", pageIndex, extension));
-        if (!file.isFile()) archive.extractPage(pageIndex, file);
+        if (!file.isFile()) {
+            long start = metrics == null ? 0 : android.os.SystemClock.elapsedRealtimeNanos();
+            archive.extractPage(pageIndex, file);
+            if (metrics != null) metrics.extracted(android.os.SystemClock.elapsedRealtimeNanos() - start);
+        }
 
         // The document's page index can still contain provisional dimensions. Validate
         // the actual file before constructing a decoder or planning a full-image allocation.
@@ -628,6 +770,9 @@ public final class TileRenderer implements AutoCloseable {
                     Math.min(page.width, sourceLeft + fallbackSourceTile),
                     Math.min(page.height, sourceTop + fallbackSourceTile));
             Bitmap fallback = tiles.get(key(pageIndex, page, 1, fallbackScale, tileX, tileY));
+            if (fallback == null && tuning.historyFallback && speculativeTiles != null) {
+                fallback = speculativeTiles.borrow(this, key(pageIndex, page, 1, fallbackScale, tileX, tileY));
+            }
             if (fallback != null && !fallback.isRecycled()) {
                 canvas.drawBitmap(
                         fallback,

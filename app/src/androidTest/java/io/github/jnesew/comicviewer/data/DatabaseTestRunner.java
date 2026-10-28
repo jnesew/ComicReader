@@ -24,7 +24,7 @@ public final class DatabaseTestRunner extends Instrumentation {
     private LibraryDatabase db;
     private int current;
     private int failed;
-    private static final int TOTAL = 46;
+    private static final int TOTAL = 47;
 
     @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
 
@@ -58,6 +58,8 @@ public final class DatabaseTestRunner extends Instrumentation {
                 () -> RasterRenderingTests.backwardTurn(this));
         run("rasterSamplingTransitionsKeepCachedCoverage",
                 () -> RasterRenderingTests.samplingTransitions(this));
+        run("stationaryPrefetchRefillsWithinSharedBudget",
+                () -> RasterRenderingTests.stationaryRefill(this));
         run("upgradeVersionOneToEleven", this::upgrade);
         run("folderCollectionMigratesOnce", () -> new LibraryFeatureTests(this, db).preferencesMigration());
         run("seriesFavoritesAreIndependent", () -> new LibraryFeatureTests(this, db).seriesFavorites());
