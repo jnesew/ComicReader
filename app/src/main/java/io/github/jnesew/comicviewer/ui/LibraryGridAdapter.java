@@ -32,6 +32,7 @@ final class LibraryGridAdapter extends BaseAdapter {
     private List<ReadingProgress> rows = Collections.emptyList();
     private List<SeriesGroup> seriesRows = Collections.emptyList();
     private boolean seriesGrid;
+    private boolean reserveIssueLine;
 
     LibraryGridAdapter(Context context, HomeView.Listener listener, Consumer<SeriesGroup> onSeries,
             CoverThumbnailLoader covers, LibraryGridDensity density) {
@@ -45,6 +46,24 @@ final class LibraryGridAdapter extends BaseAdapter {
         this.rows = rows;
         this.seriesRows = seriesRows;
         this.seriesGrid = seriesGrid;
+        // Every card in this snapshot needs the same optional metadata space. GridView
+        // positions rows from the bottom when scrolling back toward earlier results.
+        reserveIssueLine = false;
+        if (seriesGrid) {
+            for (SeriesGroup group : seriesRows) {
+                if (group.isStandalone() && hasIssueNumber(group.issues.get(0))) {
+                    reserveIssueLine = true;
+                    break;
+                }
+            }
+        } else {
+            for (ReadingProgress item : rows) {
+                if (hasIssueNumber(item)) {
+                    reserveIssueLine = true;
+                    break;
+                }
+            }
+        }
         notifyDataSetChanged();
     }
     void setDensity(LibraryGridDensity density) { gridDensity = density; }
@@ -142,7 +161,7 @@ final class LibraryGridAdapter extends BaseAdapter {
         covers.bindCover(holder.cover, group.cover);
         bindTitle(holder.title, group.title, group.favorite);
         if (standalone != null) bindIssue(holder.issue, standalone);
-        else holder.issue.setVisibility(View.GONE);
+        else holder.issue.setVisibility(reserveIssueLine ? View.INVISIBLE : View.GONE);
         bindProgress(holder.progress, group.percent, group.isCaughtUp(), group.percent > 0);
         if (standalone != null) {
             bindTitleDetails(holder.details, standalone);
@@ -244,9 +263,13 @@ final class LibraryGridAdapter extends BaseAdapter {
     }
 
     private void bindIssue(TextView subtitle, ReadingProgress item) {
-        boolean structured = !item.seriesNumber.trim().isEmpty();
-        subtitle.setVisibility(structured ? View.VISIBLE : View.GONE);
-        if (structured) subtitle.setText(context.getString(R.string.comic_issue_number, item.seriesNumber));
+        boolean structured = hasIssueNumber(item);
+        subtitle.setVisibility(structured ? View.VISIBLE : reserveIssueLine ? View.INVISIBLE : View.GONE);
+        subtitle.setText(structured ? context.getString(R.string.comic_issue_number, item.seriesNumber) : "");
+    }
+
+    private static boolean hasIssueNumber(ReadingProgress item) {
+        return !item.seriesNumber.trim().isEmpty();
     }
 
     private void bindProgress(ProgressBar progress, int percent, boolean complete, boolean started) {

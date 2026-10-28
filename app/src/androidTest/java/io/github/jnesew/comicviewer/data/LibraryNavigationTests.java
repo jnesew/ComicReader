@@ -85,6 +85,78 @@ final class LibraryNavigationTests {
         } finally { target.deleteSharedPreferences(file); }
     }
 
+    static void mixedTitleCoversStayAligned(Instrumentation instrumentation, LibraryDatabase database) {
+        String file = "mixed-title-grid-alignment-instrumentation";
+        Context target = instrumentation.getTargetContext();
+        target.deleteSharedPreferences(file);
+        // A standalone PDF has no issue number; scanned comic issues have structured metadata.
+        // Keep that difference beside mixed unread, in-progress and read cards in the same row.
+        for (int index = 0; index < 30; index++) {
+            String uri = "mixed-alignment-" + index;
+            database.ensureImported(uri, String.format(java.util.Locale.ROOT, "Mixed %02d", index), 1, 1);
+            if (index % 6 != 0) database.applyDetectedSeries(uri, "Scanned comics", Integer.toString(index), "", "");
+            ReadingProgress progress = database.get(uri);
+            progress.pageCount = index % 6 == 0 ? 1 : 5;
+            progress.page = index % 3 == 1 ? 2 : 0;
+            progress.lastOpened = 123;
+            database.saveReadingProgress(progress);
+            if (index % 3 == 2) database.setReadStatus(uri, true);
+            if (index % 2 == 0) database.toggleFavorite(uri);
+        }
+        try {
+            for (int theme : new int[]{R.style.Theme_ComicViewer, R.style.Theme_ComicViewer_Light}) {
+                for (float fontScale : new float[]{1f, 1.5f}) {
+                    android.content.res.Configuration config = new android.content.res.Configuration(
+                            target.getResources().getConfiguration());
+                    config.fontScale = fontScale;
+                    config.setLocale(fontScale == 1f ? java.util.Locale.ENGLISH : new java.util.Locale("fi"));
+                    Context context = new ContextThemeWrapper(target.createConfigurationContext(config), theme) {
+                        @Override public SharedPreferences getSharedPreferences(String name, int mode) {
+                            return target.getSharedPreferences(file, mode);
+                        }
+                    };
+                    for (String density : new String[]{"large", "standard", "compact", "dense"}) {
+                        context.getSharedPreferences(file, 0).edit().putString("mode", "titles")
+                                .putString("sort", LibraryDatabase.SORT_TITLE_ASC).putString("grid_density", density).commit();
+                        java.util.concurrent.atomic.AtomicReference<AssertionError> failure = new java.util.concurrent.atomic.AtomicReference<>();
+                        instrumentation.runOnMainSync(() -> {
+                            HomeView home = new HomeView(context, new LibraryQueryController(database), null);
+                            int width = Ui.dp(context, Math.round(392 * fontScale)), height = Ui.dp(context, 650);
+                            try {
+                                home.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                                        View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+                                home.layout(0, 0, width, height);
+                                GridView grid = find(home, GridView.class);
+                                alignedRows(grid);
+                                grid.scrollListBy(Ui.dp(context, 900));
+                                alignedRows(grid);
+                                grid.scrollListBy(-Ui.dp(context, 1200));
+                                alignedRows(grid);
+                                check(grid.getFirstVisiblePosition() == 0);
+                                for (int index = 0; index < Math.min(grid.getNumColumns(), grid.getChildCount()); index++) {
+                                    android.graphics.Rect bounds = coverBounds(grid, grid.getChildAt(index));
+                                    check(bounds.top >= grid.getPaddingTop());
+                                }
+                            } catch (AssertionError error) {
+                                savePreview(target, home, width, height, "mixed-grid-alignment-failure.png");
+                                failure.set(error);
+                            } finally { home.close(); }
+                        });
+                        if (failure.get() != null) throw new AssertionError(
+                                density + " at font scale " + fontScale + ", theme " + theme, failure.get());
+                    }
+                }
+            }
+        } finally { target.deleteSharedPreferences(file); }
+    }
+
+    private static android.graphics.Rect coverBounds(GridView grid, View card) {
+        ImageView cover = find(card, ImageView.class);
+        android.graphics.Rect bounds = new android.graphics.Rect(0, 0, cover.getWidth(), cover.getHeight());
+        grid.offsetDescendantRectToMyCoords(cover, bounds);
+        return bounds;
+    }
+
     private static void savePreview(Context context, View view, int width, int height, String filename) {
         android.graphics.Bitmap screenshot = android.graphics.Bitmap.createBitmap(width, height,
                 android.graphics.Bitmap.Config.ARGB_8888);
@@ -100,9 +172,8 @@ final class LibraryNavigationTests {
         java.util.HashMap<Integer, Integer> tops = new java.util.HashMap<>();
         for (int index = 0; index < grid.getChildCount(); index++) {
             View card = grid.getChildAt(index);
-            ImageView cover = find(card, ImageView.class);
             int row = (first + index) / grid.getNumColumns();
-            int top = card.getTop() + cover.getTop();
+            int top = coverBounds(grid, card).top;
             Integer previous = tops.putIfAbsent(row, top);
             if (previous != null && previous != top) throw new AssertionError(
                     "Cover tops differ in row " + row + ": " + previous + " vs " + top);
