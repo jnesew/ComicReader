@@ -28,6 +28,9 @@ Launch it, optionally enter the OS distribution label, select a suite and tap
 **Run comparison**. Leave the app visible. Stop, backgrounding or rotation interrupts
 the run and preserves its recorded cases/checkpoints. Runs keep the screen awake
 while visible; they do not continue as a background service.
+Real trim/low-memory callbacks clear optional pixels, suspend speculation and stop
+the run, with the reason recorded. Decoder disposal runs on the worker, not inside
+the main-thread callback. Pressure-interrupted cases are excluded from timing comparisons.
 
 ## What each suite compares
 

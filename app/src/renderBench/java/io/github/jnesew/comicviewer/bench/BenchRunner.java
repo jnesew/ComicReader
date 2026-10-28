@@ -79,6 +79,7 @@ final class BenchRunner {
             for (String name : names) documents.add(open(preparedFixtures.get(name)));
             result.put("document_open_index_ms", (SystemClock.elapsedRealtimeNanos() - opening) / 1e6);
             shared = new SpeculativeTileCache(host, Runtime.getRuntime().maxMemory(), BufferingPolicy.HIGH, policy.tuning, metrics);
+            host.activeCache(shared);
             canvas = host.ui(() -> new ComicCanvasView(host));
             ComicCanvasView view = canvas;
             for (ComicDocument document : documents) {
@@ -139,7 +140,7 @@ final class BenchRunner {
             if (shared.usedBytes() + shared.reservedBytes() > shared.limitBytes()) throw new AssertionError("Shared retained+pending ceiling exceeded");
             result.put("status", timeouts == 0 ? "completed" : "readiness_timeout");
         } catch (InterruptedException interrupted) {
-            result.put("status", "interrupted"); throw interrupted;
+            result.put("status", "interrupted").put("interruption_reason", host.interruptionReason()); throw interrupted;
         } catch (Exception | AssertionError | OutOfMemoryError failure) {
             result.put("status", "failed"); result.put("failure", failure.toString());
         } finally {
@@ -154,6 +155,7 @@ final class BenchRunner {
                 catch (Exception ignored) { /* Activity destruction already detaches the View. */ }
             }
             for (TileRenderer renderer : renderers) renderer.close();
+            host.activeCache(null);
             for (ComicDocument document : documents) document.close();
             if (shared != null && shared.reservedBytes() != 0) {
                 result.put("status", "failed"); result.put("failure", "Reservation leaked after closure");

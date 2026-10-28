@@ -8,6 +8,7 @@ import android.view.*;
 import android.widget.*;
 import io.github.jnesew.comicviewer.R;
 import io.github.jnesew.comicviewer.render.ComicCanvasView;
+import io.github.jnesew.comicviewer.render.SpeculativeTileCache;
 import org.json.JSONObject;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -23,6 +24,8 @@ public final class RenderBenchActivity extends Activity {
     private volatile boolean running;
     private volatile boolean destroyed;
     private volatile Frames frameStats;
+    private volatile SpeculativeTileCache activeCache;
+    private volatile String interruptionReason = "";
     private HandlerThread frameThread;
     private Handler frameHandler;
     private Spinner suites;
@@ -74,7 +77,7 @@ public final class RenderBenchActivity extends Activity {
         if (running || destroyed) return;
         selectedOs = osLabel.getText().toString().trim();
         if (selectedOs.length() > 100) selectedOs = selectedOs.substring(0, 100);
-        running = true; stopped.set(false);
+        running = true; stopped.set(false); interruptionReason = "";
         ((android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE))
                 .hideSoftInputFromWindow(osLabel.getWindowToken(), 0);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -88,7 +91,8 @@ public final class RenderBenchActivity extends Activity {
             catch (Exception | AssertionError | OutOfMemoryError failure) { outcome = "failed: " + failure; }
             final String end = outcome;
             try {
-                if (files != null) files.write("state.json", new JSONObject().put("status", end).toString(2));
+                if (files != null) files.write("state.json", new JSONObject().put("status", end)
+                        .put("interruption_reason", interruptionReason).toString(2));
             } catch (Exception ignored) { }
             running = false;
             main.post(() -> {
@@ -101,7 +105,7 @@ public final class RenderBenchActivity extends Activity {
     void progress(String id) { main.post(() -> { if (!destroyed && status != null) status.setText(getString(R.string.bench_running, id)); }); }
     void showCanvas(ComicCanvasView canvas, String id) {
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
-        Button stop = new Button(this); stop.setText(R.string.bench_stop); stop.setOnClickListener(v -> stopped.set(true));
+        Button stop = new Button(this); stop.setText(R.string.bench_stop); stop.setOnClickListener(v -> stopRun("user_stop"));
         root.addView(stop); root.addView(canvas, new LinearLayout.LayoutParams(-1, 0, 1)); setContentView(root);
         safeInsets(root);
     }
@@ -139,6 +143,16 @@ public final class RenderBenchActivity extends Activity {
         frameStats = null;
         return frames.result();
     }
+    void activeCache(SpeculativeTileCache cache) {
+        activeCache = cache;
+        if (cache != null && stopped.get()) cache.setForeground(false);
+    }
+    String interruptionReason() { return interruptionReason; }
+    private void stopRun(String reason) {
+        interruptionReason = reason; stopped.set(true);
+        SpeculativeTileCache cache = activeCache;
+        if (cache != null) cache.setForeground(false);
+    }
     private String summary() {
         try {
             File file = new File(lastRun, "summary.txt");
@@ -167,10 +181,31 @@ public final class RenderBenchActivity extends Activity {
             } catch (Exception error) { main.post(() -> { if (!destroyed) status.setText(getString(R.string.bench_error, error.toString())); }); }
         });
     }
-    @Override protected void onPause() { if (running) stopped.set(true); super.onPause(); }
-    @Override public void onConfigurationChanged(Configuration config) { super.onConfigurationChanged(config); if (running) stopped.set(true); }
+    @Override protected void onPause() { if (running) stopRun("backgrounded"); super.onPause(); }
+    @Override public void onConfigurationChanged(Configuration config) {
+        super.onConfigurationChanged(config); if (running) stopRun("configuration_changed");
+    }
+    @Override public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (!running) return;
+        if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            stopRun("ui_hidden");
+        } else if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE) {
+            SpeculativeTileCache cache = activeCache;
+            if (cache != null) cache.onMemoryPressure();
+            stopRun("system_trim_" + level);
+        }
+    }
+    @Override public void onLowMemory() {
+        super.onLowMemory();
+        if (running) {
+            SpeculativeTileCache cache = activeCache;
+            if (cache != null) cache.onMemoryPressure();
+            stopRun("system_low_memory");
+        }
+    }
     @Override protected void onDestroy() {
-        stopped.set(true); destroyed = true; frameStats = null;
+        stopRun("activity_destroyed"); destroyed = true; frameStats = null;
         worker.shutdown(); frameThread.quitSafely(); super.onDestroy();
     }
     static final class Frames {
