@@ -254,11 +254,11 @@ final class LibraryGridAdapter extends BaseAdapter {
         title.setContentDescription(favorite ? context.getString(R.string.favorite_title, value) : value);
     }
 
-    private void bindIssue(TextView subtitle, ReadingProgress item) {
+    private void bindIssue(TextView badge, ReadingProgress item) {
         boolean structured = hasIssueNumber(item);
-        subtitle.setVisibility(structured ? View.VISIBLE : View.GONE);
-        subtitle.setText(structured ? item.seriesNumber.trim() : "");
-        subtitle.setContentDescription(structured ? context.getString(R.string.comic_issue_number, item.seriesNumber) : null);
+        badge.setVisibility(structured ? View.VISIBLE : View.GONE);
+        badge.setText(structured ? item.seriesNumber.trim() : "");
+        badge.setContentDescription(structured ? context.getString(R.string.comic_issue_number, item.seriesNumber) : null);
     }
 
     private static boolean hasIssueNumber(ReadingProgress item) {

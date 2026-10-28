@@ -55,7 +55,6 @@
     <string name="filter_completed">Valmiit</string>
     <string name="filter_favorites">Suosikit</string>
     <string name="cover_description">Sarjakuvan %1$s kansi</string>
-    <string name="comic_accessibility_progress">%1$s, lukukohta %2$d prosenttia</string>
     <string name="comic_page_progress">Sivu %1$d / %2$d</string>
     <string name="comic_in_progress_percent">Kesken, %1$d %%</string>
     <string name="comic_status_new">Lukematon</string>

@@ -40,6 +40,7 @@ import io.github.jnesew.comicviewer.library.LibraryQueryController;
 import io.github.jnesew.comicviewer.library.LibraryImportCoordinator;
 import io.github.jnesew.comicviewer.library.FolderScanCoordinator;
 import io.github.jnesew.comicviewer.ui.dialog.ComicEditorDialog;
+import io.github.jnesew.comicviewer.ui.dialog.AppearanceDialog;
 import io.github.jnesew.comicviewer.ui.dialog.LibraryFoldersDialog;
 import io.github.jnesew.comicviewer.ui.ReaderScreen;
 import io.github.jnesew.comicviewer.reader.ReaderSession;
@@ -230,20 +231,6 @@ public final class MainActivity extends Activity implements
     public void onConfigurationChanged(android.content.res.Configuration configuration) {
         super.onConfigurationChanged(configuration);
         applyAppearance();
-    }
-
-    private void showAppearanceDialog() {
-        String[] modes = {"system", "light", "dark"};
-        String[] labels = {getString(R.string.appearance_system), getString(R.string.appearance_light),
-                getString(R.string.appearance_dark)};
-        int checked = java.util.Arrays.asList(modes).indexOf(preferences.appearance());
-        new AlertDialog.Builder(this).setTitle(R.string.appearance)
-                .setSingleChoiceItems(labels, checked, (dialog, which) -> {
-                    preferences.setAppearance(modes[which]);
-                    dialog.dismiss();
-                    applyAppearance();
-                })
-                .setNegativeButton(R.string.cancel, null).show();
     }
 
     private void applyAppearance() {
@@ -479,7 +466,7 @@ public final class MainActivity extends Activity implements
             return true;
         });
         menu.getMenu().add(R.string.appearance).setOnMenuItemClickListener(item -> {
-            showAppearanceDialog();
+            AppearanceDialog.show(this, preferences, this::applyAppearance);
             return true;
         });
         menu.getMenu().add(R.string.reader_options).setOnMenuItemClickListener(item -> {
@@ -662,10 +649,10 @@ public final class MainActivity extends Activity implements
         FrameLayout overlay = new FrameLayout(context);
         overlay.setBackgroundColor(Color.argb(230, 8, 10, 13));
         overlay.setClickable(true);
-        LinearLayout content = new LinearLayout(this);
+        LinearLayout content = new LinearLayout(context);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setGravity(Gravity.CENTER);
-        ProgressBar spinner = new ProgressBar(this);
+        ProgressBar spinner = new ProgressBar(context);
         spinner.setIndeterminateTintList(ColorStateList.valueOf(Ui.accent(context)));
         content.addView(spinner, new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 52)));
         loadingLabel = Ui.text(context, getString(R.string.reader_opening), 16, Ui.text(context));
