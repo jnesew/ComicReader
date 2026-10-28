@@ -16,6 +16,7 @@ import io.github.jnesew.comicviewer.document.DocumentInfo;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
 import io.github.jnesew.comicviewer.model.PageInfo;
 import io.github.jnesew.comicviewer.util.Ui;
+import io.github.jnesew.comicviewer.util.InputLimits;
 import io.github.jnesew.comicviewer.util.SecureXml;
 
 import java.io.File;
@@ -178,7 +179,7 @@ public final class FormatRenderingTests {
                 for (String name : new String[]{"page.png", "oversized.png"}) {
                     zip.putNextEntry(new ZipEntry(name.equals("page.png") ? "0.png" : "1.png"));
                     try (InputStream input = instrumentation.getContext().getAssets().open("rendering/" + name)) {
-                        input.transferTo(zip);
+                        InputLimits.copy(input, zip, InputLimits.MAX_PAGE_BYTES, InputLimits.Reason.PAGE_BYTES);
                     }
                     zip.closeEntry();
                 }
@@ -265,7 +266,7 @@ public final class FormatRenderingTests {
                 try (InputStream raw = instrumentation.getContext().getAssets().open("rendering/" + IMAGES[i] + (bmp ? ".bin" : ""));
                      InputStream input = bmp ? new GZIPInputStream(raw) : raw) {
                     zip.putNextEntry(new ZipEntry(i + "-" + IMAGES[i]));
-                    input.transferTo(zip); zip.closeEntry();
+                    InputLimits.copy(input, zip, InputLimits.MAX_PAGE_BYTES, InputLimits.Reason.PAGE_BYTES); zip.closeEntry();
                 }
             }
         }

@@ -151,7 +151,7 @@ public final class CoverStoreTests {
         boolean bmp = image.endsWith("bmp");
         try (InputStream raw = instrumentation.getContext().getAssets().open("rendering/" + image + (bmp ? ".bin" : ""));
              InputStream input = bmp ? new GZIPInputStream(raw) : raw) {
-            zip.putNextEntry(new ZipEntry(entry)); input.transferTo(zip); zip.closeEntry();
+            zip.putNextEntry(new ZipEntry(entry)); InputLimits.copy(input, zip, InputLimits.MAX_PAGE_BYTES, InputLimits.Reason.PAGE_BYTES); zip.closeEntry();
         }
     }
 
