@@ -2,12 +2,29 @@
 
 All notable public changes to ComicViewer for Android are recorded here.
 
-## Unreleased
+## 1.4.0 - 2026-10-28
+
+### Library and appearance
+
+- Added System default, Light, and Dark appearance choices. The library and its dialogs
+  follow the selected appearance; reader controls and the selected canvas color stay independent.
+- Simplified the Titles/Series tabs and sort/filter controls. File and folder import remain
+  directly accessible from the toolbar and the empty library.
+- Moved issue numbers onto compact cover badges and cover actions to the top corner,
+  with the same actions available by long-pressing a card.
+- Replaced in-progress page counts with a bar in the Unread/Completed status area.
+  Progress includes saved scrolling within a page, including single-page long strips,
+  while completion remains an explicit reading state.
+- Fixed cover alignment after scrolling mixed PDF and numbered-comic results down and back up.
+  Missing issue numbers, reading status, and favorites no longer change card heights.
+- Refreshed the screenshots using public-domain sample comics, including light appearance.
 
 ### Development
 
 - Updated vulnerable transitive Android build and test-tool libraries, removed obsolete
   verification pins, and added resolved dependency checks to CI and release builds.
+- Added Android regression coverage for both appearance palettes, recycled status and issue
+  badges, and mixed-format cover alignment across cover sizes and larger Finnish text.
 
 ## 1.3.1 - 2026-10-25
 

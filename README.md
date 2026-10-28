@@ -22,38 +22,44 @@ accounts, ads, analytics, subscriptions, network access, or broad storage permis
 - Verified automatic reconnection of moved comics when their full content identity was retained
 - Series grouping from conservative metadata or folder structure, with per-comic correction and independent series favorites
 - Page previews while scrubbing, natural page ordering, and direct “open with” support
+- Light, Dark, and System default library appearance
 - English and Finnish interface resources
 - Android 8.0 (API 26) through Android 16 (API 36)
 
 ## Screenshots
 
-Captured in ComicViewer v1.3.0 on Android 16. Both library views use Compact cover size
-with three covers per row. Click a screenshot to view it at full resolution.
+Captured in ComicViewer v1.4.0 on Android 16 using public-domain sample comics.
+Libraries use Compact cover size with three covers per row. Dark and Light
+appearance show the same issue badges and reading states. Click a screenshot to
+view it at full resolution.
 
 <table>
   <tr>
-    <td align="center"><a href="docs/screenshots/series-library.png"><img src="docs/screenshots/series-library.png" alt="Three-column series library with favorites and mixed reading progress" width="260"></a><br><sub>Series and favorites</sub></td>
-    <td align="center"><a href="docs/screenshots/title-library.png"><img src="docs/screenshots/title-library.png" alt="Three-column title library with issue numbers and saved reading progress" width="260"></a><br><sub>Titles and progress</sub></td>
-    <td align="center"><a href="docs/screenshots/paged-reading.png"><img src="docs/screenshots/paged-reading.png" alt="Pepper and Carrot in Fit page mode with separate bookmark and favorite controls" width="260"></a><br><sub>Single-page reading</sub></td>
+    <td align="center"><a href="docs/screenshots/series-library.png"><img src="docs/screenshots/series-library.png" alt="Dark series library with favorites, unread counts, and caught-up status" width="260"></a><br><sub>Series and favorites</sub></td>
+    <td align="center"><a href="docs/screenshots/title-library.png"><img src="docs/screenshots/title-library.png" alt="Dark title library with issue cover badges and hybrid reading progress" width="260"></a><br><sub>Titles and progress</sub></td>
+    <td align="center"><a href="docs/screenshots/light-library.png"><img src="docs/screenshots/light-library.png" alt="The same title library in Light appearance" width="260"></a><br><sub>Light appearance</sub></td>
   </tr>
   <tr>
-    <td align="center"><a href="docs/screenshots/continuous-scroll.png"><img src="docs/screenshots/continuous-scroll.png" alt="Signal in the Rain long strip in continuous mode with reader controls visible" width="260"></a><br><sub>Continuous scrolling</sub></td>
+    <td align="center"><a href="docs/screenshots/paged-reading.png"><img src="docs/screenshots/paged-reading.png" alt="Little Nemo collected pages in Fit page mode with separate bookmark and favorite controls" width="260"></a><br><sub>Single-page reading</sub></td>
     <td align="center"><a href="docs/screenshots/continuous-series.png"><img src="docs/screenshots/continuous-series.png" alt="Little Nemo issues separated by a named issue boundary in continuous reading" width="260"></a><br><sub>Continuous series reading</sub></td>
-    <td align="center"><a href="docs/screenshots/library-folders.png"><img src="docs/screenshots/library-folders.png" alt="Two local library folders with a shared rescan action" width="260"></a><br><sub>Multiple library folders</sub></td>
+    <td align="center"><a href="docs/screenshots/library-folders.png"><img src="docs/screenshots/library-folders.png" alt="Two local library folders with a shared rescan action in Light appearance" width="260"></a><br><sub>Multiple library folders</sub></td>
   </tr>
 </table>
 
 <p align="center">
-  <a href="docs/screenshots/two-page-spread.png"><img src="docs/screenshots/two-page-spread.png" alt="Complete Pepper and Carrot pages displayed side by side in an immersive landscape spread" width="800"></a><br>
+  <a href="docs/screenshots/two-page-spread.png"><img src="docs/screenshots/two-page-spread.png" alt="Complete Little Nemo sample pages displayed side by side in an immersive landscape spread" width="800"></a><br>
   <sub>Two-page spread</sub>
 </p>
 
 <details>
-<summary>Immersive reading, reader options, and comic details</summary>
+<summary>Continuous reading, reader options, and comic details</summary>
 
 <table>
   <tr>
-    <td align="center"><a href="docs/screenshots/immersive-continuous-reading.png"><img src="docs/screenshots/immersive-continuous-reading.png" alt="Signal in the Rain long strip with all reader controls hidden" width="260"></a><br><sub>Immersive reading</sub></td>
+    <td align="center"><a href="docs/screenshots/continuous-scroll.png"><img src="docs/screenshots/continuous-scroll.png" alt="Little Nemo collected pages in continuous mode with reader controls visible" width="260"></a><br><sub>Continuous scrolling</sub></td>
+    <td align="center"><a href="docs/screenshots/immersive-continuous-reading.png"><img src="docs/screenshots/immersive-continuous-reading.png" alt="The same public-domain pages with all reader controls hidden" width="260"></a><br><sub>Immersive reading</sub></td>
+  </tr>
+  <tr>
     <td align="center"><a href="docs/screenshots/reader-options.png"><img src="docs/screenshots/reader-options.png" alt="Reader preferences for controls, zoom, layout, direction, and buffering" width="260"></a><br><sub>Reader options</sub></td>
     <td align="center"><a href="docs/screenshots/edit-comic.png"><img src="docs/screenshots/edit-comic.png" alt="Comic editor with title, series, and issue number fields" width="260"></a><br><sub>Edit comic details</sub></td>
   </tr>
@@ -61,7 +67,7 @@ with three covers per row. Click a screenshot to view it at full resolution.
 
 </details>
 
-<sub>Sample artwork: [Pepper & Carrot — Episode 10: Summer Special](https://www.peppercarrot.com/en/webcomic-sources/ep10_Summer-Special.html), art, scenario, and Hereva creation by David Revoy; English translation by Alex Gryson; [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). “Signal in the Rain” is an original AI-generated test sample supplied under [CC0](https://creativecommons.org/publicdomain/zero/1.0/). Classic comics are by Winsor McCay and Gustave Verbeek. See [artwork sources and full credits](docs/STORE-ASSETS.md#artwork-sources).</sub>
+<sub>Sample artwork: public-domain newspaper comics by Winsor McCay, Gustave Verbeek, and Richard F. Outcault. See [artwork sources and capture details](docs/STORE-ASSETS.md#artwork-sources).</sub>
 
 ## Privacy by design
 

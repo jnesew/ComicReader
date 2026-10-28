@@ -2,75 +2,78 @@
 
 ## Screenshot captures
 
-The README gallery and fastlane screenshot selection show ComicViewer v1.3.0 on an
+The README gallery and fastlane screenshot selection show ComicViewer v1.4.0 on an
 Android 16 (API 36) emulator. Portrait captures are 1080 × 2400 pixels; the landscape
-spread is 2400 × 1080. The library uses Compact cover size with three columns at
+spread is 2400 × 1080. Libraries use Compact cover size with three columns at
 420 dpi and the default font scale. All captures are unedited PNGs from the app,
 with no added device frames or promotional overlays. Android's demo status bar
 sets the clock and system indicators consistently.
+
+The title and series libraries show Dark appearance. The matching title-library
+example and folder manager show Light appearance. Reader controls retain their
+dark palette. Reading states, bookmarks, favorites, and settings were selected
+through the app's normal controls.
 
 English screenshots are supplied under `en-US`; Finnish listing text does not claim
 the English captures are Finnish. The 512 px icon is existing project artwork, under MIT.
 
 | Store image | Identical documentation capture | View |
 | --- | --- | --- |
-| 1.png | [series-library.png](screenshots/series-library.png) | Series, favorites, and progress |
+| 1.png | [series-library.png](screenshots/series-library.png) | Series, favorites, and unread counts |
 | 2.png | [paged-reading.png](screenshots/paged-reading.png) | Single page, bookmark, and comic favorite |
-| 3.png | [continuous-scroll.png](screenshots/continuous-scroll.png) | Long-strip continuous reading |
-| 4.png | [library-folders.png](screenshots/library-folders.png) | Multiple library folders |
+| 3.png | [continuous-scroll.png](screenshots/continuous-scroll.png) | Continuous reading within a collection |
+| 4.png | [library-folders.png](screenshots/library-folders.png) | Multiple library folders in Light appearance |
 | 5.png | [continuous-series.png](screenshots/continuous-series.png) | Continuous reading across issues |
+| 6.png | [light-library.png](screenshots/light-library.png) | Light appearance, issue badges, and hybrid status |
+| 7.png | [title-library.png](screenshots/title-library.png) | Matching Dark title library |
 
-Additional README captures show the title library, immersive continuous reading,
-reader options, comic metadata editing, and a landscape spread. The old JPEG
-captures and store copies have been replaced.
+Additional README captures show immersive continuous reading, reader options,
+comic metadata editing, and a landscape spread.
 
 ## Artwork sources
 
-Comics were supplied in the screenshot test pack and public-domain sample library.
-Their checksum manifests were verified before import. The source records below
-identify every classic page visible in the captures, including partial thumbnails
-at the bottom of the title library. The sample library's per-archive provenance
-records match these files; Wikimedia Commons catalogues the original newspaper
-artwork as public domain. These designations concern the artwork, not a new MIT
-license for it.
+All visible comics come from the maintainer-supplied
+`ComicViewer-Public-Domain-Sample-Library.zip`. Its `SHA256SUMS` entries were verified
+before import. Archive SHA-256:
+`408a36a11da35ce8ab19b733700007fb787ccd9e1ff7191c8de3ca65a5f72d99`.
+
+The pack records each downloaded image's checksum, creator, source page, and
+Wikimedia Commons public-domain designation. The table lists every page visible
+in these captures, including partial cover thumbnails behind the editor. Those
+designations concern the artwork; they do not place it under the repository's MIT
+license.
 
 | Classic page and source record | Creator |
 | --- | --- |
 | [Little Nemo in Slumberland — 1905-10-15](https://commons.wikimedia.org/wiki/File:Little_Nemo_1905-10-15.jpg) | Winsor McCay |
 | [Little Nemo in Slumberland — 1905-10-22](https://commons.wikimedia.org/wiki/File:Little_Nemo_in_Slumberland_(1905-10-22).jpeg) | Winsor McCay |
+| [Little Nemo in Slumberland — 1905-10-29](https://commons.wikimedia.org/wiki/File:Little_Nemo_1905-10-29.jpg) | Winsor McCay |
 | [Little Nemo in Slumberland — 1905-11-05](https://commons.wikimedia.org/wiki/File:Little_Nemo_1905-11-05.jpg) | Winsor McCay |
 | [Little Nemo in Slumberland — 1905-11-12](https://commons.wikimedia.org/wiki/File:Little_Nemo_1905-11-12.jpg) | Winsor McCay |
 | [Little Nemo in Slumberland — 1905-11-19](https://commons.wikimedia.org/wiki/File:Little_Nemo_1905-11-19.jpg) | Winsor McCay |
+| [Little Nemo in Slumberland — 1905-11-26](https://commons.wikimedia.org/wiki/File:Little_Nemo_1905-11-26.jpg) | Winsor McCay |
 | [Little Nemo in Slumberland — 1905-12-03](https://commons.wikimedia.org/wiki/File:Little_Nemo_1905-12-03.jpg) | Winsor McCay |
-| [Little Nemo in Slumberland — 1905-12-31](https://commons.wikimedia.org/wiki/File:Little_Nemo_1905-12-31.jpg) | Winsor McCay |
+| [Little Nemo in Slumberland — 1905-12-10](https://commons.wikimedia.org/wiki/File:Little_Nemo_1905-12-10.jpg) | Winsor McCay |
 | [Dream of the Rarebit Fiend — 1904-09-10](https://commons.wikimedia.org/wiki/File:Dream_of_the_Rarebit_Fiend_1904-09-10.png) | Winsor McCay |
+| [Dream of the Rarebit Fiend — 1904-12-10](https://commons.wikimedia.org/wiki/File:Dream-of-the-Rarebit-Fiend-12-10-1904.jpg) | Winsor McCay |
+| [Dream of the Rarebit Fiend — 1905-01-07](https://commons.wikimedia.org/wiki/File:Dream_of_the_Rarebit_Fiend_1905-01-07.jpg) | Winsor McCay |
+| [Dream of the Rarebit Fiend — 1905-01-28](https://commons.wikimedia.org/wiki/File:Dream_of_the_Rarebit_Fiend_1905-01-28.jpg) | Winsor McCay |
+| [Dream of the Rarebit Fiend — 1905-02-25](https://commons.wikimedia.org/wiki/File:Dream_of_the_Rarebit_Fiend_1905-02-25.jpg) | Winsor McCay |
 | [Little Sammy Sneeze — 1905-05-28](https://commons.wikimedia.org/wiki/File:Little_Sammy_Sneeze_1905-05-28.jpg) | Winsor McCay |
-| [The Upside Downs of Little Lady Lovekins and Old Man Muffaroo — 1904-03-27](https://commons.wikimedia.org/wiki/File:Ambigrams_by_Gustave_Verbeek_(1904)_-_comics_The_Upside_Downs_of_Little_Lady_Lovekins_and_Old_Man_Muffaroo_-_The_bad_snake_and_the_good_wizard.jpg) | Gustave Verbeek |
+| [The Upside Downs of Little Lady Lovekins and Old Man Muffaroo — 1904-03-13](https://commons.wikimedia.org/wiki/File:Ambigrams_by_Gustave_Verbeek_(1904)_-_comics_The_Upside_Downs_of_Little_Lady_Lovekins_and_Old_Man_Muffaroo_-_The_wonderful_cure_of_the_waterfall.jpg) | Gustave Verbeek |
+| [The Yellow Kid — 1896-11-08](https://commons.wikimedia.org/wiki/File:1896-11-08_Yellow_Kid.jpg) | Richard F. Outcault |
 
-*Pepper & Carrot — Episode 10: Summer Special* appears as a library cover, page 3
-in the paged-reader capture, and pages 4–5 in the landscape spread (page numbers
-include the sample archive's cover). The official
-[episode source and credits](https://www.peppercarrot.com/en/webcomic-sources/ep10_Summer-Special.html)
-license it under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/):
-
-- Art and scenario: David Revoy.
-- English translation: Alex Gryson.
-- Hereva universe creation: David Revoy; lead maintainer: Craig Maloney.
-- Hereva writers: Craig Maloney, Nicolas Artance, Scribblemaniac, and Valvin.
-- Hereva correctors: Alex Gryson, CGand, Hali, Marno van der Maas, Moini, and Willem Sonke.
-
-“Signal in the Rain — Episode 1: The Lost Signal” is an original AI-generated test
-sample supplied by the maintainer. The pack dedicates the rights its distributor
-holds, to the extent they exist, under
-[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). Its cover appears in
-the library and its 1200 × 12000 long-strip page appears in the continuous-reader
-captures and behind the reader-options dialog.
-
-ComicViewer scales the pages and crops cover thumbnails to its cards. The source
-artwork retains its original licensing. Comics are not bundled in the APK.
+For the multi-page reader examples, the twelve Little Nemo sample images were
+repackaged unchanged in chronological order into **Little Nemo - Collected Pages**.
+This local screenshot fixture demonstrates page navigation, bookmarks, continuous
+reading, and two-page spreads. It is separate from the twelve individual issues
+used to demonstrate continuous series reading. The paged capture shows the third
+image (1905-10-29); the spread shows the fourth and fifth (1905-11-05 and 1905-11-12).
+No source artwork was edited. ComicViewer scales the pages and crops cover thumbnails
+to its cards. Comics are not bundled in the APK or added to the source repository.
 
 ## Listing layout
 
-The [F-Droid metadata guide](https://f-droid.org/en/docs/All_About_Descriptions_Graphics_and_Screenshots/)
-describes the locale directory layout. Version 1.3.0 uses localized
-`<locale>/changelogs/5.txt` entries; code 4 belongs to v1.2.0 and code 3 to v1.1.0.
+Localized listing text, icons, screenshots, and version-code changelogs live under
+`fastlane/metadata/android/<locale>/`. Version 1.4.0 uses `changelogs/7.txt`;
+code 6 belongs to v1.3.1, code 5 to v1.3.0, and code 4 to v1.2.0.

@@ -2,10 +2,10 @@ Read your own comics offline with ComicViewer, a small Android reader for CBZ, P
 
 Choose single-page, two-page spread or continuous scrolling. Continue across issues in a series, remember your reading position, jump to a page and use bookmarks. Adjust zoom, lock zoom gestures and choose left-to-right, right-to-left or automatic reading direction.
 
-Organize local files in a cover grid with search, sorting, comic and series favorites, and series groups. Import individual files or scan multiple folders selected through Android's file picker. Edit titles and series information without changing the source files.
+Organize local files in a cover grid with search, sorting, comic and series favorites, and series groups. Import individual files or scan multiple folders selected through Android's file picker. Edit titles and series information without changing the source files. Choose Light, Dark or System default appearance for the library.
 
 ComicViewer works without an account, network access, advertising, analytics or Google Play services. Files stay on your device. It requests no Android permissions and uses access granted through the system file picker.
 
 Requires Android 8.0 or later. EPUB support is for image-based comics; this is not a reflowable text ebook reader. The app is available in English and Finnish. No comics are bundled.
 
-Screenshot artwork: Pepper & Carrot episode 10, art, scenario and Hereva creation by David Revoy; English translation by Alex Gryson; CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Source and full episode credits: https://www.peppercarrot.com/en/webcomic-sources/ep10_Summer-Special.html. Signal in the Rain is an original AI-generated sample supplied under CC0. Classic comics by Winsor McCay and Gustave Verbeek are catalogued as public domain. Full source details and credits: docs/STORE-ASSETS.md in the source repository.
+Screenshot artwork: public-domain newspaper comics by Winsor McCay, Gustave Verbeek and Richard F. Outcault. Exact source records and capture details: https://github.com/jnesew/ComicReader/blob/main/docs/STORE-ASSETS.md.

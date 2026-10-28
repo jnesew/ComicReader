@@ -2,10 +2,10 @@ Lue omia sarjakuviasi ilman verkkoyhteyttä. ComicViewer on pieni Android-lukija
 
 Valitse yksittäinen sivu, kahden sivun aukeama tai jatkuva vieritys. Jatka sarjan seuraavaan numeroon, palaa tallennettuun lukukohtaan, siirry sivulle ja käytä kirjanmerkkejä. Säädä zoomausta, lukitse zoomauseleet ja valitse lukusuunta tai automaattinen tunnistus.
 
-Järjestä paikalliset tiedostosi kansikuvanäkymässä. Käytettävissä ovat haku, lajittelu, sarjakuvien ja sarjojen suosikit sekä sarjaryhmät. Tuo yksittäisiä tiedostoja tai skannaa useita Androidin tiedostovalitsimella valitsemiasi kansioita. Muokkaa nimiä ja sarjatietoja muuttamatta alkuperäisiä tiedostoja.
+Järjestä paikalliset tiedostosi kansikuvanäkymässä. Käytettävissä ovat haku, lajittelu, sarjakuvien ja sarjojen suosikit sekä sarjaryhmät. Tuo yksittäisiä tiedostoja tai skannaa useita Androidin tiedostovalitsimella valitsemiasi kansioita. Muokkaa nimiä ja sarjatietoja muuttamatta alkuperäisiä tiedostoja. Valitse kirjastolle vaalea, tumma tai järjestelmän mukainen ulkoasu.
 
 ComicViewer ei tarvitse käyttäjätiliä, verkkoyhteyttä eikä Google Play -palveluita. Sovelluksessa ei ole mainoksia tai analytiikkaa. Tiedostot pysyvät laitteellasi. Sovellus ei pyydä Android-käyttöoikeuksia, vaan käyttää tiedostovalitsimella antamaasi pääsyä valittuihin tiedostoihin.
 
 Vaatii Android 8.0:n tai uudemman. EPUB-tuki on tarkoitettu kuvapohjaisille sarjakuville, ei mukautuvalle tekstille. Sovelluksen kielet ovat suomi ja englanti. Sarjakuvia ei toimiteta sovelluksen mukana.
 
-Kuvakaappausten sarjakuvat: Pepper & Carrot, jakso 10; kuvitus, käsikirjoitus ja Herevan luominen: David Revoy; englanninkielinen käännös: Alex Gryson; CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Lähde ja täydelliset tekijätiedot: https://www.peppercarrot.com/en/webcomic-sources/ep10_Summer-Special.html. Signal in the Rain on tekoälyllä luotu alkuperäinen testisarjakuva, joka on toimitettu CC0-luovutuksella. Winsor McCayn ja Gustave Verbeekin klassikkosarjakuvat on luetteloitu tekijänoikeudesta vapaiksi. Kaikki lähde- ja tekijätiedot ovat lähdekoodivaraston tiedostossa docs/STORE-ASSETS.md.
+Kuvakaappausten sarjakuvat: tekijänoikeudesta vapaita sanomalehtisarjakuvia tekijöiltä Winsor McCay, Gustave Verbeek ja Richard F. Outcault. Tarkat lähde- ja kuvaustiedot: https://github.com/jnesew/ComicReader/blob/main/docs/STORE-ASSETS.md.
