@@ -149,6 +149,7 @@ configurations, the isolated Android test runner, and lint's detached graph:
 | Family | Version | Advisory examples |
 | --- | --- | --- |
 | Tink | 1.14.1 | Replaces legacy generated Protobuf classes |
+| Guava (host tools) | 33.7.2-jre | [Deserialization memory allocation](https://github.com/google/guava/security/advisories/GHSA-xxph-c9ww-hj94) |
 | Netty 4.1 | 4.1.139.Final | [HTTP/TLS handling](https://github.com/advisories/GHSA-c4c3-7fpv-j4q5) |
 | Bouncy Castle `jdk18on` | 1.86 | [Certificate validation](https://github.com/advisories/GHSA-9pwp-9qqc-pr26), [GOST CTR](https://github.com/advisories/GHSA-574f-3g2m-x479) |
 | Commons Compress | 1.28.0 | [Malformed archives](https://github.com/advisories/GHSA-4g9r-vxhx-9pgx) |
@@ -168,6 +169,12 @@ are written to each project's `build/reports/dependency-security/resolved.json`.
 Detached lint configurations are exercised by strict `lintRelease`. CI and the
 canonical release script run both checks. This is a reviewed version policy, not
 a live advisory scan.
+
+These overrides do not replace libraries bundled inside Gradle itself. Gradle
+8.14.6 still supplies Guava 33.4.6 to its own core classloader; the Guava 33.7.2
+override patches the project-resolved AGP/test tooling, not that bundled copy.
+The bundled copy needs separate upstream assessment or a patched distribution;
+its deserialization reachability has not been established by these dependency checks.
 
 When changing the policy, verify artifacts, remove obsolete pins for replaced
 versions, and test normal builds plus the connected suite. Overrides can be removed

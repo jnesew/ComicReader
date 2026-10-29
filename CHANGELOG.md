@@ -2,6 +2,13 @@
 
 All notable public changes to ComicViewer for Android are recorded here.
 
+## Unreleased
+
+### Development
+
+- Patched Guava across the Android build and test tooling for CVE-2026-102554,
+  retaining strict dependency verification and an empty app runtime dependency graph.
+
 ## 1.4.0 - 2026-10-28
 
 ### Library and appearance
