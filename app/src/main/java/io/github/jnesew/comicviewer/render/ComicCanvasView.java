@@ -93,10 +93,11 @@ public final class ComicCanvasView extends View {
     private boolean tapZones = true;
     private boolean rightToLeft;
     private String bufferingLevel = BufferingPolicy.STANDARD;
-    private RenderTuning renderTuning = RenderTuning.BASELINE;
+    private RenderTuning renderTuning = RenderTuning.READER;
     private RenderMetrics renderMetrics;
     private int travelDirection = 1;
     private double lastPrefetchScroll;
+    private final java.util.Set<TileRenderer> prefetchOwners = new java.util.HashSet<>();
     private int canvasColor = Color.BLACK;
 
     // Paged transform. zoom is a multiplier relative to fit-width.
@@ -164,6 +165,8 @@ public final class ComicCanvasView extends View {
     }
 
     public void setDocument(TileRenderer renderer, List<PageInfo> pages, ReadingProgress progress) {
+        updatePrefetchOwners(Collections.emptySet());
+        travelDirection = 1;
         this.renderer = renderer;
         this.pages = pages;
         this.page = clamp(progress.page, 0, Math.max(0, pages.size() - 1));
@@ -194,10 +197,12 @@ public final class ComicCanvasView extends View {
         pendingRestoreRatio = pageRatio;
         pendingRestore = true;
         relayoutDocument();
+        lastPrefetchScroll = documentScroll;
         invalidate();
     }
 
     public void clearDocument() {
+        updatePrefetchOwners(Collections.emptySet());
         renderer = null;
         pages = Collections.emptyList();
         clearContinuousDocuments();
@@ -334,6 +339,8 @@ public final class ComicCanvasView extends View {
         pendingRestoreRatio = pageRatio;
         pendingRestore = true;
         relayoutDocument();
+        // Adopting/prepending issues moves layout coordinates, not the reader's direction.
+        lastPrefetchScroll = documentScroll;
         invalidate();
     }
 
@@ -550,6 +557,11 @@ public final class ComicCanvasView extends View {
 
     private void prefetchPaged() {
         if (BufferingPolicy.lookaheadViewports(bufferingLevel) == 0) return;
+        if (renderTuning.prioritized) {
+            updatePrefetchOwners(Collections.singleton(renderer));
+            prefetchPagedCandidates();
+            return;
+        }
         if (renderTuning.byteLookahead) { prefetchPagedCandidates(); return; }
         int next = navigationTarget(1);
         if (next == page || next < 0 || next >= pages.size()) return;
@@ -590,7 +602,8 @@ public final class ComicCanvasView extends View {
     private void prefetchPagedCandidates() {
         ArrayList<TileRenderer.PageRequest> requests = new ArrayList<>();
         int target = page;
-        for (int frame = 0; frame < 6; frame++) {
+        int frames = renderTuning.prioritized ? 1 : 6;
+        for (int frame = 0; frame < frames; frame++) {
             int next = spread ? spreadLayout.adjacentAnchor(target, travelDirection)
                     : clamp(target + travelDirection, 0, pages.size() - 1);
             if (next == target) break;
@@ -605,18 +618,23 @@ public final class ComicCanvasView extends View {
             float scale = Math.max(1, getWidth() - gap) / (lw + rw);
             if (FIT_PAGE.equals(zoomMode)) scale = Math.min(scale, getHeight() / sourceHeight);
             if (MANUAL.equals(zoomMode)) scale *= clamp(zoom, .1f, 12f);
+            float frameHeight = sourceHeight * scale;
+            float originX = renderTuning.prioritized ? (getWidth() - ((lw + rw) * scale + gap)) / 2f : 0f;
+            float originY = renderTuning.prioritized && !FIT_WIDTH.equals(zoomMode) && frameHeight < getHeight()
+                    ? (getHeight() - frameHeight) / 2f : 0f;
             for (int index = target; index <= end; index++) {
-                float x = index == right && end != target ? lw * scale + gap : 0;
+                float x = originX + (index == right && end != target ? lw * scale + gap : 0);
                 float width = normalizedPageWidth(index, sourceHeight) * scale;
                 requests.add(new TileRenderer.PageRequest(index,
-                        new RectF(x, 0, x + width, sourceHeight * scale),
+                        new RectF(x, originY, x + width, originY + frameHeight),
                         new RectF(0, 0, getWidth(), getHeight()), frame));
             }
         }
         long signature = (((long) page) << 32) ^ Float.floatToIntBits(zoom) ^
                 (((long) getWidth()) << 16) ^ getHeight() ^ (travelDirection < 0 ? 0x191L : 0) ^
                 (rightToLeft ? 0x512L : 0) ^ (spread ? 0x924L : 0) ^ zoomMode.hashCode();
-        renderer.prefetchPages(requests, signature, BufferingPolicy.queuedTiles(bufferingLevel));
+        if (requests.isEmpty()) renderer.cancelPrefetch();
+        else renderer.prefetchPages(requests, signature, BufferingPolicy.queuedTiles(bufferingLevel));
     }
 
     private void drawContinuous(Canvas canvas) {
@@ -658,7 +676,7 @@ public final class ComicCanvasView extends View {
     private void prefetchContinuous() {
         int ahead = BufferingPolicy.lookaheadViewports(bufferingLevel);
         if (ahead == 0) return;
-        if (renderTuning.byteLookahead) { prefetchContinuousCandidates(); return; }
+        if (renderTuning.byteLookahead || renderTuning.prioritized) { prefetchContinuousCandidates(); return; }
         float height = getHeight();
         double end = Math.min(continuousLayout.documentHeight(),
                 documentScroll + height * (1f + ahead));
@@ -696,7 +714,12 @@ public final class ComicCanvasView extends View {
         float x = (getWidth() - pageWidth) / 2 + continuousPanX;
         java.util.Map<TileRenderer, List<TileRenderer.PageRequest>> nearby = new java.util.LinkedHashMap<>();
         int examined = 0;
-        for (int frame = 0; frame < 6 && examined < 128; frame++) {
+        int frames = renderTuning.prioritized ? BufferingPolicy.lookaheadViewports(bufferingLevel) : 6;
+        // A tall page needs an approaching tile band, not several viewport bands of new work.
+        TileRenderer current = rendererForPage(page);
+        if (renderTuning.prioritized && (continuousLayout.height(page) > height * 3f ||
+                (current != null && current.usesRenderedTiles()))) frames = 1;
+        for (int frame = 0; frame < frames && examined < 128; frame++) {
             double start = travelDirection > 0 ? documentScroll + height * (1 + frame)
                     : documentScroll - height * (1 + frame);
             double end = start + height;
@@ -705,7 +728,9 @@ public final class ComicCanvasView extends View {
             double boundedEnd = Math.min(continuousLayout.documentHeight(), end);
             int first = continuousLayout.pageAt(boundedStart);
             int last = continuousLayout.pageAt(boundedEnd);
-            for (int index = first; index <= last && examined++ < 128; index++) {
+            for (int offset = 0; offset <= last - first && examined++ < 128; offset++) {
+                int index = renderTuning.prioritized && travelDirection < 0 ? last - offset : first + offset;
+                if (renderTuning.prioritized && frame > 0 && continuousLayout.height(index) > height * 3f) continue;
                 TileRenderer owner = rendererForPage(index);
                 if (owner == null || owner.isUnavailable()) continue;
                 float top = (float) (continuousLayout.top(index) - documentScroll);
@@ -713,15 +738,25 @@ public final class ComicCanvasView extends View {
                         new TileRenderer.PageRequest(index < pageMap.size() ? pageMap.localPageFor(index) : index,
                                 new RectF(x, top, x + pageWidth, top + continuousLayout.height(index)),
                                 new RectF(0, (float) (boundedStart - documentScroll), getWidth(),
-                                        (float) (boundedEnd - documentScroll)), frame));
+                                        (float) (boundedEnd - documentScroll)), frame,
+                                renderTuning.prioritized && travelDirection < 0));
             }
         }
         long signature = (((long) (documentScroll / Math.max(1, height / 2))) << 32) ^
                 Float.floatToIntBits(continuousZoom) ^ (((long) getWidth()) << 16) ^ pageMap.size() ^
-                (travelDirection < 0 ? 0x191L : 0);
+                (travelDirection < 0 ? 0x191L : 0) ^ Float.floatToIntBits(continuousPanX) ^ getHeight();
+        if (renderTuning.prioritized) updatePrefetchOwners(nearby.keySet());
         for (java.util.Map.Entry<TileRenderer, List<TileRenderer.PageRequest>> item : nearby.entrySet()) {
             item.getKey().prefetchPages(item.getValue(), signature, BufferingPolicy.queuedTiles(bufferingLevel));
         }
+    }
+
+    private void updatePrefetchOwners(java.util.Set<TileRenderer> active) {
+        for (TileRenderer owner : prefetchOwners) {
+            if (!active.contains(owner)) owner.cancelPrefetch();
+        }
+        prefetchOwners.clear();
+        prefetchOwners.addAll(active);
     }
 
     private void addOffscreenPages(

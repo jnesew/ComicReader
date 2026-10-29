@@ -7,6 +7,7 @@ public final class RenderMetrics {
     private long peakVisible, peakBacking, peakShared, peakPending, peakSharedPending;
     private long planningNanos, planningCalls, guardNanos, guardCalls;
     private long capacityDenials, memoryDenials, guardRefusals;
+    private long priorityEvicted, nearDenied, publications, publishedBytes, largestPublication;
     private double frameArea, frameMissing, lastMissing, missingAreaNanos;
     private long lastFrameTime;
     private boolean collecting;
@@ -49,6 +50,13 @@ public final class RenderMetrics {
     public synchronized void guard(long nanos) { if (collecting) { guardCalls++; guardNanos += Math.max(0, nanos); } }
     public synchronized void useful(long bytes) { if (collecting) usefulBytes += bytes; }
     public synchronized void evicted(long bytes) { if (collecting) evictedBytes += bytes; }
+    public synchronized void priorityEvicted(long bytes) { if (collecting) priorityEvicted += bytes; }
+    public synchronized void nearDenied() { if (collecting) nearDenied++; }
+    public synchronized void published(long bytes) {
+        if (!collecting) return;
+        publications++; publishedBytes += bytes;
+        largestPublication = Math.max(largestPublication, bytes);
+    }
     public synchronized void memory(long visible, long backing, long shared, long pending) {
         if (!collecting) return;
         peakVisible = Math.max(peakVisible, visible); peakBacking = Math.max(peakBacking, backing);
@@ -80,6 +88,11 @@ public final class RenderMetrics {
         result.put("guard_checks", guardCalls); result.put("guard_check_ms", guardNanos / 1e6);
         result.put("capacity_denials", capacityDenials); result.put("memory_denials", memoryDenials);
         result.put("guard_refusals", guardRefusals);
+        result.put("priority_replaced_bytes", priorityEvicted);
+        result.put("near_admission_denials", nearDenied);
+        result.put("tile_publications", publications);
+        result.put("published_tile_bytes", publishedBytes);
+        result.put("peak_published_tile_bytes", largestPublication);
         return result;
     }
 }

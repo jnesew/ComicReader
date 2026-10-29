@@ -7,6 +7,42 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class RenderExperimentTest {
     private static final long MIB = 1024L * 1024L;
 
+    @Test public void unchangedPlansDoNotWakeOwnersAndCancelledPlansReleaseTheirPriority() {
+        AtomicBoolean room = new AtomicBoolean(true);
+        SpeculativeTileCache cache = new SpeculativeTileCache(256 * MIB, BufferingPolicy.HIGH,
+                room::get, () -> 0);
+        Object first = new Object(), second = new Object();
+        java.util.concurrent.atomic.AtomicInteger wakes = new java.util.concurrent.atomic.AtomicInteger();
+        cache.onWorkAvailable(first, wakes::incrementAndGet);
+        TileKey key = new TileKey(1, 1, 1, 0, 0, 512, 512);
+        cache.plan(second, java.util.Map.of(key, 0));
+        assertEquals(1, wakes.get());
+        room.set(false);
+        assertFalse(cache.reserve(second, key, MIB));
+        cache.plan(second, java.util.Map.of(key, 0));
+        assertEquals(1, wakes.get()); // A persistent refusal cannot create a plan-change pump.
+        cache.plan(second, java.util.Map.of(key, 0));
+        assertEquals(1, wakes.get());
+        cache.cancelPlan(second);
+        assertEquals(2, wakes.get());
+        assertFalse(cache.planned(second, key));
+        cache.cancelPlan(second);
+        assertEquals(2, wakes.get());
+    }
+
+    @Test public void readerKeepsCurrentCeilingAndClipsExplicitExtraRetention() {
+        RenderTuning reader = RenderTuning.READER;
+        assertTrue(reader.prioritized); assertTrue(reader.refill); assertTrue(reader.boundedAdmission());
+        assertFalse(reader.byteLookahead); assertFalse(reader.historyFallback);
+        assertEquals(BufferingPolicy.speculativeBytes(BufferingPolicy.HIGH, 256 * MIB),
+                reader.cacheBytes(256 * MIB, BufferingPolicy.HIGH));
+        assertEquals(64 * MIB, RenderTuning.reader(96).cacheBytes(256 * MIB, BufferingPolicy.HIGH));
+        assertEquals(32 * MIB, RenderTuning.reader(64).cacheBytes(128 * MIB, BufferingPolicy.HIGH));
+        assertEquals(0, RenderTuning.reader(64).cacheBytes(256 * MIB, BufferingPolicy.STANDARD));
+        assertEquals(BufferingPolicy.speculativeBytes(BufferingPolicy.INCREASED, 256 * MIB),
+                RenderTuning.reader(64).cacheBytes(256 * MIB, BufferingPolicy.INCREASED));
+    }
+
     @Test public void requestedCapacityIsClippedAndStandardCannotEnableExtraWork() {
         RenderTuning tuning = new RenderTuning(true, true, true, true, 96);
         assertEquals(96 * MIB, tuning.cacheBytes(512 * MIB, BufferingPolicy.HIGH));

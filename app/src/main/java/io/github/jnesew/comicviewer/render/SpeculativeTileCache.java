@@ -20,11 +20,12 @@ public final class SpeculativeTileCache {
     private final BooleanSupplier memoryAvailable;
     private LongPredicate memoryAdmission;
     private final LongSupplier clock;
-    private RenderTuning tuning = RenderTuning.BASELINE;
+    private RenderTuning tuning = RenderTuning.READER;
     private RenderMetrics metrics;
     private long reservedBytes;
     private final Map<Object, long[]> owners = new LinkedHashMap<>();
     private final Map<Object, Runnable> wakeups = new LinkedHashMap<>();
+    private final Map<Object, Map<TileKey, Integer>> plans = new LinkedHashMap<>();
     private final java.util.Set<Key> history = new java.util.HashSet<>();
     private long limitBytes;
     private long usedBytes;
@@ -34,18 +35,18 @@ public final class SpeculativeTileCache {
     private final AtomicInteger visibleWaiting = new AtomicInteger();
 
     public SpeculativeTileCache(Context context, long heapBytes, String level) {
-        this(heapBytes, level, new AndroidBufferingMemory(context, heapBytes),
-                SystemClock::elapsedRealtime);
+        this(context, heapBytes, level, RenderTuning.READER, null);
     }
 
     public SpeculativeTileCache(Context context, long heapBytes, String level,
             RenderTuning tuning, RenderMetrics metrics) {
-        this(context, heapBytes, level);
-        this.tuning = tuning;
-        this.metrics = metrics;
-        AndroidBufferingMemory memory = new AndroidBufferingMemory(context, heapBytes);
+        this(heapBytes, level, new AndroidBufferingMemory(context, heapBytes), tuning, metrics);
+    }
+
+    private SpeculativeTileCache(long heapBytes, String level, AndroidBufferingMemory memory,
+            RenderTuning tuning, RenderMetrics metrics) {
+        this(heapBytes, level, memory, SystemClock::elapsedRealtime, tuning, metrics);
         memoryAdmission = memory::hasRoomFor;
-        setLevel(level);
     }
 
     /** Instrumentation seam; production uses the Android system/native monitor above. */
@@ -90,8 +91,16 @@ public final class SpeculativeTileCache {
     }
     public synchronized void onWorkAvailable(Object owner, Runnable wakeup) { wakeups.put(owner, wakeup); }
     public void workFinished() {
+        workAvailableExcept(null);
+    }
+    private void workAvailableExcept(Object excluded) {
         java.util.List<Runnable> callbacks;
-        synchronized (this) { callbacks = new java.util.ArrayList<>(wakeups.values()); }
+        synchronized (this) {
+            callbacks = new java.util.ArrayList<>();
+            for (Map.Entry<Object, Runnable> item : wakeups.entrySet()) {
+                if (item.getKey() != excluded) callbacks.add(item.getValue());
+            }
+        }
         for (Runnable callback : callbacks) callback.run();
     }
     public synchronized void residentBytes(Object owner, long visible, long backing) {
@@ -99,7 +108,63 @@ public final class SpeculativeTileCache {
         if (state != null) { state[2] = visible; state[3] = backing; }
         recordMemory();
     }
-    public synchronized void unregisterOwner(Object owner) { owners.remove(owner); wakeups.remove(owner); }
+    public synchronized void unregisterOwner(Object owner) {
+        owners.remove(owner); wakeups.remove(owner); plans.remove(owner);
+    }
+    /** Lower rank means nearer use. All owners compete under the same byte ceiling. */
+    void plan(Object owner, Map<TileKey, Integer> candidates) {
+        boolean changed;
+        synchronized (this) {
+            Map<TileKey, Integer> old = plans.put(owner, new LinkedHashMap<>(candidates));
+            changed = !candidates.equals(old);
+        }
+        // A changed rank can unblock another owner even when this owner queues no work.
+        if (changed) workAvailableExcept(owner);
+    }
+    void cancelPlan(Object owner) {
+        boolean changed;
+        synchronized (this) { changed = plans.remove(owner) != null; }
+        if (changed) workAvailableExcept(owner);
+    }
+    synchronized boolean planned(Object owner, TileKey key) {
+        Map<TileKey, Integer> plan = plans.get(owner);
+        return plan != null && plan.containsKey(key);
+    }
+    private int rank(Key key) {
+        Map<TileKey, Integer> plan = plans.get(key.owner);
+        return plan == null ? Integer.MAX_VALUE : plan.getOrDefault(key.tile, Integer.MAX_VALUE);
+    }
+    /** Replace only content farther away than this request; never churn equally useful tiles. */
+    synchronized boolean reserve(Object owner, TileKey key, long bytes) {
+        int priority = rank(new Key(owner, key));
+        if (!enabled() || priority == Integer.MAX_VALUE || bytes <= 0 || bytes > limitBytes) return false;
+        while (bytes > limitBytes - usedBytes - reservedBytes) {
+            Key victim = null;
+            int worst = priority;
+            for (Key candidate : entries.keySet()) {
+                int candidateRank = rank(candidate);
+                if (candidateRank > worst) { victim = candidate; worst = candidateRank; }
+            }
+            if (victim == null) break;
+            Bitmap removed = entries.remove(victim);
+            usedBytes -= removed.getAllocationByteCount();
+            boolean wasHistory = history.remove(victim);
+            if (metrics != null) {
+                metrics.priorityEvicted(removed.getAllocationByteCount());
+                if (!wasHistory) metrics.evicted(removed.getAllocationByteCount());
+            }
+        }
+        boolean accepted = reserve(bytes);
+        if (!accepted && priority == 0 && metrics != null) metrics.nearDenied();
+        return accepted;
+    }
+    /** Transfer a reservation to resident output atomically; stale plans cannot publish. */
+    synchronized boolean publishReserved(Object owner, TileKey key, Bitmap bitmap, long bytes) {
+        release(bytes);
+        if (!planned(owner, key) || bitmap == null || bitmap.isRecycled() ||
+                bitmap.getAllocationByteCount() > limitBytes - usedBytes - reservedBytes) return false;
+        return offer(owner, key, bitmap, false);
+    }
     private long futureGrowth() {
         if (tuning.cacheMiB == 0) return 0L;
         long total = 0L;
@@ -161,12 +226,16 @@ public final class SpeculativeTileCache {
         return entries.containsKey(new Key(owner, key));
     }
 
-    public synchronized Bitmap take(Object owner, TileKey key) {
-        Key id = new Key(owner, key);
-        Bitmap bitmap = entries.remove(id);
-        boolean wasHistory = history.remove(id);
-        if (bitmap != null) usedBytes -= bitmap.getAllocationByteCount();
-        if (bitmap != null && !wasHistory && metrics != null) metrics.useful(bitmap.getAllocationByteCount());
+    public Bitmap take(Object owner, TileKey key) {
+        Bitmap bitmap;
+        synchronized (this) {
+            Key id = new Key(owner, key);
+            bitmap = entries.remove(id);
+            boolean wasHistory = history.remove(id);
+            if (bitmap != null) usedBytes -= bitmap.getAllocationByteCount();
+            if (bitmap != null && !wasHistory && metrics != null) metrics.useful(bitmap.getAllocationByteCount());
+        }
+        if (bitmap != null && tuning.prioritized) workFinished();
         return bitmap;
     }
 
@@ -183,6 +252,12 @@ public final class SpeculativeTileCache {
         long size = bitmap.getAllocationByteCount();
         if (size > limitBytes) return false;
         Key id = new Key(owner, key);
+        if (tuning.prioritized && recent) {
+            Bitmap old = entries.get(id);
+            long replaced = old == null ? 0 : old.getAllocationByteCount();
+            // History is opportunistic: a displaced visible tile cannot evict the next frame.
+            if (size - replaced > limitBytes - usedBytes - reservedBytes) return false;
+        }
         Bitmap previous = entries.put(id, bitmap);
         if (previous != null) usedBytes -= previous.getAllocationByteCount();
         if (recent) history.add(id); else history.remove(id);
@@ -204,6 +279,7 @@ public final class SpeculativeTileCache {
     }
 
     public synchronized void removeOwner(Object owner) {
+        plans.remove(owner);
         Iterator<Map.Entry<Key, Bitmap>> iterator = entries.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<Key, Bitmap> entry = iterator.next();
@@ -216,6 +292,10 @@ public final class SpeculativeTileCache {
     }
 
     public synchronized void clear() {
+        clearEntries();
+        plans.clear();
+    }
+    private void clearEntries() {
         entries.clear();
         history.clear();
         usedBytes = 0L;
@@ -257,7 +337,9 @@ public final class SpeculativeTileCache {
             if (metrics != null) metrics.guard(System.nanoTime() - started);
         }
         if (metrics != null) metrics.guardRefused();
-        clear();
+        // Keep the desired plan on a refused sample: restoring it must not create
+        // a plan-change/refill loop while the same memory refusal persists.
+        if (tuning.prioritized) clearEntries(); else clear();
         return false;
     }
 

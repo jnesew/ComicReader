@@ -85,15 +85,20 @@ public final class TileRenderer implements AutoCloseable {
         final RectF destination;
         final RectF clip;
         final int frame;
+        final boolean reverse;
 
         public PageRequest(int page, RectF destination, RectF clip) {
             this(page, destination, clip, 0);
         }
         public PageRequest(int page, RectF destination, RectF clip, int frame) {
+            this(page, destination, clip, frame, false);
+        }
+        public PageRequest(int page, RectF destination, RectF clip, int frame, boolean reverse) {
             this.page = page;
             this.destination = new RectF(destination);
             this.clip = new RectF(clip);
             this.frame = frame;
+            this.reverse = reverse;
         }
     }
 
@@ -185,7 +190,7 @@ public final class TileRenderer implements AutoCloseable {
         this.invalidator = invalidator;
         this.errorListener = errorListener;
         this.speculativeTiles = speculativeTiles;
-        this.tuning = speculativeTiles == null ? RenderTuning.BASELINE : speculativeTiles.tuning();
+        this.tuning = speculativeTiles == null ? RenderTuning.READER : speculativeTiles.tuning();
         this.metrics = speculativeTiles == null ? null : speculativeTiles.metrics();
         this.pageCacheDirectory = new File(
                 context.getCacheDir(), "page_tiles/session-" + Long.toUnsignedString(System.nanoTime()));
@@ -408,8 +413,11 @@ public final class TileRenderer implements AutoCloseable {
                 ? new java.util.HashSet<>() : java.util.Collections.emptySet();
         long planBytes = 0;
         int considered = 0;
+        java.util.List<PrefetchTile> candidates = new ArrayList<>();
+        Map<TileKey, Integer> priorities = new LinkedHashMap<>();
+        requestsLoop:
         for (PageRequest request : requests) {
-            if (considered >= maxTiles || request.destination.width() <= 0f ||
+            if ((!tuning.prioritized && considered >= maxTiles) || request.destination.width() <= 0f ||
                     request.destination.height() <= 0f) break;
             RectF area = new RectF(request.destination);
             if (!area.intersect(request.clip)) continue;
@@ -435,9 +443,12 @@ public final class TileRenderer implements AutoCloseable {
             float renderScale = rendered ? planned : 1f / sample;
             int sourceTile = rendered ? RenderedTilePolicy.sourceTileSize(renderScale)
                     : RASTER_TILE_SIZE * sample;
-            for (int tileY = top / sourceTile; tileY <= (bottom - 1) / sourceTile; tileY++) {
+            int firstRow = top / sourceTile, lastRow = (bottom - 1) / sourceTile;
+            for (int row = 0; row <= lastRow - firstRow; row++) {
+                int tileY = request.reverse ? lastRow - row : firstRow + row;
                 for (int tileX = left / sourceTile; tileX <= (right - 1) / sourceTile; tileX++) {
-                    if (considered >= maxTiles) return;
+                    if (!tuning.prioritized && considered >= maxTiles) return;
+                    if (tuning.prioritized && candidates.size() >= 128) break requestsLoop;
                     TileKey key = key(request.page, page, sample, renderScale, tileX, tileY);
                     int x = tileX * sourceTile;
                     int y = tileY * sourceTile;
@@ -447,7 +458,15 @@ public final class TileRenderer implements AutoCloseable {
                     if (tuning.boundedAdmission() && !plannedKeys.add(key)) continue;
                     if (tuning.boundedAdmission()) {
                         planBytes += estimated;
-                        if (planBytes > speculativeTiles.limitBytes()) return;
+                        if (planBytes > speculativeTiles.limitBytes()) {
+                            if (tuning.prioritized) break requestsLoop;
+                            return;
+                        }
+                    }
+                    if (tuning.prioritized) {
+                        priorities.put(key, request.frame);
+                        candidates.add(new PrefetchTile(key, request.page, sample, renderScale, source));
+                        continue;
                     }
                     if (tiles.get(key) != null || speculativeTiles.contains(this, key)) continue;
                     synchronized (pending) { if (tuning.boundedAdmission() && refusedPrefetch.contains(key)) continue; }
@@ -457,12 +476,34 @@ public final class TileRenderer implements AutoCloseable {
                 }
             }
         }
+        if (tuning.prioritized) {
+            speculativeTiles.plan(this, priorities);
+            synchronized (pending) {
+                for (TileTask task : new ArrayList<>(pending.values())) {
+                    if (task.speculative && !priorities.containsKey(task.key) && executor.remove(task)) {
+                        completeTask(task);
+                    }
+                }
+            }
+            int queued = 0;
+            for (PrefetchTile tile : candidates) {
+                if (tiles.get(tile.key) != null || speculativeTiles.contains(this, tile.key)) continue;
+                synchronized (pending) {
+                    if (pending.containsKey(tile.key) || refusedPrefetch.contains(tile.key)) continue;
+                }
+                if (queued++ >= maxTiles) break;
+                requestTile(tile.key, tile.page, tile.sample, tile.scale, tile.source, true);
+            }
+        }
     }
+
+    private record PrefetchTile(TileKey key, int page, int sample, float scale, Rect source) { }
 
     public void cancelPrefetch() {
         refillRequests = java.util.Collections.emptyList();
         prefetchGeneration.cancel();
         dropQueuedPrefetch();
+        if (speculativeTiles != null && tuning.prioritized) speculativeTiles.cancelPlan(this);
     }
 
     private void dropQueuedPrefetch() {
@@ -476,7 +517,10 @@ public final class TileRenderer implements AutoCloseable {
     private void requestTile(TileKey key, int pageIndex, int sample,
             float renderScale, Rect source, boolean speculative) {
         synchronized (pending) {
-            if (closed || (speculative && speculativeQueued >= 16)) return;
+            // Refill the nearest tile on completion. Farther queued reservations must
+            // not hold the allowance when a new near-frame plan arrives.
+            int speculativeLimit = tuning.prioritized ? 1 : 16;
+            if (closed || (speculative && speculativeQueued >= speculativeLimit)) return;
             TileTask existing = pending.get(key);
             if (existing != null) {
                 if (!speculative && existing.speculative) {
@@ -486,7 +530,9 @@ public final class TileRenderer implements AutoCloseable {
                 } else return;
             }
             long reservation = speculative && tuning.boundedAdmission() ? estimateBytes(source, renderScale) : 0L;
-            if (reservation > 0 && !speculativeTiles.reserve(reservation)) return;
+            if (reservation > 0 && !(tuning.prioritized
+                    ? speculativeTiles.reserve(this, key, reservation)
+                    : speculativeTiles.reserve(reservation))) return;
             TileTask task = new TileTask(key, pageIndex, sample,
                     renderScale, new Rect(source), speculative, prefetchGeneration.current(),
                     taskOrder.incrementAndGet(), reservation);
@@ -555,6 +601,11 @@ public final class TileRenderer implements AutoCloseable {
             }
         }
 
+        boolean publishReserved(Bitmap bitmap) {
+            return reservationReleased.compareAndSet(false, true) &&
+                    speculativeTiles.publishReserved(TileRenderer.this, key, bitmap, reservation);
+        }
+
         @Override public void run() {
             boolean slot = false;
             long started = metrics == null ? 0 : android.os.SystemClock.elapsedRealtimeNanos();
@@ -570,21 +621,33 @@ public final class TileRenderer implements AutoCloseable {
                         android.os.SystemClock.elapsedRealtimeNanos() - started, started - queuedAt);
                 synchronized (TileRenderer.this) {
                     residentBytes();
-                    releaseReservation();
-                    if (decoded != null && !closed && matchesPageDimensions(key)) {
-                        if (speculative) {
+                    boolean owned;
+                    synchronized (pending) { owned = pending.get(key) == this && !finished.get(); }
+                    if (decoded != null && !closed && owned && matchesPageDimensions(key)) {
+                        // A running prefetch that became visible must satisfy that visible request,
+                        // even when navigation has already advanced the offscreen generation.
+                        if (speculative && !(tuning.prioritized && seenVisible)) {
                             final boolean[] adopted = {false};
                             boolean current = prefetchGeneration.publishIfCurrent(epoch,
-                                    () -> adopted[0] = speculativeTiles.offer(TileRenderer.this, key, decoded, false));
+                                    () -> {
+                                        if (tuning.prioritized) adopted[0] = publishReserved(decoded);
+                                        else {
+                                            releaseReservation();
+                                            adopted[0] = speculativeTiles.offer(TileRenderer.this, key, decoded, false);
+                                        }
+                                    });
                             if (!current || !adopted[0]) {
                                 if (metrics != null && !current) metrics.stale();
-                                if (current && tuning.boundedAdmission()) synchronized (pending) {
+                                if (current && tuning.boundedAdmission() && (!tuning.prioritized ||
+                                        speculativeTiles.planned(TileRenderer.this, key))) synchronized (pending) {
                                     if (prefetchGeneration.isCurrent(epoch)) refusedPrefetch.add(key);
                                 }
                                 decoded.recycle();
-                            }
+                            } else if (metrics != null) metrics.published(decoded.getAllocationByteCount());
                         } else {
+                            releaseReservation();
                             tiles.put(key, decoded);
+                            if (metrics != null) metrics.published(decoded.getAllocationByteCount());
                             residentBytes();
                             mainHandler.post(invalidator);
                         }
@@ -607,7 +670,9 @@ public final class TileRenderer implements AutoCloseable {
                 if (slot) speculativeTiles.endSpeculativeDecode();
                 if (speculative && seenVisible && !closed) mainHandler.post(invalidator);
                 completeTask(this);
-                if (tuning.refill && (slot || !speculative)) speculativeTiles.workFinished();
+                if (tuning.refill && speculativeTiles != null && (slot || !speculative)) {
+                    speculativeTiles.workFinished();
+                }
             }
         }
     }

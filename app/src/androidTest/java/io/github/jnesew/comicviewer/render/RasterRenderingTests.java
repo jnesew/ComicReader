@@ -25,10 +25,10 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class RasterRenderingTests {
     public static void stationaryRefill(android.app.Instrumentation instrumentation) {
         try (Fixture fixture = new Fixture(instrumentation,
-                new RenderTuning(false, true, false, false, 64))) {
+                RenderTuning.reader(64))) {
             java.util.List<TileRenderer.PageRequest> requests = java.util.List.of(
-                    new TileRenderer.PageRequest(0, new RectF(0, 0, WIDTH, HEIGHT), new RectF(0, 0, WIDTH, HEIGHT)),
-                    new TileRenderer.PageRequest(1, new RectF(0, 0, WIDTH, HEIGHT), new RectF(0, 0, WIDTH, HEIGHT)));
+                    new TileRenderer.PageRequest(0, new RectF(0, 0, WIDTH, HEIGHT), new RectF(0, 0, WIDTH, HEIGHT), 0),
+                    new TileRenderer.PageRequest(1, new RectF(0, 0, WIDTH, HEIGHT), new RectF(0, 0, WIDTH, HEIGHT), 1));
             instrumentation.runOnMainSync(() -> fixture.renderer.prefetchPages(requests, 991L, 4));
             long deadline = android.os.SystemClock.elapsedRealtime() + 10000;
             while (fixture.shared.snapshot(fixture.renderer).size() < 24 && android.os.SystemClock.elapsedRealtime() < deadline) {
@@ -104,7 +104,7 @@ public final class RasterRenderingTests {
         final TileRenderer renderer;
 
         Fixture(Instrumentation instrumentation) {
-            this(instrumentation, RenderTuning.BASELINE);
+            this(instrumentation, RenderTuning.READER);
         }
         Fixture(Instrumentation instrumentation, RenderTuning tuning) {
             this.instrumentation = instrumentation;
