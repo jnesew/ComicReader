@@ -5,6 +5,21 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class BenchPlanTest {
+    @Test public void candidateBatteryUsesMatchedBaselineAndTwoBoundedCapacities() {
+        BenchPlan plan = new BenchPlan("candidate");
+        assertTrue(plan.roundTwo()); assertEquals(8, plan.scenarios().length);
+        List<BenchPolicy> policies = plan.policies("raster.cbz");
+        assertEquals(3, policies.size());
+        assertFalse(policies.get(0).tuning.prioritized);
+        assertTrue(policies.get(1).tuning.prioritized);
+        assertEquals(0, policies.get(1).tuning.cacheMiB);
+        assertEquals(64, policies.get(2).tuning.cacheMiB);
+        assertEquals(48, plan.scenarios().length * policies.size() * plan.repeats());
+        BenchPlan sustained = new BenchPlan("candidate_sustained");
+        assertTrue(sustained.sustained()); assertEquals(5, sustained.cycles());
+        assertEquals(3, sustained.scenarios().length);
+        assertEquals(2, new BenchPlan("smoke_candidate_session").cycles());
+    }
     @Test public void focusedBatteryPairsOneComicAcrossThreeModesAndSeparatesRefill() {
         BenchPlan plan = new BenchPlan("focused"); Set<String> modes = new HashSet<>(); int cases = 0;
         for (String[] scenario : plan.scenarios()) {

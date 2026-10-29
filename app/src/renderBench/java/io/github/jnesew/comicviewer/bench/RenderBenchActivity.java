@@ -47,7 +47,8 @@ public final class RenderBenchActivity extends Activity {
         home(lastRun == null ? getString(R.string.bench_ready) : getString(R.string.bench_incomplete));
         // Explicit emulator automation entry. Normal launcher use never starts tests automatically.
         String requested = getIntent().getStringExtra("suite");
-        if ("smoke".equals(requested) || "smoke_all".equals(requested) || "smoke_v2".equals(requested) || "smoke_v2_session".equals(requested)) main.postDelayed(() -> start(requested), 600);
+        if ("smoke".equals(requested) || "smoke_all".equals(requested) || "smoke_v2".equals(requested) || "smoke_v2_session".equals(requested) ||
+                "smoke_candidate".equals(requested) || "smoke_candidate_session".equals(requested)) main.postDelayed(() -> start(requested), 600);
     }
 
     private void home(String message) {
@@ -64,7 +65,7 @@ public final class RenderBenchActivity extends Activity {
         osLabel = new EditText(this); osLabel.setSingleLine(); osLabel.setHint(R.string.bench_os_hint); osLabel.setText(selectedOs); column.addView(osLabel);
         suites = new Spinner(this);
         suites.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                new String[]{getString(R.string.bench_focused), getString(R.string.bench_sustained), getString(R.string.bench_quick), getString(R.string.bench_full), getString(R.string.bench_soak)}));
+                new String[]{getString(R.string.bench_candidate), getString(R.string.bench_candidate_sustained), getString(R.string.bench_focused), getString(R.string.bench_sustained), getString(R.string.bench_quick), getString(R.string.bench_full), getString(R.string.bench_soak)}));
         column.addView(suites);
         button(column, R.string.bench_run, () -> start(BenchPlan.SUITES[suites.getSelectedItemPosition()]));
         button(column, R.string.bench_export, () -> export(false));

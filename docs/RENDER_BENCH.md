@@ -1,25 +1,26 @@
 # Standalone rendering comparison
 
-**ComicViewer Render Bench 1.1.0** is an offline, optimized diagnostic APK with a
+**ComicViewer Render Bench 1.2.0** is an offline, optimized diagnostic APK with a
 separate `<configured application ID>.renderbench` identity and separate app data.
 It installs alongside ComicViewer, requests no Android permissions, and needs no
 ADB or Google services. The ordinary release/debug app does not contain its launcher,
-fixture pack or runner. Production rendering defaults are unchanged.
+fixture pack or runner. The reader now uses bounded, prioritized preparation at
+its existing capacity. The larger candidate ceiling remains a benchmark choice.
 
 ## Next live-device battery
 
-Install the 1.1.0 APK over the previous benchmark. Its higher version code preserves
+Install the 1.2.0 APK over the previous benchmark. Its higher version code preserves
 existing reports; normal ComicViewer and its library remain separate. On each phone:
 
 1. Open **ComicViewer Render Bench**. Check the displayed actual app heap and refresh
    rate. Optionally enter the OS distribution label.
-2. Select **Round 2: modes and causes**, tap **Run comparison**, and leave the app visible.
+2. Select **Reader candidate: priority and bounded reuse**, tap **Run comparison**, and leave the app visible.
 3. When it finishes, tap **Export results ZIP** and save the report locally.
-4. Select **Sustained sessions**, run it, and export that report separately.
+4. Select **Reader candidate: sustained sessions**, run it, and export that report separately.
 
-The two new suites are the recommended battery. Older Quick/Individual/Repeated
-choices remain available for reference; repeating all three is not necessary for
-round two. Duration estimates are approximate and can vary substantially by device.
+The candidate suites are the recommended comparison. The previous round-two and
+Quick/Individual/Repeated choices remain available as diagnostic references.
+Duration estimates are approximate and can vary substantially by device.
 Keep brightness, refresh-rate settings, charging and background load comparable.
 The app holds the screen awake while visible; it does not run a background service.
 
@@ -51,9 +52,49 @@ absolute timings are not a controlled implementation comparison.
 | Runtime memory/display metadata | Did an emulator or phone receive the intended limits? | Actual app heap, normal/large memory classes, large-heap flag, ABIs, viewport, refresh samples, requested/applied cache and sampled memory are exported |
 
 All policies use High buffering, the existing visible-frame/zoom budgets and decoder
-concurrency, and the same input script for the workload. The baseline is the ordinary
-High policy within the same instrumented APK. No adaptive controller, extra worker,
-new coarse-render pass or production policy change is introduced.
+concurrency, and the same input script for the workload. `baseline_high` preserves
+the earlier reader's High policy within this instrumented APK. `reader_candidate`
+uses the new reader policy. No adaptive controller, extra worker or new coarse
+rendering pass is introduced.
+
+## Reader candidate comparison
+
+`candidate` runs **48 measured cases**: the same eight workloads and common anchor
+probes as round two, three policies, two repeats with reversed order, and eight
+separate warmups. `candidate_sustained` runs the same three policies over raster
+continuous, EPUB and series, with five cycles in each of nine sessions and
+**45 checkpoints**. Compare candidates to the baseline inside each new run.
+
+| Policy | Purpose |
+| --- | --- |
+| `baseline_high` | Preserve the live-tested original High behavior |
+| `reader_candidate` | Current reader: bounded reservations, priority replacement, correct next-frame scale, coalesced completion refill and narrow geometry-aware preparation; original capacity |
+| `reader_candidate_64` | The same candidate with an explicit ceiling up to 64 MiB, clipped to one quarter of the actual heap and subject to prospective native/system/live-renderer-growth guards |
+
+The candidate prepares one adjacent page/spread in the travel direction. Continuous
+reading prepares nearby approaching bands in travel order; very tall pages and
+PDFs use a single band. Candidate selection uses jointly budgeted predicted-frame
+scales. An immediate band can replace farther/unplanned optional pixels. Equally
+useful tiles do not evict one another merely to admit more work. Recently visible
+history uses spare bytes without a protected fraction. Each candidate renderer has
+at most one outstanding speculative tile; completion refills it, so a queue of
+farther reserved outputs cannot block the next useful region. Owners that leave the
+candidate region cancel their queued work and plans. A running prefetch that
+becomes visible can satisfy that request without redecoding it.
+
+Retained and reserved outputs share one ceiling. The ordinary reader retains its
+existing heap-derived capacity; the 64 MiB allowance is an explicit diagnostic
+choice, not an automatic capacity change or fill target. Increased and Standard
+levels retain their existing capacity rules. Native/system guards, transient
+decode reserve, one speculative permit, visible priority, pressure cooldown and
+background suspension remain active.
+
+New counters identify `priority_replaced_bytes`, `near_admission_denials`,
+`tile_publications`, `published_tile_bytes`, and `peak_published_tile_bytes`.
+Publication size and per-action sync/command phases help investigate prepared-frame
+cost; they do not establish an upload or driver bottleneck. Readiness observes
+tile availability after a View draw, not GPU completion or on-screen presentation.
+Use forward/reverse actions and frame durations together when accepting a candidate.
 
 ## Round 2: modes and causes
 
@@ -80,7 +121,7 @@ original-cap refill), and `lookahead_only`. These controls narrow the cause of t
 previous gains. Some experiments deliberately bundle mechanisms; do not attribute
 all changes from `capacity_admission_64` to memory size alone.
 
-Requested capacity is clipped to half the actual app heap, up to the experiment's
+For the historical round-two controls, requested capacity is clipped to half the actual app heap, up to the experiment's
 128 MiB maximum. Native/system guards can refuse work below the byte ceiling, and
 low-RAM devices refuse speculation. Requested bytes are not a fill target. The
 existing single speculative permit, visible priority, native transient reserve,

@@ -90,6 +90,7 @@ final class BenchRunner {
             result.put("initial_zoom_mode", position.zoomMode).put("low_level", BufferingPolicy.HIGH)
                     .put("shared_cap_bytes", shared.limitBytes()).put("requested_cache_mib", policy.tuning.cacheMiB)
                     .put("bounded_admission", policy.tuning.boundedAdmission()).put("refill", policy.tuning.refill)
+                    .put("prioritized", policy.tuning.prioritized)
                     .put("byte_lookahead", policy.tuning.byteLookahead).put("predicted_frame", policy.tuning.predictedFrame)
                     .put("history_fallback", policy.tuning.historyFallback);
             frames = host.beginFrames(); metrics.start(SystemClock.elapsedRealtimeNanos());

@@ -1,5 +1,7 @@
 <resources>
     <string name="bench_app_name">ComicViewer Render Bench</string>
+    <string name="bench_candidate">Lukijaehdokas: priorisointi ja rajattu uudelleenkäyttö</string>
+    <string name="bench_candidate_sustained">Lukijaehdokas: pitkäkestoiset istunnot</string>
     <string name="bench_focused">Kierros 2: lukutilat ja syyt (noin 15–25 minuuttia)</string>
     <string name="bench_sustained">Pitkät lukuistunnot (noin 10–20 minuuttia)</string>
     <string name="bench_device">Todellinen sovelluskeko: %1$d MiB · Virkistystaajuus: %2$.1f Hz</string>

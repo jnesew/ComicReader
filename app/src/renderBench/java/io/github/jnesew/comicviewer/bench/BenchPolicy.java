@@ -6,6 +6,7 @@ import java.util.List;
 final class BenchPolicy {
     final String id;
     final RenderTuning tuning;
+    BenchPolicy(String id, RenderTuning tuning) { this.id = id; this.tuning = tuning; }
     BenchPolicy(String id, boolean bytes, boolean refill, boolean frame, boolean history, int mib) {
         this(id, bytes, refill, frame, history, mib, false);
     }

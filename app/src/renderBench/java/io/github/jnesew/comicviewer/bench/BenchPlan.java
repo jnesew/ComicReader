@@ -7,12 +7,13 @@ import java.util.List;
 /** Versioned workload definitions; no device-name policy branches. */
 final class BenchPlan {
     static final String PROTOCOL = "render-bench-2";
-    static final String[] SUITES = {"focused", "sustained", "quick", "individual", "soak"};
+    static final String[] SUITES = {"candidate", "candidate_sustained", "focused", "sustained", "quick", "individual", "soak"};
     final String suite;
     BenchPlan(String suite) { this.suite = suite; }
     boolean shortRun() { return suite.startsWith("smoke"); }
-    boolean roundTwo() { return suite.equals("focused") || suite.equals("sustained") || suite.startsWith("smoke_v2"); }
-    boolean sustained() { return suite.equals("sustained") || suite.equals("smoke_v2_session"); }
+    boolean candidate() { return suite.equals("candidate") || suite.equals("candidate_sustained") || suite.startsWith("smoke_candidate"); }
+    boolean roundTwo() { return candidate() || suite.equals("focused") || suite.equals("sustained") || suite.startsWith("smoke_v2"); }
+    boolean sustained() { return suite.equals("candidate_sustained") || suite.equals("smoke_candidate_session") || suite.equals("sustained") || suite.equals("smoke_v2_session"); }
     int repeats() { return shortRun() || sustained() ? 1 : suite.equals("soak") ? 8 : 2; }
     int cycles() { return sustained() ? (shortRun() ? 2 : 5) : 1; }
 
@@ -31,6 +32,9 @@ final class BenchPlan {
     List<BenchPolicy> policies(String fixture) {
         if (!roundTwo()) return BenchPolicy.policies(suite);
         BenchPolicy baseline = new BenchPolicy("baseline_high", false, false, false, false, 0);
+        if (candidate()) return List.of(baseline,
+                new BenchPolicy("reader_candidate", io.github.jnesew.comicviewer.render.RenderTuning.READER),
+                new BenchPolicy("reader_candidate_64", io.github.jnesew.comicviewer.render.RenderTuning.reader(64)));
         BenchPolicy capacity = new BenchPolicy("capacity_admission_64", false, false, false, false, 64);
         BenchPolicy refill = new BenchPolicy("refill_64", false, true, false, false, 64);
         if (sustained()) return List.of(baseline, capacity, refill);

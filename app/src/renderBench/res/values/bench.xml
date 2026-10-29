@@ -1,5 +1,7 @@
 <resources>
     <string name="bench_app_name">ComicViewer Render Bench</string>
+    <string name="bench_candidate">Reader candidate: priority and bounded reuse</string>
+    <string name="bench_candidate_sustained">Reader candidate: sustained sessions</string>
     <string name="bench_focused">Round 2: modes and causes (about 15–25 minutes)</string>
     <string name="bench_sustained">Sustained sessions (about 10–20 minutes)</string>
     <string name="bench_device">Actual app heap: %1$d MiB · Current refresh: %2$.1f Hz</string>
