@@ -67,6 +67,13 @@ android {
         debug {
             pseudoLocalesEnabled = true
         }
+        readerDebug {
+            initWith debug
+            applicationIdSuffix '.readertest'
+            signingConfig = signingConfigs.debug
+            debuggable = true
+            matchingFallbacks = ['debug']
+        }
         release {
             if (!unsignedRelease && releaseSigningConfigured) {
                 signingConfig = signingConfigs.localRelease
@@ -103,6 +110,11 @@ android {
 }
 
 androidComponents {
+    onVariants(selector().withBuildType('readerDebug')) { variant ->
+        variant.outputs.each { output ->
+            output.versionCode.set(providers.gradleProperty('comicViewerReaderTestVersionCode').map { it.toInteger() })
+        }
+    }
     onVariants(selector().withBuildType('renderBench')) { variant ->
         variant.outputs.each { output ->
             output.versionName.set(providers.gradleProperty('comicViewerBenchVersionName'))

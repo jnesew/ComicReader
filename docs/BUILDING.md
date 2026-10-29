@@ -44,6 +44,23 @@ spare test device connected, `./gradlew installDebug` installs it; open the app
 from the device launcher. Debug signing cannot replace an installed release with
 a different certificate. Prefer a test device for instrumentation runs.
 
+### Standard reader alongside an installed release
+
+Run `scripts/build-reader-debug.sh` to build **ComicViewer Reader Test**, the
+standard reader with the current branch's changes and a separate
+`<configured application ID>.readertest` identity. Its source-stamped APK is copied
+to `dist/`. It uses the local debug signing key, is debuggable and unoptimized,
+and contains no benchmark runner or synthetic comics. Use the optimized Render
+Bench APK for controlled performance comparisons.
+
+The reader test installs alongside the published reader and Render Bench, with
+independent library data, settings and document grants. Select/import comics again
+through the usual document picker. Normal reader memory limits apply; the larger
+benchmark-only allowance is not enabled. Its version name follows the reader;
+`comicViewerReaderTestVersionCode` is independent and must increase before changed
+reader-test APKs are distributed. Release/debug identities and Obtainium metadata
+remain configured by their existing settings.
+
 ## Verification
 
 Run the full source and release-build gate:
