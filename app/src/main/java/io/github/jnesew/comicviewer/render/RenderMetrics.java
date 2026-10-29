@@ -8,6 +8,7 @@ public final class RenderMetrics {
     private long planningNanos, planningCalls, guardNanos, guardCalls;
     private long capacityDenials, memoryDenials, guardRefusals;
     private long priorityEvicted, nearDenied, publications, publishedBytes, largestPublication;
+    private long repeatPrefetchSkips;
     private double frameArea, frameMissing, lastMissing, missingAreaNanos;
     private long lastFrameTime;
     private boolean collecting;
@@ -52,6 +53,7 @@ public final class RenderMetrics {
     public synchronized void evicted(long bytes) { if (collecting) evictedBytes += bytes; }
     public synchronized void priorityEvicted(long bytes) { if (collecting) priorityEvicted += bytes; }
     public synchronized void nearDenied() { if (collecting) nearDenied++; }
+    public synchronized void repeatPrefetchSkipped() { if (collecting) repeatPrefetchSkips++; }
     public synchronized void published(long bytes) {
         if (!collecting) return;
         publications++; publishedBytes += bytes;
@@ -90,6 +92,7 @@ public final class RenderMetrics {
         result.put("guard_refusals", guardRefusals);
         result.put("priority_replaced_bytes", priorityEvicted);
         result.put("near_admission_denials", nearDenied);
+        result.put("repeat_prefetch_skips", repeatPrefetchSkips);
         result.put("tile_publications", publications);
         result.put("published_tile_bytes", publishedBytes);
         result.put("peak_published_tile_bytes", largestPublication);

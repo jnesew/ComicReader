@@ -156,6 +156,44 @@ public final class PriorityBufferingTests {
         }
     }
 
+    public static void replacedPrefetchWaitsForNearerUseOrNewGeneration(Instrumentation instrumentation) {
+        BlockingDocument document = new BlockingDocument(false, 1);
+        SpeculativeTileCache shared = new SpeculativeTileCache(256 * MIB, BufferingPolicy.HIGH,
+                () -> true, () -> 0, RenderTuning.READER, null);
+        TileRenderer renderer = new TileRenderer(instrumentation.getTargetContext(), document,
+                () -> { }, message -> { throw new AssertionError(message); }, shared);
+        List<Bitmap> promoted = new ArrayList<>();
+        RectF frame = new RectF(0, 0, 512, 512);
+        List<TileRenderer.PageRequest> farther = List.of(new TileRenderer.PageRequest(0, frame, frame, 1));
+        List<TileRenderer.PageRequest> nearer = List.of(new TileRenderer.PageRequest(0, frame, frame, 0));
+        try {
+            instrumentation.runOnMainSync(() -> renderer.prefetchPages(farther, 7, 1));
+            awaitBuffered(shared, renderer);
+            promoted.add(shared.take(renderer, key(0)));
+            SystemClock.sleep(150);
+            check(document.calls.get() == 1, "A displaced optional tile was decoded repeatedly in one window");
+            instrumentation.runOnMainSync(() -> renderer.prefetchPages(nearer, 7, 1));
+            awaitBuffered(shared, renderer);
+            check(document.calls.get() == 2, "A strictly nearer frame could not prepare its tile");
+            promoted.add(shared.take(renderer, key(0)));
+            SystemClock.sleep(150);
+            check(document.calls.get() == 2, "Near-frame replacement started a refill loop");
+            instrumentation.runOnMainSync(() -> renderer.prefetchPages(nearer, 8, 1));
+            awaitBuffered(shared, renderer);
+            check(document.calls.get() == 3, "A new generation could not retry useful output");
+        } finally {
+            instrumentation.runOnMainSync(renderer::close); document.close();
+            for (Bitmap bitmap : promoted) if (bitmap != null) bitmap.recycle();
+            check(shared.committedBytes() == 0, "Closing the generation test leaked pending output");
+        }
+    }
+
+    private static void awaitBuffered(SpeculativeTileCache cache, TileRenderer renderer) {
+        long deadline = SystemClock.elapsedRealtime() + 5_000;
+        while (!cache.contains(renderer, key(0)) && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(20);
+        check(cache.contains(renderer, key(0)), "Optional tile did not become ready");
+    }
+
     private static Bitmap tile() { return Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888); }
     private static TileKey key(int page) { return new TileKey(page, 1, 1, 0, 0, 512, 512); }
     private static void check(boolean value, String message) { if (!value) throw new AssertionError(message); }

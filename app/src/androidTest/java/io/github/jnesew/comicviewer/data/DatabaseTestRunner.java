@@ -24,7 +24,7 @@ public final class DatabaseTestRunner extends Instrumentation {
     private LibraryDatabase db;
     private int current;
     private int failed;
-    private static final int TOTAL = 51;
+    private static final int TOTAL = 52;
 
     @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
 
@@ -68,6 +68,8 @@ public final class DatabaseTestRunner extends Instrumentation {
                 () -> io.github.jnesew.comicviewer.render.PriorityBufferingTests.runningPrefetchBecomesVisible(this));
         run("manualZoomPrefetchMatchesTheNextFrameCrop",
                 () -> io.github.jnesew.comicviewer.render.PriorityBufferingTests.manualZoomPreparesTheNextVisibleCrop(this));
+        run("replacedPrefetchRetriesOnlyForNearerUseOrNewGeneration",
+                () -> io.github.jnesew.comicviewer.render.PriorityBufferingTests.replacedPrefetchWaitsForNearerUseOrNewGeneration(this));
         run("upgradeVersionOneToEleven", this::upgrade);
         run("folderCollectionMigratesOnce", () -> new LibraryFeatureTests(this, db).preferencesMigration());
         run("seriesFavoritesAreIndependent", () -> new LibraryFeatureTests(this, db).seriesFavorites());

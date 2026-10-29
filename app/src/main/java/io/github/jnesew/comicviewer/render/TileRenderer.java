@@ -68,6 +68,7 @@ public final class TileRenderer implements AutoCloseable {
     private int refillMaxTiles;
     private final AtomicBoolean refillPosted = new AtomicBoolean();
     private final java.util.Set<TileKey> refusedPrefetch = new java.util.HashSet<>();
+    private final Map<TileKey, Integer> preparedPrefetch = new HashMap<>();
     private final Map<TileKey, TileTask> pending = new HashMap<>();
     private volatile boolean retainEvictedTiles = true;
     private int speculativeQueued;
@@ -372,7 +373,7 @@ public final class TileRenderer implements AutoCloseable {
                 !speculativeTiles.enabled() || maxTiles <= 0) return;
         if (prefetchGeneration.begin(signature)) {
             dropQueuedPrefetch();
-            synchronized (pending) { refusedPrefetch.clear(); }
+            synchronized (pending) { refusedPrefetch.clear(); preparedPrefetch.clear(); }
         }
         if (tuning.refill) {
             refillRequests = new ArrayList<>(requests);
@@ -490,6 +491,7 @@ public final class TileRenderer implements AutoCloseable {
                 if (tiles.get(tile.key) != null || speculativeTiles.contains(this, tile.key)) continue;
                 synchronized (pending) {
                     if (pending.containsKey(tile.key) || refusedPrefetch.contains(tile.key)) continue;
+                    if (preparedAlready(tile.key, speculativeTiles.priority(this, tile.key))) continue;
                 }
                 if (queued++ >= maxTiles) break;
                 requestTile(tile.key, tile.page, tile.sample, tile.scale, tile.source, true);
@@ -498,6 +500,15 @@ public final class TileRenderer implements AutoCloseable {
     }
 
     private record PrefetchTile(TileKey key, int page, int sample, float scale, Rect source) { }
+
+    /** A replacement may not repeatedly decode the same optional output in one window.
+     * A strictly nearer use can retry once at its new rank; visible work is never suppressed. */
+    private boolean preparedAlready(TileKey key, int priority) {
+        Integer prepared = preparedPrefetch.get(key);
+        boolean skip = prepared != null ? prepared <= priority : preparedPrefetch.size() >= 128;
+        if (skip && metrics != null) metrics.repeatPrefetchSkipped();
+        return skip;
+    }
 
     public void cancelPrefetch() {
         refillRequests = java.util.Collections.emptyList();
@@ -530,12 +541,14 @@ public final class TileRenderer implements AutoCloseable {
                 } else return;
             }
             long reservation = speculative && tuning.boundedAdmission() ? estimateBytes(source, renderScale) : 0L;
+            int priority = speculative && tuning.prioritized ? speculativeTiles.priority(this, key) : Integer.MAX_VALUE;
+            if (speculative && tuning.prioritized && preparedAlready(key, priority)) return;
             if (reservation > 0 && !(tuning.prioritized
                     ? speculativeTiles.reserve(this, key, reservation)
                     : speculativeTiles.reserve(reservation))) return;
             TileTask task = new TileTask(key, pageIndex, sample,
                     renderScale, new Rect(source), speculative, prefetchGeneration.current(),
-                    taskOrder.incrementAndGet(), reservation);
+                    taskOrder.incrementAndGet(), reservation, priority);
             pending.put(key, task);
             if (speculative) speculativeQueued++;
             else if (speculativeTiles != null) speculativeTiles.visibleQueued();
@@ -572,13 +585,14 @@ public final class TileRenderer implements AutoCloseable {
         final long epoch;
         final long order;
         final long reservation;
+        final int priority;
         final long queuedAt;
         final AtomicBoolean finished = new AtomicBoolean();
         final AtomicBoolean reservationReleased = new AtomicBoolean();
         volatile boolean seenVisible;
 
         TileTask(TileKey key, int pageIndex, int sample, float renderScale,
-                Rect source, boolean speculative, long epoch, long order, long reservation) {
+                Rect source, boolean speculative, long epoch, long order, long reservation, int priority) {
             this.key = key;
             this.pageIndex = pageIndex;
             this.sample = sample;
@@ -588,6 +602,7 @@ public final class TileRenderer implements AutoCloseable {
             this.epoch = epoch;
             this.order = order;
             this.reservation = reservation;
+            this.priority = priority;
             this.queuedAt = metrics == null ? 0 : android.os.SystemClock.elapsedRealtimeNanos();
         }
 
@@ -604,6 +619,14 @@ public final class TileRenderer implements AutoCloseable {
         boolean publishReserved(Bitmap bitmap) {
             return reservationReleased.compareAndSet(false, true) &&
                     speculativeTiles.publishReserved(TileRenderer.this, key, bitmap, reservation);
+        }
+        void rememberPrepared() {
+            if (!tuning.prioritized) return;
+            synchronized (pending) {
+                if (prefetchGeneration.isCurrent(epoch)) {
+                    preparedPrefetch.merge(key, priority, Math::min);
+                }
+            }
         }
 
         @Override public void run() {
@@ -643,7 +666,10 @@ public final class TileRenderer implements AutoCloseable {
                                     if (prefetchGeneration.isCurrent(epoch)) refusedPrefetch.add(key);
                                 }
                                 decoded.recycle();
-                            } else if (metrics != null) metrics.published(decoded.getAllocationByteCount());
+                            } else {
+                                rememberPrepared();
+                                if (metrics != null) metrics.published(decoded.getAllocationByteCount());
+                            }
                         } else {
                             releaseReservation();
                             tiles.put(key, decoded);

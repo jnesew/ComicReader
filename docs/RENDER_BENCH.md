@@ -1,6 +1,6 @@
 # Standalone rendering comparison
 
-**ComicViewer Render Bench 1.2.0** is an offline, optimized diagnostic APK with a
+**ComicViewer Render Bench 1.2.1** is an offline, optimized diagnostic APK with a
 separate `<configured application ID>.renderbench` identity and separate app data.
 It installs alongside ComicViewer, requests no Android permissions, and needs no
 ADB or Google services. The ordinary release/debug app does not contain its launcher,
@@ -9,7 +9,7 @@ its existing capacity. The larger candidate ceiling remains a benchmark choice.
 
 ## Next live-device battery
 
-Install the 1.2.0 APK over the previous benchmark. Its higher version code preserves
+Install the 1.2.1 APK over the previous benchmark. Its higher version code preserves
 existing reports; normal ComicViewer and its library remain separate. On each phone:
 
 1. Open **ComicViewer Render Bench**. Check the displayed actual app heap and refresh
@@ -81,6 +81,12 @@ at most one outstanding speculative tile; completion refills it, so a queue of
 farther reserved outputs cannot block the next useful region. Owners that leave the
 candidate region cancel their queued work and plans. A running prefetch that
 becomes visible can satisfy that request without redecoding it.
+
+Successful optional preparation is remembered within the current lookahead generation.
+Evicting a tile cannot trigger an endless decode/replace/refill cycle: the same key
+can retry only for a strictly nearer priority or a new generation. Visible requests
+are always allowed. The per-generation record is bounded to 128 keys per renderer;
+`repeat_prefetch_skips` records attempts suppressed by this rule.
 
 Retained and reserved outputs share one ceiling. The ordinary reader retains its
 existing heap-derived capacity; the 64 MiB allowance is an explicit diagnostic

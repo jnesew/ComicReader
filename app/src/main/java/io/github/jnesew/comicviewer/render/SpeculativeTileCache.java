@@ -130,6 +130,7 @@ public final class SpeculativeTileCache {
         Map<TileKey, Integer> plan = plans.get(owner);
         return plan != null && plan.containsKey(key);
     }
+    synchronized int priority(Object owner, TileKey key) { return rank(new Key(owner, key)); }
     private int rank(Key key) {
         Map<TileKey, Integer> plan = plans.get(key.owner);
         return plan == null ? Integer.MAX_VALUE : plan.getOrDefault(key.tile, Integer.MAX_VALUE);
