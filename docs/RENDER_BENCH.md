@@ -1,6 +1,6 @@
 # Standalone rendering comparison
 
-**ComicViewer Render Bench 1.2.1** is an offline, optimized diagnostic APK with a
+**ComicViewer Render Bench 1.3.0** is an offline, optimized diagnostic APK with a
 separate `<configured application ID>.renderbench` identity and separate app data.
 It installs alongside ComicViewer, requests no Android permissions, and needs no
 ADB or Google services. The ordinary release/debug app does not contain its launcher,
@@ -9,16 +9,16 @@ its existing capacity. The larger candidate ceiling remains a benchmark choice.
 
 ## Next live-device battery
 
-Install the 1.2.1 APK over the previous benchmark. Its higher version code preserves
+Install the 1.3.0 APK over the previous benchmark. Its higher version code preserves
 existing reports; normal ComicViewer and its library remain separate. On each phone:
 
 1. Open **ComicViewer Render Bench**. Check the displayed actual app heap and refresh
    rate. Optionally enter the OS distribution label.
-2. Select **Reader candidate: priority and bounded reuse**, tap **Run comparison**, and leave the app visible.
+2. Select **Fast scroll: uncovered tiles and preparation**, tap **Run comparison**, and leave the app visible.
 3. When it finishes, tap **Export results ZIP** and save the report locally.
-4. Select **Reader candidate: sustained sessions**, run it, and export that report separately.
+4. The existing **Reader candidate** and **Reader candidate: sustained sessions** suites remain available for a broader check when needed.
 
-The candidate suites are the recommended comparison. The previous round-two and
+The fast-scroll suite targets transient dark placeholders. The previous round-two and
 Quick/Individual/Repeated choices remain available as diagnostic references.
 Duration estimates are approximate and can vary substantially by device.
 Keep brightness, refresh-rate settings, charging and background load comparable.
@@ -32,6 +32,60 @@ interrupted, failed and timed-out cases are excluded from paired timing comparis
 A finished runner does not by itself mean every case passed: inspect case statuses.
 The first readiness timeout ends that case, records its last coverage/motion state,
 and continues the battery; final status becomes `completed_with_case_errors`.
+
+## Fast-scroll preparation controls
+
+`scrolling` compares the frozen original High baseline, the existing reader candidate,
+and three diagnostic changes at the **same original shared capacity**. It runs
+three workloads (raster continuous, tall strips and three-document series), five
+policies, four speeds and two repeats: **120 measured cases plus three warmups**. Normal reader
+defaults remain the existing candidate; none of the new controls is enabled there.
+
+| Policy | Difference from `reader_candidate` | Cost being tested |
+| --- | --- | --- |
+| `scroll_pipeline_2` | Up to two outstanding speculative tiles per renderer instead of one | One extra reserved output can keep the existing decoder fed while the main thread delivers scroll frames; may retain work that soon becomes stale |
+| `scroll_tall_bands_2` | Up to two approaching viewport bands on tall raster pages instead of one | More runway before the reader reaches unprepared content; may spend work on farther pixels |
+| `scroll_pipeline_and_bands_2` | Both controls together | Checks whether the controls help one another or only increase wasted work |
+
+All retain bounded admission, priority replacement, the per-generation repeat guard,
+visible priority, pressure cooldown/background suspension and **one active speculative
+decode across the session**. PDF preparation retains one near band. No extra worker,
+capacity increase, full-page preview pass or adaptive controller is introduced.
+
+Cases request **1, 2, 4 and 8 viewport heights per second**, in forward and
+reverse directions, using four consecutive drags per action. **Each speed has its
+own freshly opened documents, renderers and caches**, so slower passes cannot warm
+the faster case's tile set. Drags end with Cancel to avoid fling acceleration, with
+no readiness wait between drags. Each case begins at the first page after a
+reset/readiness check and fixed 400 ms preparation interval; reverse follows forward.
+The second repeat reverses speed and policy order. The speed is part of the case
+identity and baseline pairing; it is also exported in `results.csv`.
+The ordinary zoom/jump/burst-jump probes follow the ladder. This is a controlled
+drag profile, not a claim to reproduce every user's finger/fling pattern.
+
+Every motion action exports requested speed, delivered distance, elapsed motion time,
+delivered speed and motion-only counter deltas. Catch-up readiness and trailing
+settle are separate from that motion interval. Compare delivered distances/speeds:
+event delivery, touch slop, document boundaries and a slow UI can reduce actual motion.
+The analyzer exposes those values instead of treating a nominal input as achieved.
+
+Coverage now separates:
+
+- `exact_missing_area_ms`: requested-detail pixels missing, including areas covered by fallback;
+- `uncovered_area_ms`: neither requested tiles nor cached fallback covers the area, so the placeholder remains;
+- `fallback_area_ms`: missing requested detail that is covered by cached pixels.
+
+`uncovered_frames` counts View draws with more than 0.001% uncovered area; motion
+counter deltas reveal brief holes that may contribute little area-time. These are
+draw observations, not a count of frames actually presented by the display.
+
+These are viewport-fraction area-times, not the sum of dark-colored pixels in the
+comic, a presentation trace, or proof of a driver fault. Raster fallback coverage
+unions overlapping cached source rectangles before clipping to the viewport. The
+extra coverage calculation is active only with benchmark metrics. Old reports lack
+these fields and the analyzer leaves them unavailable. `coverage_metrics` identifies
+the extension while existing protocol-2 action definitions remain readable. Use the
+baseline inside the new APK; added measurement work can affect absolute timing.
 
 ## What changed in protocol 2
 
@@ -259,3 +313,8 @@ remain available. These automation modes are functional checks, not hardware for
 Normal launcher use requires a tap. Keep local reports and device-specific notes in
 Git-ignored `private/`. Verify no requested permissions, expected hashes/signature,
 and absence of benchmark assets/classes from the normal release before delivery.
+
+`suite=smoke_scrolling` checks the five scroll policies over all three workloads,
+with one repeat, two drags per action and the 2/8 viewport-per-second targets
+(30 measured cases plus three warmups).
+It is a shortened functional profile, not a substitute for the full speed ladder.

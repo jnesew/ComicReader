@@ -30,7 +30,7 @@ final class BenchRunner {
     private SpeculativeTileCache shared;
     private BenchFrames frames;
     private String caseId, fixture, mode;
-    private int cycle, timeouts, sequence;
+    private int cycle, timeouts, sequence, targetSpeed;
     private final Map<String, Integer> occurrences = new HashMap<>();
 
     BenchRunner(RenderBenchActivity host, AtomicBoolean stopped, String suite, BenchFiles files) {
@@ -44,11 +44,15 @@ final class BenchRunner {
         for (int repeat = 0; repeat < plan.repeats(); repeat++) {
             for (int index = 0; index < scenarios.length; index++) {
                 String[] scenario = scenarios[index];
-                if (repeat == 0) one(plan.policies(scenario[0]).get(0), scenario[0], scenario[1], -1, -1);
-                List<BenchPolicy> order = plan.order(scenario[0], index, repeat);
-                for (int slot = 0; slot < order.size(); slot++) {
-                    check(); one(order.get(slot), scenario[0], scenario[1], repeat, slot);
-                    dwell(plan.shortRun() ? 100 : 400);
+                int[] speeds = plan.speeds(repeat);
+                for (int speedIndex = 0; speedIndex < speeds.length; speedIndex++) {
+                    int speed = speeds[speedIndex];
+                    if (repeat == 0 && speedIndex == 0) one(plan.policies(scenario[0]).get(0), scenario[0], scenario[1], -1, -1, speed);
+                    List<BenchPolicy> order = plan.order(scenario[0], index + speedIndex, repeat);
+                    for (int slot = 0; slot < order.size(); slot++) {
+                        check(); one(order.get(slot), scenario[0], scenario[1], repeat, slot, speed);
+                        dwell(plan.shortRun() ? 100 : 400);
+                    }
                 }
             }
         }
@@ -58,13 +62,14 @@ final class BenchRunner {
         }
         return "completed";
     }
-    private void one(BenchPolicy policy, String fixture, String mode, int repeat, int order) throws Exception {
-        this.fixture = fixture; this.mode = mode; cycle = 0; occurrences.clear();
-        caseId = policy.id + "/" + fixture + "/" + mode + "/" + repeat;
+    private void one(BenchPolicy policy, String fixture, String mode, int repeat, int order, int speed) throws Exception {
+        this.fixture = fixture; this.mode = mode; targetSpeed = speed; cycle = 0; occurrences.clear();
+        caseId = policy.id + "/" + fixture + "/" + mode + "/" + repeat + (speed > 0 ? "/speed-" + speed : "");
         JSONObject result = new JSONObject().put("policy", policy.id).put("fixture", fixture).put("mode", mode)
                 .put("repeat", repeat).put("case_id", caseId).put("status", "incomplete")
                 .put("policy_order", order).put("protocol", BenchPlan.PROTOCOL).put("session_sequence", ++sequence)
                 .put("session_reuse", plan.sustained()).put("planned_cycles", repeat < 0 ? 0 : plan.cycles());
+        if (speed > 0) result.put("target_viewports_per_second", speed);
         files.write("state.json", new JSONObject().put("status", "running").put("case", caseId).toString());
         files.event(new JSONObject().put("event", "case_start").put("case", caseId));
         List<ComicDocument> documents = new ArrayList<>(); List<TileRenderer> renderers = new ArrayList<>();
@@ -91,6 +96,8 @@ final class BenchRunner {
                     .put("shared_cap_bytes", shared.limitBytes()).put("requested_cache_mib", policy.tuning.cacheMiB)
                     .put("bounded_admission", policy.tuning.boundedAdmission()).put("refill", policy.tuning.refill)
                     .put("prioritized", policy.tuning.prioritized)
+                    .put("speculative_pipeline", policy.tuning.speculativePipeline)
+                    .put("tall_lookahead_bands", policy.tuning.tallLookaheadBands)
                     .put("byte_lookahead", policy.tuning.byteLookahead).put("predicted_frame", policy.tuning.predictedFrame)
                     .put("history_fallback", policy.tuning.historyFallback);
             frames = host.beginFrames(); metrics.start(SystemClock.elapsedRealtimeNanos());
@@ -113,7 +120,7 @@ final class BenchRunner {
             if (repeat < 0) { result.put("status", timeouts == 0 ? "warmup" : "readiness_timeout"); return; }
             observe("idle_prefill", plan.shortRun() ? 150 : 1200);
             // Identical source/anchor probes in all three raster layouts, followed by natural input.
-            if (plan.roundTwo() && fixture.equals("raster.cbz")) {
+            if (plan.roundTwo() && !plan.scrolling() && fixture.equals("raster.cbz")) {
                 int[] targets = {2, 4, 2, 0};
                 for (int index = 0; index < targets.length; index++) {
                     int page = targets[index];
@@ -197,7 +204,11 @@ final class BenchRunner {
     private boolean continuous() { return mode.equals("continuous") || mode.equals("series"); }
     private int settle() { return plan.shortRun() ? 60 : 180; }
     private void script(int last) throws Exception {
-        if (continuous()) {
+        if (plan.scrolling()) {
+            command("speed_reset_" + targetSpeed, () -> showTarget(0, false), settle());
+            observe("speed_prefill_" + targetSpeed, plan.shortRun() ? 100 : 400);
+            sustainedDrag(targetSpeed, true); sustainedDrag(targetSpeed, false);
+        } else if (continuous()) {
             int steps = plan.shortRun() ? 2 : plan.roundTwo() ? 4 : 5;
             for (int i = 0; i < steps; i++) gesture(true, plan.roundTwo() && i >= steps / 2);
             for (int i = 0; i < (plan.shortRun() ? 1 : 2); i++) gesture(false, false);
@@ -267,6 +278,45 @@ final class BenchRunner {
     }
     private void observe(String name, long duration) throws Exception { measure(name, "observation_only", () -> { dwell(duration); return null; }, 0); }
     private void measure(String action, String kind, Timed operation, long hold) throws Exception {
+        measure(action, kind, operation, hold, null);
+    }
+    private void sustainedDrag(int speed, boolean forward) throws Exception {
+        JSONObject motion = new JSONObject().put("target_viewports_per_second", speed)
+                .put("forward", forward).put("gesture_count", plan.shortRun() ? 2 : 4);
+        measure("speed_" + speed + (forward ? "_forward" : "_reverse"), "after_cancel_to_exact", () -> {
+            Rect bounds = host.ui(() -> new Rect(0, 0, canvas.getWidth(), canvas.getHeight()));
+            float start = bounds.height() * (forward ? .85f : .15f);
+            float end = bounds.height() * (forward ? .15f : .85f);
+            long duration = Math.max(1, Math.round(700.0 / speed));
+            int steps = Math.max(2, (int) Math.ceil(duration / 16.0));
+            double distance = 0, previous = host.ui(canvas::continuousScrollPosition);
+            Map<String, Number> beforeMotion = metrics.snapshot(SystemClock.elapsedRealtimeNanos());
+            long started = SystemClock.elapsedRealtimeNanos();
+            for (int gesture = 0; gesture < (plan.shortRun() ? 2 : 4); gesture++) {
+                long down = SystemClock.uptimeMillis();
+                touch(down, down, MotionEvent.ACTION_DOWN, bounds.width() / 2f, start);
+                for (int step = 1; step <= steps; step++) {
+                    long target = down + duration * step / steps;
+                    dwell(Math.max(0, target - SystemClock.uptimeMillis()));
+                    touch(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_MOVE, bounds.width() / 2f,
+                            start + (end - start) * step / steps);
+                    double position = host.ui(canvas::continuousScrollPosition);
+                    distance += Math.abs(position - previous); previous = position;
+                }
+                // Cancel ends each drag without injecting a fling or waiting for pixels between drags.
+                touch(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_CANCEL, bounds.width() / 2f, end);
+            }
+            long ended = SystemClock.elapsedRealtimeNanos();
+            motion.put("delivered_scroll_viewports", distance / bounds.height())
+                    .put("motion_duration_ms", (ended - started) / 1e6)
+                    .put("metrics_delta", delta(beforeMotion, metrics.snapshot(ended)))
+                    .put("delivered_viewports_per_second", distance / bounds.height() * 1e9 / Math.max(1, ended - started));
+            long draws = metrics.draws();
+            host.ui(() -> { canvas.postInvalidateOnAnimation(); return null; });
+            return awaitReady(draws, SystemClock.elapsedRealtimeNanos(), true);
+        }, settle(), motion);
+    }
+    private void measure(String action, String kind, Timed operation, long hold, JSONObject motion) throws Exception {
         check(); if (windows.size() >= 160) throw new IllegalStateException("Action limit exceeded");
         String occurrenceKey = cycle + "/" + action;
         int occurrence = occurrences.merge(occurrenceKey, 1, Integer::sum) - 1;
@@ -277,6 +327,7 @@ final class BenchRunner {
                 .put("shared_start_bytes", shared.usedBytes()).put("pending_start_bytes", shared.reservedBytes())
                 .put("future_growth_start_bytes", shared.futureGrowthBytes())
                 .put("start_page", host.ui(canvas::page)).put("start_document_slot", documentSlot());
+        if (motion != null) window.value.put("motion", motion);
         windows.add(window);
         try {
             Double ready = operation.run();
@@ -294,7 +345,8 @@ final class BenchRunner {
                     .put("window_ms", (window.end - window.start) / 1e6).put("metrics_delta", delta(before, after))
                     .put("shared_end_bytes", shared.usedBytes()).put("pending_end_bytes", shared.reservedBytes())
                     .put("future_growth_end_bytes", shared.futureGrowthBytes())
-                    .put("end_missing_fraction", metrics.missingFraction());
+                    .put("end_missing_fraction", metrics.missingFraction())
+                    .put("end_uncovered_fraction", metrics.uncoveredFraction());
             // Activity destruction makes UI state unavailable; preserve the interrupted action anyway.
             try { window.value.put("end_page", host.ui(canvas::page)).put("end_document_slot", documentSlot())
                     .put("motion_running_after", host.ui(canvas::isMotionRunning)); }
@@ -332,7 +384,7 @@ final class BenchRunner {
     }
     private void saveSummary() throws Exception {
         StringBuilder summary = new StringBuilder("Rendering comparison — protocol 2\nAction/frame breakdowns: actions.jsonl. Sustained checkpoints: checkpoints.jsonl.\n\n");
-        StringBuilder csv = new StringBuilder("policy,fixture,mode,repeat,status,ready_p95_ms,exact_missing_area_ms,decode_ms,frame_misses,frame_count,shared_cap_bytes,peak_shared_bytes\n");
+        StringBuilder csv = new StringBuilder("policy,fixture,mode,repeat,target_viewports_per_second,status,ready_p95_ms,exact_missing_area_ms,decode_ms,frame_misses,frame_count,shared_cap_bytes,peak_shared_bytes\n");
         for (JSONObject result : results) {
             JSONObject m = result.getJSONObject("metrics"), f = result.optJSONObject("frames");
             summary.append(result.getString("case_id")).append(": ").append(result.getString("status"))
@@ -340,6 +392,7 @@ final class BenchRunner {
                     .append(m.opt("exact_missing_area_ms")).append(" ms\n");
             csv.append(result.getString("policy")).append(',').append(result.getString("fixture")).append(',')
                     .append(result.getString("mode")).append(',').append(result.getInt("repeat")).append(',')
+                    .append(result.optInt("target_viewports_per_second", 0)).append(',')
                     .append(result.getString("status")).append(',').append(result.opt("ready_p95_ms")).append(',')
                     .append(m.opt("exact_missing_area_ms")).append(',').append(m.opt("decode_ms")).append(',')
                     .append(f == null ? "null" : f.opt("misses")).append(',').append(f == null ? "null" : f.opt("count")).append(',')

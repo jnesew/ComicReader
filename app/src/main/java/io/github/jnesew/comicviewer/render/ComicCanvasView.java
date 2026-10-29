@@ -270,6 +270,9 @@ public final class ComicCanvasView extends View {
     /** Read-only benchmark observation; call on the UI thread. */
     public boolean isMotionRunning() { return !scroller.isFinished(); }
 
+    /** Read-only benchmark observation in display pixels; call on the UI thread. */
+    public double continuousScrollPosition() { return documentScroll; }
+
     public boolean isAtDocumentEnd() {
         if (pages.isEmpty()) return false;
         if (!continuous) return pageEnd() >= pages.size() - 1;
@@ -715,10 +718,13 @@ public final class ComicCanvasView extends View {
         java.util.Map<TileRenderer, List<TileRenderer.PageRequest>> nearby = new java.util.LinkedHashMap<>();
         int examined = 0;
         int frames = renderTuning.prioritized ? BufferingPolicy.lookaheadViewports(bufferingLevel) : 6;
-        // A tall page needs an approaching tile band, not several viewport bands of new work.
+        // Tall raster range is an explicit diagnostic control; PDF retains one near band.
         TileRenderer current = rendererForPage(page);
-        if (renderTuning.prioritized && (continuousLayout.height(page) > height * 3f ||
-                (current != null && current.usesRenderedTiles()))) frames = 1;
+        if (renderTuning.prioritized) {
+            if (current != null && current.usesRenderedTiles()) frames = 1;
+            else if (continuousLayout.height(page) > height * 3f)
+                frames = Math.min(frames, renderTuning.tallLookaheadBands);
+        }
         for (int frame = 0; frame < frames && examined < 128; frame++) {
             double start = travelDirection > 0 ? documentScroll + height * (1 + frame)
                     : documentScroll - height * (1 + frame);
@@ -730,7 +736,8 @@ public final class ComicCanvasView extends View {
             int last = continuousLayout.pageAt(boundedEnd);
             for (int offset = 0; offset <= last - first && examined++ < 128; offset++) {
                 int index = renderTuning.prioritized && travelDirection < 0 ? last - offset : first + offset;
-                if (renderTuning.prioritized && frame > 0 && continuousLayout.height(index) > height * 3f) continue;
+                if (renderTuning.prioritized && frame >= renderTuning.tallLookaheadBands &&
+                        continuousLayout.height(index) > height * 3f) continue;
                 TileRenderer owner = rendererForPage(index);
                 if (owner == null || owner.isUnavailable()) continue;
                 float top = (float) (continuousLayout.top(index) - documentScroll);

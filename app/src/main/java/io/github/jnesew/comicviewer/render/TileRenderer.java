@@ -9,6 +9,8 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.Region;
+import android.graphics.RegionIterator;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.LruCache;
@@ -300,27 +302,32 @@ public final class TileRenderer implements AutoCloseable {
                     bitmap = speculativeTiles.take(this, key);
                     if (bitmap != null) tiles.put(key, bitmap);
                 }
-                if (metrics != null) {
-                    RectF measured = new RectF(tileDestination);
-                    if (measured.intersect(visible)) {
-                        metrics.area(measured.width() * (double) measured.height(),
-                                bitmap == null || bitmap.isRecycled());
-                    }
-                }
-                if (bitmap != null && !bitmap.isRecycled()) {
+                boolean missing = bitmap == null || bitmap.isRecycled();
+                double fallbackArea = 0;
+                if (!missing) {
                     canvas.drawBitmap(bitmap, null, tileDestination, imagePaint);
                 } else {
                     if (rendered) {
-                        drawRenderedFallback(
-                                canvas, pageIndex, page, source, tileDestination, renderScale);
+                        if (drawRenderedFallback(canvas, pageIndex, page, source, tileDestination, renderScale)
+                                && metrics != null) {
+                            RectF covered = new RectF(tileDestination);
+                            if (covered.intersect(visible)) fallbackArea = covered.width() * (double) covered.height();
+                        }
                     } else {
                         if (rasterFallbacks == null) {
                             rasterFallbacks = rasterFallbacks(pageIndex, sample);
                         }
-                        drawRasterFallback(canvas, page, destination, visible,
-                                tileDestination, rasterFallbacks);
+                        fallbackArea = drawRasterFallback(canvas, page, destination, visible,
+                                tileDestination, source, rasterFallbacks);
                     }
                     requestTile(key, pageIndex, sample, renderScale, source, false);
+                }
+                if (metrics != null) {
+                    RectF measured = new RectF(tileDestination);
+                    if (measured.intersect(visible)) {
+                        double area = measured.width() * (double) measured.height();
+                        metrics.area(area, missing, missing ? Math.max(0, area - fallbackArea) : 0);
+                    }
                 }
             }
         }
@@ -530,7 +537,7 @@ public final class TileRenderer implements AutoCloseable {
         synchronized (pending) {
             // Refill the nearest tile on completion. Farther queued reservations must
             // not hold the allowance when a new near-frame plan arrives.
-            int speculativeLimit = tuning.prioritized ? 1 : 16;
+            int speculativeLimit = tuning.prioritized ? tuning.speculativePipeline : 16;
             if (closed || (speculative && speculativeQueued >= speculativeLimit)) return;
             TileTask existing = pending.get(key);
             if (existing != null) {
@@ -826,10 +833,13 @@ public final class TileRenderer implements AutoCloseable {
         return result;
     }
 
-    private void drawRasterFallback(Canvas canvas, PageInfo page, RectF pageDestination,
-            RectF visible, RectF requestedDestination,
+    private double drawRasterFallback(Canvas canvas, PageInfo page, RectF pageDestination,
+            RectF visible, RectF requestedDestination, Rect requestedSource,
             java.util.List<Map.Entry<TileKey, Bitmap>> cached) {
-        if (cached.isEmpty()) return;
+        if (cached.isEmpty()) return 0;
+        // Diagnostics only. Union in integer source coordinates prevents double-counting
+        // overlapping coarse/fine fallback tiles; project and clip to the actual viewport.
+        Region coverage = metrics == null ? null : new Region();
         int saved = canvas.save();
         canvas.clipRect(visible);
         canvas.clipRect(requestedDestination);
@@ -845,12 +855,29 @@ public final class TileRenderer implements AutoCloseable {
                     pageDestination.top + Math.min(page.height, top + edge) * scale);
             if (RectF.intersects(target, requestedDestination) && RectF.intersects(target, visible)) {
                 canvas.drawBitmap(entry.getValue(), null, target, imagePaint);
+                if (coverage != null) {
+                    Rect covered = new Rect(left, top, Math.min(page.width, left + edge),
+                            Math.min(page.height, top + edge));
+                    if (covered.intersect(requestedSource)) coverage.op(covered, Region.Op.UNION);
+                }
             }
         }
         canvas.restoreToCount(saved);
+        double area = 0;
+        if (coverage != null) {
+            RegionIterator iterator = new RegionIterator(coverage);
+            Rect rect = new Rect(); RectF projected = new RectF();
+            while (iterator.next(rect)) {
+                projected.set(pageDestination.left + rect.left * scale, pageDestination.top + rect.top * scale,
+                        pageDestination.left + rect.right * scale, pageDestination.top + rect.bottom * scale);
+                if (projected.intersect(visible) && projected.intersect(requestedDestination))
+                    area += projected.width() * (double) projected.height();
+            }
+        }
+        return area;
     }
 
-    private void drawRenderedFallback(
+    private boolean drawRenderedFallback(
             Canvas canvas,
             int pageIndex,
             PageInfo page,
@@ -879,10 +906,11 @@ public final class TileRenderer implements AutoCloseable {
                         bitmapSourceRect(requestedSource, fallbackSource, fallback),
                         destination,
                         imagePaint);
-                return;
+                return true;
             }
             fallbackScale = RenderedTilePolicy.nextCoarserScale(fallbackScale);
         }
+        return false;
     }
 
     private static Rect bitmapSourceRect(Rect requested, Rect cachedSource, Bitmap bitmap) {

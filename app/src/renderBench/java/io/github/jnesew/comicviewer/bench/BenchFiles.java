@@ -26,6 +26,8 @@ final class BenchFiles {
         JSONObject meta = new JSONObject();
         meta.put("schema", 2); meta.put("protocol", BenchPlan.PROTOCOL);
         meta.put("suite", suite); meta.put("source", BuildConfig.BENCH_SOURCE);
+        meta.put("coverage_metrics", "exact_missing,uncovered,fallback; source-rectangle union; version 1");
+        if (new BenchPlan(suite).scrolling()) meta.put("motion_profile", "cancel-ended repeated drags v1; target and delivered speed exported per action");
         meta.put("session_reuse", new BenchPlan(suite).sustained());
         meta.put("frame_attribution", "intended_vsync_timestamp; bounded 8192 frames per case; 250ms drain grace");
         meta.put("readiness_poll_ms", 16); meta.put("action_window_settle_ms", new BenchPlan(suite).shortRun() ? 60 : 180);

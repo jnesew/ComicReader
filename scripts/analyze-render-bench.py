@@ -30,7 +30,11 @@ def cell(value):
 
 
 def key(case):
-    return case['policy'], case['fixture'], case['mode'], case['repeat']
+    return case['policy'], case['fixture'], case['mode'], case['repeat'], case.get('target_viewports_per_second', 0)
+
+
+def workload(fixture, mode, speed):
+    return f'{fixture} / {mode}' + (f' @ {speed} viewport/s' if speed else '')
 
 
 def completed(case):
@@ -103,24 +107,24 @@ def analyze(path, include_actions=False):
     invalid_frames = sum(1 for c in cases if completed(c) and (c.get('frame_error') or not frame_valid(c.get('frames'))))
     emit(f'Completed cases with unavailable/incomplete frame diagnostics: {invalid_frames}.')
     emit('')
-    baseline = {(c['fixture'], c['mode'], c['repeat']): c for c in cases if completed(c) and c['policy'] == 'baseline_high'}
+    baseline = {key(c)[1:]: c for c in cases if completed(c) and c['policy'] == 'baseline_high'}
     groups = collections.defaultdict(list)
     excluded = collections.Counter()
     for case in cases:
         if case.get('repeat', -1) < 0 or case['policy'] == 'baseline_high':
             continue
-        ref = baseline.get((case['fixture'], case['mode'], case['repeat']))
+        ref = baseline.get(key(case)[1:])
         if not completed(case) or ref is None:
             excluded[case['policy']] += 1
             continue
-        groups[case['policy'], case['fixture'], case['mode']].append((case, ref))
+        groups[case['policy'], case['fixture'], case['mode'], case.get('target_viewports_per_second', 0)].append((case, ref))
     rows = []
-    for (policy, fixture, mode), pairs in sorted(groups.items()):
+    for (policy, fixture, mode, speed), pairs in sorted(groups.items()):
         frames = [(a['frames'], b['frames']) for a, b in pairs if not a.get('frame_error') and not b.get('frame_error')
                   and frame_valid(a.get('frames')) and frame_valid(b.get('frames'))]
         ratios = [100 * (a['metrics']['decode_ms'] / b['metrics']['decode_ms'] - 1)
                   for a, b in pairs if b['metrics'].get('decode_ms', 0) > 0]
-        rows.append((policy, f'{fixture} / {mode}', len(pairs),
+        rows.append((policy, workload(fixture, mode, speed), len(pairs),
                      median(difference(a.get('ready_p95_ms'), b.get('ready_p95_ms')) for a, b in pairs),
                      median(difference(a['metrics'].get('exact_missing_area_ms'), b['metrics'].get('exact_missing_area_ms')) for a, b in pairs),
                      median(ratios), len(frames),
@@ -128,6 +132,18 @@ def analyze(path, include_actions=False):
                      f'{sum(a["misses"] for a, _ in frames)}/{sum(a["count"] for a, _ in frames)} vs '
                      f'{sum(b["misses"] for _, b in frames)}/{sum(b["count"] for _, b in frames)}' if frames else None))
     table(['Policy', 'Workload', 'Pairs', 'Δ case ready p95 ms', 'Δ exact-gap area ms', 'Δ decode %', 'Frame pairs', 'Δ frame p95 bin ms', 'Candidate vs baseline misses/reports'], rows)
+    coverage_rows = []
+    for (policy, fixture, mode, speed), pairs in sorted(groups.items()):
+        supported = [(a, b) for a, b in pairs if all(number(c['metrics'].get('uncovered_area_ms')) is not None for c in (a, b))]
+        if supported:
+            coverage_rows.append((policy, workload(fixture, mode, speed), len(supported),
+                                  median(a['metrics']['uncovered_area_ms'] for a, _ in supported),
+                                  median(b['metrics']['uncovered_area_ms'] for _, b in supported),
+                                  median(difference(a['metrics']['uncovered_area_ms'], b['metrics']['uncovered_area_ms']) for a, b in supported),
+                                  median(difference(a['metrics'].get('fallback_area_ms'), b['metrics'].get('fallback_area_ms')) for a, b in supported)))
+    if coverage_rows:
+        emit('\nCoverage separates uncovered placeholders from cached fallback; neither uses the comic pixel colors:\n')
+        table(['Policy', 'Workload', 'Pairs', 'Candidate uncovered ms', 'Baseline uncovered ms', 'Δ uncovered ms', 'Δ fallback ms'], coverage_rows)
     if excluded:
         emit('\nExcluded failed/interrupted/timed-out/unpaired candidate cases: ' + str(dict(excluded)))
     if include_actions and actions:
@@ -137,26 +153,39 @@ def analyze(path, include_actions=False):
         for action in actions:
             c = eligible.get(action['case_id'])
             if c and c['policy'] == 'baseline_high' and action.get('status') == 'completed':
-                base_actions[c['fixture'], c['mode'], c['repeat'], action['cycle'], action['action'], action['occurrence']] = action
+                base_actions[(*key(c)[1:], action['cycle'], action['action'], action['occurrence'])] = action
         for action in actions:
             c = eligible.get(action['case_id'])
             if not c or c['policy'] == 'baseline_high' or action.get('status') != 'completed':
                 continue
-            ref = base_actions.get((c['fixture'], c['mode'], c['repeat'], action['cycle'], action['action'], action['occurrence']))
+            ref = base_actions.get((*key(c)[1:], action['cycle'], action['action'], action['occurrence']))
             if ref is not None:
-                action_groups[c['policy'], c['fixture'], c['mode'], action['action']].append((action, ref))
+                action_groups[c['policy'], c['fixture'], c['mode'], c.get('target_viewports_per_second', 0), action['action']].append((action, ref))
         emit('\nAction windows (readiness kind is preserved in raw records; scroll readiness includes settling after lift):\n')
         rows = []
-        for (policy, fixture, mode, action), pairs in sorted(action_groups.items()):
+        for (policy, fixture, mode, speed, action), pairs in sorted(action_groups.items()):
             ff = [(a['frames'], b['frames']) for a, b in pairs if frame_valid(a.get('frames')) and frame_valid(b.get('frames'))]
             def phase_delta(phase):
                 return median(difference(a.get('phases', {}).get(phase, {}).get('p95_bin_ms'),
                                          b.get('phases', {}).get(phase, {}).get('p95_bin_ms')) for a, b in ff)
-            rows.append((policy, f'{fixture} / {mode}', action, len(pairs),
+            rows.append((policy, workload(fixture, mode, speed), action, len(pairs),
                          median(difference(a.get('ready_ms'), b.get('ready_ms')) for a, b in pairs),
                          median(difference(a['metrics_delta'].get('exact_missing_area_ms'), b['metrics_delta'].get('exact_missing_area_ms')) for a, b in pairs),
                          phase_delta('draw'), phase_delta('sync'), phase_delta('command_issue'), phase_delta('gpu')))
         table(['Policy', 'Workload', 'Action', 'Pairs', 'Δ ready ms', 'Δ exact-gap ms', 'Δ draw p95', 'Δ sync p95', 'Δ commands p95', 'Δ GPU p95'], rows)
+        motion_rows = []
+        for (policy, fixture, mode, speed, action), pairs in sorted(action_groups.items()):
+            motions = [(a['motion'], b['motion']) for a, b in pairs if 'motion' in a and 'motion' in b]
+            if motions:
+                motion_rows.append((policy, workload(fixture, mode, speed), action, len(motions),
+                                    median(a.get('delivered_viewports_per_second') for a, _ in motions),
+                                    median(b.get('delivered_viewports_per_second') for _, b in motions),
+                                    median(difference(a['metrics_delta'].get('uncovered_area_ms'), b['metrics_delta'].get('uncovered_area_ms')) for a, b in motions),
+                                    median(difference(a['metrics_delta'].get('exact_missing_area_ms'), b['metrics_delta'].get('exact_missing_area_ms')) for a, b in motions)))
+        if motion_rows:
+            emit('\nSpeed ladder: exposure during delivered motion only, excluding the catch-up wait. '
+                 'Inspect delivered speeds and distances before comparing nominal targets; endpoint clamping or host/UI delays can change delivery.\n')
+            table(['Policy', 'Workload', 'Action', 'Pairs', 'Candidate actual viewport/s', 'Baseline actual viewport/s', 'Δ moving uncovered ms', 'Δ moving exact-gap ms'], motion_rows)
     if checkpoints:
         emit('\nSustained-session diagnostics (first/last cycle samples, not leak proof; incomplete cases remain partial):\n')
         groups = collections.defaultdict(list)

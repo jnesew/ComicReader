@@ -78,6 +78,47 @@ public final class RasterRenderingTests {
         }
     }
 
+    public static void fallbackCoverageMetrics(Instrumentation instrumentation) {
+        RenderMetrics metrics = new RenderMetrics();
+        try (Fixture fixture = new Fixture(instrumentation, RenderTuning.READER, metrics)) {
+            fixture.awaitReady(split(), FIRST, SECOND);
+            metrics.start(SystemClock.elapsedRealtimeNanos());
+            fixture.draw(single(0));
+            check(fixture.white(FIRST), "Coarse fallback did not cover the finer request");
+            check(metrics.missingFraction() > 0, "Fixture did not exercise missing exact tiles");
+            check(metrics.uncoveredFraction() < .00001, "Covered coarse pixels were counted as dark placeholders");
+        }
+        metrics = new RenderMetrics();
+        try (Fixture fixture = new Fixture(instrumentation, RenderTuning.READER, metrics)) {
+            fixture.awaitReady(single(0), FIRST);
+            metrics.start(SystemClock.elapsedRealtimeNanos());
+            List<TileRenderer.PageRequest> smaller = List.of(new TileRenderer.PageRequest(0,
+                    new RectF(0, 0, 540, DISPLAY_HEIGHT / 2), new RectF(0, 0, 540, DISPLAY_HEIGHT / 2)));
+            fixture.draw(smaller);
+            check(fixture.white(new RectF(2, 2, 538, DISPLAY_HEIGHT / 2 - 2)), "Fine tiles did not cover the coarser request");
+            check(metrics.missingFraction() > 0, "Fixture did not exercise finer cached coverage");
+            check(metrics.uncoveredFraction() < .00001, "Fine fallback coverage was double-counted or lost");
+        }
+        metrics = new RenderMetrics();
+        Bitmap coarse = Bitmap.createBitmap(768, 768, Bitmap.Config.ARGB_8888);
+        Bitmap fine = Bitmap.createBitmap(768, 768, Bitmap.Config.ARGB_8888);
+        coarse.eraseColor(Color.WHITE); fine.eraseColor(Color.WHITE);
+        try (Fixture fixture = new Fixture(instrumentation, RenderTuning.READER, metrics)) {
+            check(fixture.shared.offer(fixture.renderer, new TileKey(0, 2, .5f, 0, 0, WIDTH, HEIGHT), coarse, true),
+                    "Could not seed partial coarse coverage");
+            check(fixture.shared.offer(fixture.renderer, new TileKey(0, 1, 1, 0, 0, WIDTH, HEIGHT), fine, true),
+                    "Could not seed overlapping fine coverage");
+            metrics.start(SystemClock.elapsedRealtimeNanos());
+            fixture.draw(List.of(new TileRenderer.PageRequest(0,
+                    new RectF(0, 0, WIDTH / 4f, HEIGHT / 4f), new RectF(200, 0, WIDTH / 4f, HEIGHT / 4f))));
+            double expected = 1 - (384.0 - 200) * 384 / ((WIDTH / 4.0 - 200) * (HEIGHT / 4.0));
+            check(Math.abs(metrics.uncoveredFraction() - expected) < .00001,
+                    "Overlapping cached tiles hid uncovered pixels or ignored the viewport clip");
+            check(fixture.output.getPixel(250, 100) == Color.WHITE && fixture.output.getPixel(450, 700) != Color.WHITE,
+                    "Coverage diagnostics do not match the actual drawn pixels");
+        } finally { coarse.recycle(); fine.recycle(); }
+    }
+
     private static List<TileRenderer.PageRequest> single(int page) {
         return List.of(request(page, 0f));
     }
@@ -102,14 +143,19 @@ public final class RasterRenderingTests {
         final Bitmap output = Bitmap.createBitmap(1080, 2100, Bitmap.Config.ARGB_8888);
         final RasterDocument document = new RasterDocument();
         final TileRenderer renderer;
+        final RenderMetrics metrics;
 
         Fixture(Instrumentation instrumentation) {
             this(instrumentation, RenderTuning.READER);
         }
         Fixture(Instrumentation instrumentation, RenderTuning tuning) {
+            this(instrumentation, tuning, null);
+        }
+        Fixture(Instrumentation instrumentation, RenderTuning tuning, RenderMetrics metrics) {
             this.instrumentation = instrumentation;
+            this.metrics = metrics;
             shared = new SpeculativeTileCache(512L * 1024L * 1024L, BufferingPolicy.HIGH,
-                    () -> true, () -> 0L, tuning, null);
+                    () -> true, () -> 0L, tuning, metrics);
             renderer = new TileRenderer(instrumentation.getTargetContext(), document,
                     () -> { }, error::set, shared, 32 * 1024);
         }
@@ -117,7 +163,9 @@ public final class RasterRenderingTests {
         void draw(List<TileRenderer.PageRequest> requests) {
             instrumentation.runOnMainSync(() -> {
                 output.eraseColor(Color.BLACK);
+                if (metrics != null) metrics.beginFrame(SystemClock.elapsedRealtimeNanos());
                 renderer.drawPages(new Canvas(output), requests);
+                if (metrics != null) metrics.endFrame();
             });
             check(error.get() == null, "Decoder error: " + error.get());
         }

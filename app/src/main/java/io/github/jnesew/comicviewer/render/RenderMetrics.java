@@ -10,31 +10,46 @@ public final class RenderMetrics {
     private long priorityEvicted, nearDenied, publications, publishedBytes, largestPublication;
     private long repeatPrefetchSkips;
     private double frameArea, frameMissing, lastMissing, missingAreaNanos;
+    private double frameUncovered, lastUncovered, uncoveredAreaNanos;
+    private long uncoveredFrames;
     private long lastFrameTime;
     private boolean collecting;
 
-    public synchronized void start(long now) { collecting = true; lastFrameTime = now; lastMissing = 1; }
+    public synchronized void start(long now) { collecting = true; lastFrameTime = now; lastMissing = lastUncovered = 1; }
     public synchronized long draws() { return draws; }
     public synchronized void beginFrame(long now) {
         if (!collecting) return;
         integrate(now);
-        frameArea = frameMissing = 0;
+        frameArea = frameMissing = frameUncovered = 0;
         draws++;
     }
     public synchronized void area(double area, boolean missing) {
+        area(area, missing, missing ? area : 0);
+    }
+    /** Uncovered means no exact tile or cached fallback, irrespective of the comic's pixel colors. */
+    public synchronized void area(double area, boolean missing, double uncoveredArea) {
         if (!collecting) return;
         frameArea += area;
         if (missing) frameMissing += area;
+        if (missing) frameUncovered += Math.max(0, Math.min(area, uncoveredArea));
     }
     public synchronized void endFrame() {
-        if (collecting) lastMissing = frameArea == 0 ? 0 : Math.min(1, frameMissing / frameArea);
+        if (collecting) {
+            lastMissing = frameArea == 0 ? 0 : Math.min(1, frameMissing / frameArea);
+            lastUncovered = frameArea == 0 ? 0 : Math.min(lastMissing, frameUncovered / frameArea);
+            if (lastUncovered > .00001) uncoveredFrames++;
+        }
     }
     private void integrate(long now) {
         now = Math.max(lastFrameTime, now);
-        if (lastFrameTime > 0) missingAreaNanos += Math.max(0, now - lastFrameTime) * lastMissing;
+        if (lastFrameTime > 0) {
+            missingAreaNanos += Math.max(0, now - lastFrameTime) * lastMissing;
+            uncoveredAreaNanos += Math.max(0, now - lastFrameTime) * lastUncovered;
+        }
         lastFrameTime = now;
     }
     public synchronized double missingFraction() { return lastMissing; }
+    public synchronized double uncoveredFraction() { return lastUncovered; }
     public synchronized void decode(boolean speculative, long duration, long queued) {
         if (!collecting) return;
         decoded++; if (speculative) speculativeDecoded++;
@@ -80,6 +95,9 @@ public final class RenderMetrics {
         result.put("decode_ms", decodeNanos / 1e6); result.put("queue_ms", queueNanos / 1e6);
         result.put("extract_ms", extractedNanos / 1e6);
         result.put("exact_missing_area_ms", missingAreaNanos / 1e6);
+        result.put("uncovered_area_ms", uncoveredAreaNanos / 1e6);
+        result.put("uncovered_frames", uncoveredFrames);
+        result.put("fallback_area_ms", Math.max(0, missingAreaNanos - uncoveredAreaNanos) / 1e6);
         result.put("stale_results", stale); result.put("render_failures", failures);
         result.put("admission_denials", admissionsDenied);
         result.put("prefetched_bytes_used", usefulBytes); result.put("unused_prefetch_evicted_bytes", evictedBytes);

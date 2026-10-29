@@ -28,6 +28,33 @@ public final class PriorityBufferingTests {
     private static final long MIB = 1024L * 1024L;
     private PriorityBufferingTests() { }
 
+    public static void twoTilePipelineRemainsBoundedAndCancelsQueuedOutput(Instrumentation instrumentation) {
+        BlockingDocument document = new BlockingDocument(true, 3);
+        SpeculativeTileCache cache = new SpeculativeTileCache(256 * MIB, BufferingPolicy.HIGH,
+                () -> true, () -> 0, RenderTuning.scrolling(2, 1), null);
+        TileRenderer renderer = new TileRenderer(instrumentation.getTargetContext(), document,
+                () -> { }, message -> { throw new AssertionError(message); }, cache);
+        try {
+            List<TileRenderer.PageRequest> requests = new ArrayList<>();
+            for (int i = 0; i < 3; i++) requests.add(new TileRenderer.PageRequest(i,
+                    new RectF(0, 0, 512, 512), new RectF(0, 0, 512, 512), i));
+            instrumentation.runOnMainSync(() -> renderer.prefetchPages(requests, 9, 16));
+            try { check(document.started.await(5, TimeUnit.SECONDS), "Pipeline did not start"); }
+            catch (InterruptedException interrupted) { throw new AssertionError(interrupted); }
+            check(cache.reservedBytes() == 2 * MIB, "Pipeline did not reserve exactly two bounded outputs");
+            check(document.calls.get() == 1, "Pipeline added concurrent decoder work");
+            instrumentation.runOnMainSync(renderer::cancelPrefetch);
+            check(cache.reservedBytes() == MIB, "Cancelling the queued tile did not release its reservation");
+            document.proceed.countDown();
+            long deadline = SystemClock.elapsedRealtime() + 5_000;
+            while (cache.reservedBytes() != 0 && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(20);
+            check(cache.committedBytes() == 0, "Cancelled pipeline published or leaked optional pixels");
+            check(document.calls.get() == 1, "Cancelled queued output reached the decoder");
+        } finally {
+            document.proceed.countDown(); instrumentation.runOnMainSync(renderer::close); document.close();
+        }
+    }
+
     public static void replacementAndReservations() {
         RenderMetrics metrics = new RenderMetrics(); metrics.start(1);
         // A deliberately small deterministic test allowance, independent of the emulator heap.

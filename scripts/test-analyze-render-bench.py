@@ -74,6 +74,38 @@ class Reports(unittest.TestCase):
         self.assertIn('RUN INCOMPLETE', output)
         self.assertIn('| partial | 1 |', output)
 
+    def test_uncovered_coverage_is_unavailable_for_old_reports_and_separate_for_new_reports(self):
+        baseline, candidate = case('baseline_high'), case('candidate')
+        self.assertNotIn('Candidate uncovered ms', analyzer.analyze(self.write([baseline, candidate])))
+        baseline['metrics'].update(uncovered_area_ms=30, fallback_area_ms=30)
+        candidate['metrics'].update(uncovered_area_ms=5, fallback_area_ms=35)
+        output = analyzer.analyze(self.write([baseline, candidate]))
+        self.assertIn('Candidate uncovered ms', output)
+        self.assertIn('| 5 | 30 | -25.00 | +5.00 |', output)
+
+    def test_speed_comparison_preserves_delivered_speed_and_motion_only_exposure(self):
+        actions = []
+        for policy, speed, gap in [('baseline_high', 3.0, 20), ('candidate', 2.0, 5)]:
+            actions.append(dict(case_id=case(policy)['case_id'], cycle=0, action='speed_4_forward',
+                                occurrence=0, status='completed', ready_ms=10,
+                                metrics_delta=dict(exact_missing_area_ms=100), frames=dict(count=0),
+                                motion=dict(delivered_viewports_per_second=speed,
+                                            metrics_delta=dict(uncovered_area_ms=gap, exact_missing_area_ms=gap))))
+        output = analyzer.analyze(self.write([case('baseline_high'), case('candidate')], actions=actions), True)
+        self.assertIn('| +2.00 | +3.00 | -15.00 | -15.00 |', output)
+
+    def test_fresh_speed_cases_pair_only_with_their_matching_speed(self):
+        cases = []
+        for speed in [2, 8]:
+            for policy in ['baseline_high', 'candidate']:
+                c = case(policy)
+                c.update(target_viewports_per_second=speed, case_id=c['case_id'] + f'/speed-{speed}')
+                c['ready_p95_ms'] = 100 * speed if policy == 'baseline_high' else 100 * speed - 10
+                cases.append(c)
+        output = analyzer.analyze(self.write(cases))
+        self.assertIn('| candidate | raster.cbz / continuous @ 2 viewport/s | 1 | -10.00 |', output)
+        self.assertIn('| candidate | raster.cbz / continuous @ 8 viewport/s | 1 | -10.00 |', output)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -5,6 +5,21 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class BenchPlanTest {
+    @Test public void scrollingBatterySeparatesPipelineFromRangeAtUnchangedCapacity() {
+        BenchPlan plan = new BenchPlan("scrolling");
+        assertTrue(plan.scrolling()); assertTrue(plan.roundTwo()); assertFalse(plan.sustained());
+        assertEquals(3, plan.scenarios().length);
+        List<BenchPolicy> policies = plan.policies("strips.cbz");
+        assertEquals(5, policies.size());
+        assertArrayEquals(new int[]{1, 2, 4, 8}, plan.speeds(0));
+        assertArrayEquals(new int[]{8, 4, 2, 1}, plan.speeds(1));
+        assertEquals(120, plan.scenarios().length * policies.size() * plan.repeats() * plan.speeds(0).length);
+        assertEquals(2, policies.get(2).tuning.speculativePipeline);
+        assertEquals(1, policies.get(2).tuning.tallLookaheadBands);
+        assertEquals(1, policies.get(3).tuning.speculativePipeline);
+        assertEquals(2, policies.get(3).tuning.tallLookaheadBands);
+        for (BenchPolicy policy : policies) assertEquals(0, policy.tuning.cacheMiB);
+    }
     @Test public void candidateBatteryUsesMatchedBaselineAndTwoBoundedCapacities() {
         BenchPlan plan = new BenchPlan("candidate");
         assertTrue(plan.roundTwo()); assertEquals(8, plan.scenarios().length);

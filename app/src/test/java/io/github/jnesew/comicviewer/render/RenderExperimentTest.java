@@ -7,6 +7,29 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class RenderExperimentTest {
     private static final long MIB = 1024L * 1024L;
 
+    @Test public void fallbackCoverageSeparatesMissingDetailFromUncoveredPixels() {
+        RenderMetrics metrics = new RenderMetrics(); metrics.start(1_000_000);
+        metrics.beginFrame(1_000_000);
+        metrics.area(100, true, 25); metrics.area(100, false, 100); metrics.endFrame();
+        assertEquals(.5, metrics.missingFraction(), .00001);
+        assertEquals(.125, metrics.uncoveredFraction(), .00001);
+        java.util.Map<String, Number> values = metrics.finish(9_000_000);
+        assertEquals(4, values.get("exact_missing_area_ms").doubleValue(), .00001);
+        assertEquals(1, values.get("uncovered_area_ms").doubleValue(), .00001);
+        assertEquals(3, values.get("fallback_area_ms").doubleValue(), .00001);
+        assertEquals(1, values.get("uncovered_frames").longValue());
+    }
+
+    @Test public void scrollControlsKeepTheReaderCapacityAndClampOptionalWork() {
+        RenderTuning tuning = RenderTuning.scrolling(20, 20);
+        assertEquals(2, tuning.speculativePipeline); assertEquals(2, tuning.tallLookaheadBands);
+        assertEquals(RenderTuning.READER.cacheBytes(256 * MIB, BufferingPolicy.HIGH),
+                tuning.cacheBytes(256 * MIB, BufferingPolicy.HIGH));
+        assertEquals(1, RenderTuning.READER.speculativePipeline);
+        assertEquals(1, RenderTuning.READER.tallLookaheadBands);
+        assertEquals(0, tuning.cacheBytes(256 * MIB, BufferingPolicy.STANDARD));
+    }
+
     @Test public void unchangedPlansDoNotWakeOwnersAndCancelledPlansReleaseTheirPriority() {
         AtomicBoolean room = new AtomicBoolean(true);
         SpeculativeTileCache cache = new SpeculativeTileCache(256 * MIB, BufferingPolicy.HIGH,
