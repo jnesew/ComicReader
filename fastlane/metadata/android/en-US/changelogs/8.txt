@@ -1,0 +1,1 @@
+Released 29 October 2026. Improved nearby-page preparation and cached-tile reuse, with more accurate preparation of the next page and PDF frame. Existing memory limits and memory-pressure handling remain in place. Updated build/test dependency checks. Your library, settings, reading positions, favorites and bookmarks are preserved.

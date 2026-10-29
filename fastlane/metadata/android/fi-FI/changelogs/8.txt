@@ -1,0 +1,1 @@
+Julkaistu 29.10.2026. Sivujen ennakkovalmistelua ja välimuistin käyttöä on parannettu. Seuraavan sivun ja PDF-näkymän valmistelu on tarkempaa. Nykyiset muistirajat ja muistipaineen käsittely säilyvät. Rakennus- ja testityökalujen riippuvuustarkistuksia on päivitetty. Kirjasto, asetukset, lukukohdat, suosikit ja kirjanmerkit säilyvät.

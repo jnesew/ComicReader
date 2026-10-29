@@ -76,5 +76,7 @@ to its cards. Comics are not bundled in the APK or added to the source repositor
 ## Listing layout
 
 Localized listing text, icons, screenshots, and version-code changelogs live under
-`fastlane/metadata/android/<locale>/`. Version 1.4.0 uses `changelogs/7.txt`;
-code 6 belongs to v1.3.1, code 5 to v1.3.0, and code 4 to v1.2.0.
+`fastlane/metadata/android/<locale>/`. Version 1.4.1 uses `changelogs/8.txt`;
+code 7 belongs to v1.4.0, code 6 to v1.3.1, code 5 to v1.3.0, and code 4 to v1.2.0.
+The screenshot gallery remains the v1.4.0 appearance reference; this maintenance
+release does not change the interface.
