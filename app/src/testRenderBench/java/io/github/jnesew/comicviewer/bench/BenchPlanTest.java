@@ -19,6 +19,11 @@ public class BenchPlanTest {
         assertEquals(1, policies.get(3).tuning.speculativePipeline);
         assertEquals(2, policies.get(3).tuning.tallLookaheadBands);
         for (BenchPolicy policy : policies) assertEquals(0, policy.tuning.cacheMiB);
+        for (int speed : plan.speeds(0)) {
+            List<String> first = new ArrayList<>(plan.order("strips.cbz", 1, 0, speed).stream().map(p -> p.id).toList());
+            Collections.reverse(first);
+            assertEquals(first, plan.order("strips.cbz", 1, 1, speed).stream().map(p -> p.id).toList());
+        }
     }
     @Test public void candidateBatteryUsesMatchedBaselineAndTwoBoundedCapacities() {
         BenchPlan plan = new BenchPlan("candidate");

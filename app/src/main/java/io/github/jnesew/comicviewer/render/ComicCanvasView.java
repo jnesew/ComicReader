@@ -93,7 +93,7 @@ public final class ComicCanvasView extends View {
     private boolean tapZones = true;
     private boolean rightToLeft;
     private String bufferingLevel = BufferingPolicy.STANDARD;
-    private RenderTuning renderTuning = RenderTuning.READER;
+    private RenderTuning renderTuning = RenderTuning.DEFAULT_READER;
     private RenderMetrics renderMetrics;
     private int travelDirection = 1;
     private double lastPrefetchScroll;

@@ -48,7 +48,7 @@ final class BenchRunner {
                 for (int speedIndex = 0; speedIndex < speeds.length; speedIndex++) {
                     int speed = speeds[speedIndex];
                     if (repeat == 0 && speedIndex == 0) one(plan.policies(scenario[0]).get(0), scenario[0], scenario[1], -1, -1, speed);
-                    List<BenchPolicy> order = plan.order(scenario[0], index + speedIndex, repeat);
+                    List<BenchPolicy> order = plan.order(scenario[0], index, repeat, speed);
                     for (int slot = 0; slot < order.size(); slot++) {
                         check(); one(order.get(slot), scenario[0], scenario[1], repeat, slot, speed);
                         dwell(plan.shortRun() ? 100 : 400);
@@ -96,8 +96,8 @@ final class BenchRunner {
                     .put("shared_cap_bytes", shared.limitBytes()).put("requested_cache_mib", policy.tuning.cacheMiB)
                     .put("bounded_admission", policy.tuning.boundedAdmission()).put("refill", policy.tuning.refill)
                     .put("prioritized", policy.tuning.prioritized)
-                    .put("speculative_pipeline", policy.tuning.speculativePipeline)
-                    .put("tall_lookahead_bands", policy.tuning.tallLookaheadBands)
+                    .put("speculative_pipeline", policy.tuning.prioritized ? policy.tuning.speculativePipeline : 16)
+                    .put("tall_lookahead_bands", policy.tuning.prioritized ? policy.tuning.tallLookaheadBands : JSONObject.NULL)
                     .put("byte_lookahead", policy.tuning.byteLookahead).put("predicted_frame", policy.tuning.predictedFrame)
                     .put("history_fallback", policy.tuning.historyFallback);
             frames = host.beginFrames(); metrics.start(SystemClock.elapsedRealtimeNanos());
@@ -208,6 +208,11 @@ final class BenchRunner {
             command("speed_reset_" + targetSpeed, () -> showTarget(0, false), settle());
             observe("speed_prefill_" + targetSpeed, plan.shortRun() ? 100 : 400);
             sustainedDrag(targetSpeed, true); sustainedDrag(targetSpeed, false);
+            if (targetSpeed == 8) {
+                command("flick_reset", () -> showTarget(0, false), settle());
+                observe("flick_prefill", plan.shortRun() ? 100 : 400);
+                repeatedFlicks();
+            }
         } else if (continuous()) {
             int steps = plan.shortRun() ? 2 : plan.roundTwo() ? 4 : 5;
             for (int i = 0; i < steps; i++) gesture(true, plan.roundTwo() && i >= steps / 2);
@@ -314,6 +319,45 @@ final class BenchRunner {
             long draws = metrics.draws();
             host.ui(() -> { canvas.postInvalidateOnAnimation(); return null; });
             return awaitReady(draws, SystemClock.elapsedRealtimeNanos(), true);
+        }, settle(), motion);
+    }
+    private void repeatedFlicks() throws Exception {
+        JSONObject motion = new JSONObject().put("target_viewports_per_second", targetSpeed)
+                .put("profile", "repeated_flicks").put("forward", true)
+                .put("gesture_count", plan.shortRun() ? 2 : 4).put("requested_flick_duration_ms", 70);
+        measure("flick_train", "after_motion_to_exact", () -> {
+            Rect bounds = host.ui(() -> new Rect(0, 0, canvas.getWidth(), canvas.getHeight()));
+            double startPosition = host.ui(canvas::continuousScrollPosition);
+            Map<String, Number> before = metrics.snapshot(SystemClock.elapsedRealtimeNanos());
+            long started = SystemClock.elapsedRealtimeNanos();
+            for (int gesture = 0; gesture < (plan.shortRun() ? 2 : 4); gesture++) {
+                long down = SystemClock.uptimeMillis();
+                float start = bounds.height() * .85f, end = bounds.height() * .15f;
+                touch(down, down, MotionEvent.ACTION_DOWN, bounds.width() / 2f, start);
+                for (int step = 1; step <= 4; step++) {
+                    dwell(Math.max(0, down + 70L * step / 4 - SystemClock.uptimeMillis()));
+                    touch(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_MOVE, bounds.width() / 2f,
+                            start + (end - start) * step / 4f);
+                }
+                touch(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, bounds.width() / 2f, end);
+                dwell(90); // A new flick interrupts the previous fling; no tile-readiness wait.
+            }
+            long deadline = SystemClock.elapsedRealtime() + 8_000;
+            while (host.ui(canvas::isMotionRunning)) {
+                check();
+                if (SystemClock.elapsedRealtime() >= deadline) {
+                    timeouts++; throw new ReadinessTimeout("Repeated flicks did not settle");
+                }
+                dwell(16);
+            }
+            long ended = SystemClock.elapsedRealtimeNanos();
+            double distance = Math.abs(host.ui(canvas::continuousScrollPosition) - startPosition) / bounds.height();
+            motion.put("delivered_scroll_viewports", distance).put("motion_duration_ms", (ended - started) / 1e6)
+                    .put("delivered_viewports_per_second", distance * 1e9 / Math.max(1, ended - started))
+                    .put("metrics_delta", delta(before, metrics.snapshot(ended)));
+            long draws = metrics.draws();
+            host.ui(() -> { canvas.postInvalidateOnAnimation(); return null; });
+            return awaitReady(draws, SystemClock.elapsedRealtimeNanos(), false);
         }, settle(), motion);
     }
     private void measure(String action, String kind, Timed operation, long hold, JSONObject motion) throws Exception {

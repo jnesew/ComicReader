@@ -49,6 +49,7 @@ android {
         testInstrumentationRunner = "io.github.jnesew.comicviewer.data.DatabaseTestRunner"
         versionCode = comicViewerVersionCode
         versionName = comicViewerVersionName
+        buildConfigField 'int', 'READER_TALL_BANDS', '1'
         manifestPlaceholders = [comicViewerFixtureAuthority: "${applicationId}.test.documents"]
     }
 
@@ -82,6 +83,16 @@ android {
             shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+        readerTrial {
+            initWith release
+            applicationIdSuffix '.readertest'
+            signingConfig = signingConfigs.debug
+            debuggable = false
+            matchingFallbacks = ['release']
+            def bands = providers.gradleProperty('readerTrialTallBands').orElse('2').get()
+            if (!(bands in ['1', '2'])) throw new GradleException('readerTrialTallBands must be 1 or 2')
+            buildConfigField 'int', 'READER_TALL_BANDS', bands
+        }
         renderBench {
             initWith release
             applicationIdSuffix '.renderbench'
@@ -110,7 +121,8 @@ android {
 }
 
 androidComponents {
-    onVariants(selector().withBuildType('readerDebug')) { variant ->
+    onVariants(selector().all()) { variant ->
+        if (!(variant.buildType in ['readerDebug', 'readerTrial'])) return
         variant.outputs.each { output ->
             output.versionCode.set(providers.gradleProperty('comicViewerReaderTestVersionCode').map { it.toInteger() })
         }

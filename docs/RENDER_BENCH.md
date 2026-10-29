@@ -63,6 +63,14 @@ identity and baseline pairing; it is also exported in `results.csv`.
 The ordinary zoom/jump/burst-jump probes follow the ladder. This is a controlled
 drag profile, not a claim to reproduce every user's finger/fling pattern.
 
+The fastest cases additionally reset, prepare for 400 ms and perform four 70 ms
+forward flicks, 90 ms apart, allowing each new flick to interrupt the preceding
+fling without waiting for tiles. The `flick_train` action records the entire
+train and final deceleration as motion; exact-detail catch-up follows separately.
+Its nominal case speed labels the surrounding drag test, not a guaranteed fling
+velocity. Delivered distance and average speed reveal document-end clamping and
+platform/event-delivery differences.
+
 Every motion action exports requested speed, delivered distance, elapsed motion time,
 delivered speed and motion-only counter deltas. Catch-up readiness and trailing
 settle are separate from that motion interval. Compare delivered distances/speeds:

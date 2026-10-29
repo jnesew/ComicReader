@@ -61,6 +61,25 @@ benchmark-only allowance is not enabled. Its version name follows the reader;
 reader-test APKs are distributed. Release/debug identities and Obtainium metadata
 remain configured by their existing settings.
 
+For a performance comparison with the optimized installed release, use
+`scripts/build-reader-trial.sh control`, then `scripts/build-reader-trial.sh bands`.
+These produce optimized, non-debuggable APKs signed by the same local debug key
+and using the same `.readertest` identity. The control uses the existing reader
+candidate; the bands trial changes only tall-raster approaching range from one
+to two viewports, at the same byte ceiling and decoder concurrency. Neither
+contains benchmark fixtures, counters or a runner. The regular release retains
+its original policy.
+
+Install the control first, then the higher-code bands trial; each updates Reader
+Test while preserving its library/settings/grants. Android does not normally
+allow installing the older control afterward. The independent control and trial
+codes are `comicViewerReaderControlVersionCode` and
+`comicViewerReaderTestVersionCode`; increase both before distributing a changed
+pair, with the trial code higher than the control. The debug helper shares the
+trial code, so a changed debug APK also needs a higher code before distribution.
+Compare the same comic, zoom, buffering setting and direction after a similar
+warm-up; manual impressions do not replace the randomized benchmark comparisons.
+
 ## Verification
 
 Run the full source and release-build gate:

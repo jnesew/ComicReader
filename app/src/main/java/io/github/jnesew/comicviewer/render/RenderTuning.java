@@ -1,9 +1,13 @@
 package io.github.jnesew.comicviewer.render;
 
+import io.github.jnesew.comicviewer.BuildConfig;
+
 /** Reader policy and explicit benchmark controls. BASELINE preserves the live-tested old policy. */
 public final class RenderTuning {
     public static final RenderTuning BASELINE = new RenderTuning(false, false, false, false, 0);
     public static final RenderTuning READER = reader(0);
+    /** Only the optimized, separately identified reader trial overrides the frozen reader policy. */
+    public static final RenderTuning DEFAULT_READER = BuildConfig.READER_TALL_BANDS == 2 ? scrolling(1, 2) : READER;
     public final boolean byteLookahead;
     public final boolean refill;
     public final boolean predictedFrame;

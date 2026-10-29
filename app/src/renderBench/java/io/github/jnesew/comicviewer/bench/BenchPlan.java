@@ -70,4 +70,8 @@ final class BenchPlan {
         if ((repeat & 1) != 0) Collections.reverse(result);
         return result;
     }
+    List<BenchPolicy> order(String fixture, int scenario, int repeat, int speed) {
+        // The same speed must use the same rotation even when speed traversal is reversed.
+        return order(fixture, scenario + (speed > 0 ? Integer.numberOfTrailingZeros(speed) : 0), repeat);
+    }
 }

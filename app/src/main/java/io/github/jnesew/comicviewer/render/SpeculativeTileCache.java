@@ -20,7 +20,7 @@ public final class SpeculativeTileCache {
     private final BooleanSupplier memoryAvailable;
     private LongPredicate memoryAdmission;
     private final LongSupplier clock;
-    private RenderTuning tuning = RenderTuning.READER;
+    private RenderTuning tuning = RenderTuning.DEFAULT_READER;
     private RenderMetrics metrics;
     private long reservedBytes;
     private final Map<Object, long[]> owners = new LinkedHashMap<>();
@@ -35,7 +35,7 @@ public final class SpeculativeTileCache {
     private final AtomicInteger visibleWaiting = new AtomicInteger();
 
     public SpeculativeTileCache(Context context, long heapBytes, String level) {
-        this(context, heapBytes, level, RenderTuning.READER, null);
+        this(context, heapBytes, level, RenderTuning.DEFAULT_READER, null);
     }
 
     public SpeculativeTileCache(Context context, long heapBytes, String level,

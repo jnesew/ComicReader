@@ -193,7 +193,7 @@ public final class TileRenderer implements AutoCloseable {
         this.invalidator = invalidator;
         this.errorListener = errorListener;
         this.speculativeTiles = speculativeTiles;
-        this.tuning = speculativeTiles == null ? RenderTuning.READER : speculativeTiles.tuning();
+        this.tuning = speculativeTiles == null ? RenderTuning.DEFAULT_READER : speculativeTiles.tuning();
         this.metrics = speculativeTiles == null ? null : speculativeTiles.metrics();
         this.pageCacheDirectory = new File(
                 context.getCacheDir(), "page_tiles/session-" + Long.toUnsignedString(System.nanoTime()));
