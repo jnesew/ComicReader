@@ -7,8 +7,11 @@ final class BenchPolicy {
     final String id;
     final RenderTuning tuning;
     BenchPolicy(String id, boolean bytes, boolean refill, boolean frame, boolean history, int mib) {
+        this(id, bytes, refill, frame, history, mib, false);
+    }
+    BenchPolicy(String id, boolean bytes, boolean refill, boolean frame, boolean history, int mib, boolean admission) {
         this.id = id;
-        tuning = new RenderTuning(bytes, refill, frame, history, mib);
+        tuning = new RenderTuning(bytes, refill, frame, history, mib, admission);
     }
     static List<BenchPolicy> policies(String suite) {
         BenchPolicy baseline = new BenchPolicy("baseline_high", false, false, false, false, 0);

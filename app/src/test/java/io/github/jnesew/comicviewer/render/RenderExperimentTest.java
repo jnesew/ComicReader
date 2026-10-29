@@ -49,4 +49,44 @@ public class RenderExperimentTest {
         assertEquals(2, values.get("draws").intValue());
         assertEquals(0, metrics.finish(30_000_000).get("decoded_tiles").intValue());
     }
+
+    @Test public void admissionControlDoesNotChangeTheSelectedRangeOrCapacity() {
+        RenderTuning tuning = new RenderTuning(false, false, false, false, 0, true);
+        assertTrue(tuning.boundedAdmission());
+        assertFalse(tuning.byteLookahead); assertFalse(tuning.refill); assertFalse(tuning.predictedFrame);
+        assertEquals(RenderTuning.BASELINE.cacheBytes(256 * MIB, BufferingPolicy.HIGH),
+                tuning.cacheBytes(256 * MIB, BufferingPolicy.HIGH));
+        assertEquals(0, tuning.cacheBytes(256 * MIB, BufferingPolicy.STANDARD));
+    }
+
+    @Test public void checkpointsContinueCollectingAndIgnoreOutOfOrderClockSamples() {
+        RenderMetrics metrics = new RenderMetrics(); metrics.start(1_000_000);
+        metrics.beginFrame(2_000_000); metrics.area(100, true); metrics.endFrame();
+        assertEquals(3, metrics.snapshot(4_000_000).get("exact_missing_area_ms").doubleValue(), .00001);
+        metrics.snapshot(3_000_000); // A caller sampled before waiting for the metric lock.
+        metrics.decode(true, 2_000_000, 3_000_000);
+        assertEquals(4, metrics.finish(5_000_000).get("exact_missing_area_ms").doubleValue(), .00001);
+        assertEquals(1, metrics.snapshot(9_000_000).get("decoded_tiles").intValue());
+    }
+
+    @Test public void combinedPeakUsesSimultaneousRetainedAndPendingBytes() {
+        RenderMetrics metrics = new RenderMetrics(); metrics.start(1);
+        metrics.memory(0, 0, 24 * MIB, 0); metrics.memory(0, 0, 0, 16 * MIB);
+        assertEquals(24 * MIB, metrics.finish(2).get("peak_shared_plus_pending_bytes").longValue());
+    }
+
+    @Test public void diagnosticsDistinguishFullCapacityFromMemoryGuardRefusal() {
+        AtomicBoolean room = new AtomicBoolean(true); RenderMetrics metrics = new RenderMetrics(); metrics.start(1);
+        SpeculativeTileCache cache = new SpeculativeTileCache(256 * MIB, BufferingPolicy.HIGH,
+                room::get, () -> 0, new RenderTuning(false, false, false, false, 64), metrics);
+        cache.registerOwner(this, 16 * MIB, 32 * MIB); cache.residentBytes(this, 8 * MIB, 4 * MIB);
+        assertEquals(36 * MIB, cache.futureGrowthBytes());
+        assertTrue(cache.reserve(MIB)); assertFalse(cache.reserve(64 * MIB));
+        room.set(false); assertFalse(cache.reserve(MIB));
+        java.util.Map<String, Number> result = metrics.finish(2);
+        assertEquals(2, result.get("admission_denials").intValue());
+        assertEquals(1, result.get("capacity_denials").intValue());
+        assertEquals(1, result.get("memory_denials").intValue());
+        assertEquals(1, result.get("guard_refusals").intValue());
+    }
 }

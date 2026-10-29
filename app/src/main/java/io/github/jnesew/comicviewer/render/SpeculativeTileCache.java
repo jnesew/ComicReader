@@ -110,9 +110,12 @@ public final class SpeculativeTileCache {
     }
     /** Reservations bound resident plus queued output. The native guard also covers future growth. */
     public synchronized boolean reserve(long bytes) {
-        if (bytes <= 0 || bytes > limitBytes - usedBytes - reservedBytes ||
-                !hasMemoryRoom(bytes)) {
-            if (metrics != null) metrics.denied();
+        if (bytes <= 0 || bytes > limitBytes - usedBytes - reservedBytes) {
+            if (metrics != null) metrics.capacityDenied();
+            return false;
+        }
+        if (!hasMemoryRoom(bytes)) {
+            if (metrics != null) metrics.memoryDenied();
             return false;
         }
         reservedBytes += bytes;
@@ -123,6 +126,8 @@ public final class SpeculativeTileCache {
         reservedBytes = Math.max(0L, reservedBytes - bytes);
     }
     public synchronized long reservedBytes() { return reservedBytes; }
+    public synchronized long committedBytes() { return usedBytes + reservedBytes; }
+    public synchronized long futureGrowthBytes() { return futureGrowth(); }
     public synchronized long freeBytes() { return Math.max(0, limitBytes - usedBytes - reservedBytes); }
     private void recordMemory() {
         if (metrics == null) return;
@@ -241,13 +246,17 @@ public final class SpeculativeTileCache {
     }
     private synchronized boolean hasMemoryRoom(long additional) {
         if (!enabled()) return false;
+        long started = metrics == null ? 0 : System.nanoTime();
         try {
             if (tuning.boundedAdmission()
                     ? memoryAdmission.test(additional + reservedBytes + futureGrowth())
                     : memoryAvailable.getAsBoolean()) return true;
         } catch (RuntimeException ignored) {
             // A failed sample cannot authorize speculative allocations.
+        } finally {
+            if (metrics != null) metrics.guard(System.nanoTime() - started);
         }
+        if (metrics != null) metrics.guardRefused();
         clear();
         return false;
     }

@@ -8,17 +8,25 @@ public final class RenderTuning {
     public final boolean predictedFrame;
     public final boolean historyFallback;
     public final int cacheMiB;
+    private final boolean admissionOnly;
 
     public RenderTuning(boolean byteLookahead, boolean refill, boolean predictedFrame,
             boolean historyFallback, int cacheMiB) {
+        this(byteLookahead, refill, predictedFrame, historyFallback, cacheMiB, false);
+    }
+
+    /** Independent diagnostic control for admission without extending range or enabling refill. */
+    public RenderTuning(boolean byteLookahead, boolean refill, boolean predictedFrame,
+            boolean historyFallback, int cacheMiB, boolean admissionOnly) {
         this.byteLookahead = byteLookahead;
         this.refill = refill;
         this.predictedFrame = predictedFrame;
         this.historyFallback = historyFallback;
         this.cacheMiB = Math.max(0, Math.min(128, cacheMiB));
+        this.admissionOnly = admissionOnly;
     }
 
-    public boolean boundedAdmission() { return byteLookahead || refill || cacheMiB > 0; }
+    public boolean boundedAdmission() { return admissionOnly || byteLookahead || refill || cacheMiB > 0; }
 
     /** Separate from the requested capacity: Java/native/system checks still gate work. */
     public long cacheBytes(long heap, String level) {

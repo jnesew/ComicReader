@@ -4,7 +4,9 @@ package io.github.jnesew.comicviewer.render;
 public final class RenderMetrics {
     private long draws, decoded, speculativeDecoded, stale, failures, admissionsDenied;
     private long decodeNanos, queueNanos, extractedNanos, usefulBytes, evictedBytes;
-    private long peakVisible, peakBacking, peakShared, peakPending;
+    private long peakVisible, peakBacking, peakShared, peakPending, peakSharedPending;
+    private long planningNanos, planningCalls, guardNanos, guardCalls;
+    private long capacityDenials, memoryDenials, guardRefusals;
     private double frameArea, frameMissing, lastMissing, missingAreaNanos;
     private long lastFrameTime;
     private boolean collecting;
@@ -26,6 +28,7 @@ public final class RenderMetrics {
         if (collecting) lastMissing = frameArea == 0 ? 0 : Math.min(1, frameMissing / frameArea);
     }
     private void integrate(long now) {
+        now = Math.max(lastFrameTime, now);
         if (lastFrameTime > 0) missingAreaNanos += Math.max(0, now - lastFrameTime) * lastMissing;
         lastFrameTime = now;
     }
@@ -39,17 +42,28 @@ public final class RenderMetrics {
     public synchronized void stale() { if (collecting) stale++; }
     public synchronized void failure() { if (collecting) failures++; }
     public synchronized void denied() { if (collecting) admissionsDenied++; }
+    public synchronized void capacityDenied() { if (collecting) { admissionsDenied++; capacityDenials++; } }
+    public synchronized void memoryDenied() { if (collecting) { admissionsDenied++; memoryDenials++; } }
+    public synchronized void guardRefused() { if (collecting) guardRefusals++; }
+    public synchronized void planning(long nanos) { if (collecting) { planningCalls++; planningNanos += Math.max(0, nanos); } }
+    public synchronized void guard(long nanos) { if (collecting) { guardCalls++; guardNanos += Math.max(0, nanos); } }
     public synchronized void useful(long bytes) { if (collecting) usefulBytes += bytes; }
     public synchronized void evicted(long bytes) { if (collecting) evictedBytes += bytes; }
     public synchronized void memory(long visible, long backing, long shared, long pending) {
         if (!collecting) return;
         peakVisible = Math.max(peakVisible, visible); peakBacking = Math.max(peakBacking, backing);
         peakShared = Math.max(peakShared, shared); peakPending = Math.max(peakPending, pending);
+        peakSharedPending = Math.max(peakSharedPending, shared + pending);
     }
     /** Fixed schema, usable without Android JSON in policy tests. */
     public synchronized java.util.Map<String, Number> finish(long now) {
-        if (collecting) integrate(now);
+        java.util.Map<String, Number> result = snapshot(now);
         collecting = false;
+        return result;
+    }
+    /** Non-destructive diagnostic checkpoint; counters continue through a sustained session. */
+    public synchronized java.util.Map<String, Number> snapshot(long now) {
+        if (collecting) integrate(now);
         java.util.Map<String, Number> result = new java.util.LinkedHashMap<>();
         result.put("draws", draws); result.put("decoded_tiles", decoded);
         result.put("speculative_decoded_tiles", speculativeDecoded);
@@ -61,6 +75,11 @@ public final class RenderMetrics {
         result.put("prefetched_bytes_used", usefulBytes); result.put("unused_prefetch_evicted_bytes", evictedBytes);
         result.put("peak_visible_bytes", peakVisible); result.put("peak_backing_bytes", peakBacking);
         result.put("peak_shared_bytes", peakShared); result.put("peak_pending_bytes", peakPending);
+        result.put("peak_shared_plus_pending_bytes", peakSharedPending);
+        result.put("planning_calls", planningCalls); result.put("planning_ms", planningNanos / 1e6);
+        result.put("guard_checks", guardCalls); result.put("guard_check_ms", guardNanos / 1e6);
+        result.put("capacity_denials", capacityDenials); result.put("memory_denials", memoryDenials);
+        result.put("guard_refusals", guardRefusals);
         return result;
     }
 }

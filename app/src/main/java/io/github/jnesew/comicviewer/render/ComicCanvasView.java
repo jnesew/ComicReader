@@ -262,6 +262,9 @@ public final class ComicCanvasView extends View {
         return spreadLayout.adjacentAnchor(page, delta);
     }
 
+    /** Read-only benchmark observation; call on the UI thread. */
+    public boolean isMotionRunning() { return !scroller.isFinished(); }
+
     public boolean isAtDocumentEnd() {
         if (pages.isEmpty()) return false;
         if (!continuous) return pageEnd() >= pages.size() - 1;
@@ -286,6 +289,14 @@ public final class ComicCanvasView extends View {
         int issue = issueFor(page);
         return issue >= 0 && issue < continuousDocuments.size()
                 ? continuousDocuments.get(issue).key : "";
+    }
+
+    /** Diagnostic navigation using the same document/local-page anchor policy as restoration. */
+    public void showContinuousAnchor(String documentKey, int localPage, float ratio) {
+        if (!continuous || pages.isEmpty()) return;
+        ContinuousPageMap.Position position = pageMap.restore(
+                new ContinuousPageMap.Anchor(documentKey, localPage, ratio), page);
+        showGlobalPage(position.page(), position.ratio());
     }
 
     public boolean moveContinuousPage(int delta) {

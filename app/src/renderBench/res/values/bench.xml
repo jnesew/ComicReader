@@ -1,5 +1,8 @@
 <resources>
     <string name="bench_app_name">ComicViewer Render Bench</string>
+    <string name="bench_focused">Round 2: modes and causes (about 15–25 minutes)</string>
+    <string name="bench_sustained">Sustained sessions (about 10–20 minutes)</string>
+    <string name="bench_device">Actual app heap: %1$d MiB · Current refresh: %2$.1f Hz</string>
     <string name="bench_intro">Offline rendering comparison. Uses synthetic comics and isolated app data. Keep brightness, refresh rate and charging conditions consistent. Leave the app visible; changing orientation or backgrounding stops the run. Results measure exact-resolution readiness; cached softer pixels can still be visible while detail loads.</string>
     <string name="bench_quick">Quick comparison (about 3–5 minutes)</string>
     <string name="bench_full">Individual changes (about 10–20 minutes)</string>

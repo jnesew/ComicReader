@@ -354,6 +354,15 @@ public final class TileRenderer implements AutoCloseable {
 
     /** Offscreen requests have their own budget and never enter frame scale selection. */
     public void prefetchPages(java.util.List<PageRequest> requests, long signature, int maxTiles) {
+        long started = metrics == null ? 0 : System.nanoTime();
+        try {
+            planPrefetchPages(requests, signature, maxTiles);
+        } finally {
+            if (metrics != null) metrics.planning(System.nanoTime() - started);
+        }
+    }
+
+    private void planPrefetchPages(java.util.List<PageRequest> requests, long signature, int maxTiles) {
         if (closed || archive.isUnavailable() || speculativeTiles == null ||
                 !speculativeTiles.enabled() || maxTiles <= 0) return;
         if (prefetchGeneration.begin(signature)) {

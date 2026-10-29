@@ -1,187 +1,214 @@
 # Standalone rendering comparison
 
-The `renderBench` build is an offline, optimized test application. It installs beside
-ComicViewer as `<configured application ID>.renderbench`, with separate app data and
-the label **ComicViewer Render Bench**. It needs no ADB, Google services, accessibility
-service, network, or Android permissions. Its test screen, fixture pack and runner are
-not included in ordinary debug/release APKs.
+**ComicViewer Render Bench 1.1.0** is an offline, optimized diagnostic APK with a
+separate `<configured application ID>.renderbench` identity and separate app data.
+It installs alongside ComicViewer, requests no Android permissions, and needs no
+ADB or Google services. The ordinary release/debug app does not contain its launcher,
+fixture pack or runner. Production rendering defaults are unchanged.
 
-## Build and install
+## Next live-device battery
 
-Use the [pinned development toolchain](BUILDING.md), then:
+Install the 1.1.0 APK over the previous benchmark. Its higher version code preserves
+existing reports; normal ComicViewer and its library remain separate. On each phone:
+
+1. Open **ComicViewer Render Bench**. Check the displayed actual app heap and refresh
+   rate. Optionally enter the OS distribution label.
+2. Select **Round 2: modes and causes**, tap **Run comparison**, and leave the app visible.
+3. When it finishes, tap **Export results ZIP** and save the report locally.
+4. Select **Sustained sessions**, run it, and export that report separately.
+
+The two new suites are the recommended battery. Older Quick/Individual/Repeated
+choices remain available for reference; repeating all three is not necessary for
+round two. Duration estimates are approximate and can vary substantially by device.
+Keep brightness, refresh-rate settings, charging and background load comparable.
+The app holds the screen awake while visible; it does not run a background service.
+
+Stop, rotation, backgrounding or a real trim/low-memory callback interrupts a run.
+The interruption reason and completed cases/checkpoints remain exportable after
+restarting the app. Pressure clears optional pixels and suspends speculation;
+decoder cleanup runs on the worker, not in the main-thread callback. Incomplete,
+interrupted, failed and timed-out cases are excluded from paired timing comparisons.
+A finished runner does not by itself mean every case passed: inspect case statuses.
+The first readiness timeout ends that case, records its last coverage/motion state,
+and continues the battery; final status becomes `completed_with_case_errors`.
+
+## What changed in protocol 2
+
+Reports identify `schema: 2`, `protocol: render-bench-2`, source revision and fixture
+hashes. Compare policies with the baseline **inside the same new run**. Changes to
+timing windows, the fixed-height progress line and scroll settling mean old/new
+absolute timings are not a controlled implementation comparison.
+
+| Coverage / diagnostic | Question addressed | How it is controlled |
+| --- | --- | --- |
+| Same raster CBZ in single, spread and continuous modes | Is a difference due to mode/layout or a different comic/codec? | Same source file; common anchor probes at pages 2, 4, 2, 0, followed by natural mode-specific input. Layout/scale still differ and are recorded |
+| Admission-only, original-cap refill, 64 MiB admission and 64 MiB refill | Is improvement due to bounded admission, refill, or retaining more nearby content? | Refill-only versus admission-only and refill-64 versus capacity-64 isolate the refill switch. Capacity and prospective future-growth admission remain a deliberate bundle |
+| PDF frame/scale and lookahead controls | Which smaller combination explains the PDF gains? | Extra PDF-only policies avoid applying every option to every workload |
+| Per-action frame breakdown | Why can detail improve while frames get longer? | Intended-vsync attribution separates opening, turns, reversals, zooms, jumps, scrolls and idle refill; phases include draw, sync, command issue and GPU when supported |
+| Per-action tile-work/planning/guard counters | Is work wasted, or is admission/planning expensive? | Counter deltas, capacity versus memory denials, future-growth reservations and summed call durations. Planning includes guard work; do not add overlapping times |
+| Slow/fast scrolling and rapid jumps | What happens during directional movement, flings and cancellation? | Defined gesture inputs; actual motion completion observed; burst jumps allow intervening draws before the final readiness check |
+| Same-session cycles and persisted memory checkpoints | Does work or retained memory grow with continued use? | Documents, renderers, cache and View remain alive across cycles; no forced GC or per-cycle reopen |
+| Runtime memory/display metadata | Did an emulator or phone receive the intended limits? | Actual app heap, normal/large memory classes, large-heap flag, ABIs, viewport, refresh samples, requested/applied cache and sampled memory are exported |
+
+All policies use High buffering, the existing visible-frame/zoom budgets and decoder
+concurrency, and the same input script for the workload. The baseline is the ordinary
+High policy within the same instrumented APK. No adaptive controller, extra worker,
+new coarse-render pass or production policy change is introduced.
+
+## Round 2: modes and causes
+
+There are **102 measured cases**, two repeats with reversed policy order, and eight
+separate baseline warm-ups. Workload order rotates the starting policy to reduce
+consistent first-position bias. Order is recorded; warm-ups use `repeat: -1` and
+never participate in candidate comparisons.
+
+Eight workloads cover raster single/spread/continuous, tall strips, PDF spreads,
+image EPUB, GIF fallback and a three-document continuous series. Six policies run
+on every workload:
+
+| Policy | Difference from baseline |
+| --- | --- |
+| `baseline_high` | Existing High selection and heap-derived shared ceiling |
+| `admission_only` | Bounded retained-plus-pending admission, deduplicated/byte-bounded planning and refused-request protection; original range, capacity and no refill pump |
+| `refill_only` | The admission group plus completion-triggered refill at the original ceiling |
+| `capacity_admission_64` | Requested 64 MiB plus prospective admission accounting for pending output and future visible/backing growth of live renderers |
+| `refill_64` | The same 64 MiB admission policy plus completion-driven refill; no expanded lookahead, new history protection or predicted-frame option |
+| `combined_96_mib_requested` | Previous full combined experiment, retained as a frame/detail tradeoff reference |
+
+PDF additionally runs `future_frame_only`, `frame_refill` (predicted frame plus
+original-cap refill), and `lookahead_only`. These controls narrow the cause of the
+previous gains. Some experiments deliberately bundle mechanisms; do not attribute
+all changes from `capacity_admission_64` to memory size alone.
+
+Requested capacity is clipped to half the actual app heap, up to the experiment's
+128 MiB maximum. Native/system guards can refuse work below the byte ceiling, and
+low-RAM devices refuse speculation. Requested bytes are not a fill target. The
+existing single speculative permit, visible priority, native transient reserve,
+pressure cooldown and background suspension remain in force. Standard buffering
+cannot be enabled by these diagnostic options.
+
+## Sustained sessions
+
+Nine measured sessions compare baseline, 64 MiB admission and 64 MiB refill over
+raster continuous, EPUB continuous and three-issue series. Each session keeps its
+resources for **five cycles** of scrolling, reversals, zooms, jumps and idle time:
+**45 cycle checkpoints**, plus three separate warm-ups.
+
+`document_open_count`, `renderer_creation_count` and `session_sequence` describe
+setup once per case. `checkpoints.jsonl` records cycle deltas, sampled Java/native
+memory and retained/pending bytes before continuing with those same objects. The
+worker persists each checkpoint outside action windows. An unexpected kill leaves
+running/incomplete state and partial checkpoints; it never becomes a passing case.
+
+This is a session-reuse diagnostic, with one session per policy/workload, not a
+statistically confident performance ranking or an hours-long leak/thermal test.
+No memory-filler allocations deliberately force real OS pressure. Reports do not
+measure energy or establish the maximum safe cache on a phone.
+
+## Readiness and frames
+
+`actions.jsonl` carries case identity, cycle, occurrence, start/end timestamps,
+readiness kind, readiness milliseconds, action-window duration, tile-work deltas,
+retained/pending bytes, page/document slots and frame summaries. The window includes
+a declared trailing settling interval. Counter deltas attribute completed operations;
+an operation can begin before its window and complete inside it. It captures activity after exact pixels first
+become ready as well as the wait itself; compare both readiness and frame cost.
+
+Round-two scroll readiness starts at finger-up and waits for actual fling completion
+and requested-resolution coverage, up to eight seconds. It is not the old near-zero
+poll after a fixed 500 ms wait. The full action window also contains the gesture
+itself, including missing detail while moving. Legacy suite scroll records explicitly
+identify their fixed-wait readiness convention.
+
+Frame reports are attributed by intended-vsync timestamp to half-open action windows,
+including delayed callbacks. A 250 ms end-of-case grace period allows delivery of
+late reports; callbacks later than that are not guaranteed to be captured. First-draw
+frames are excluded and counted. A bounded buffer holds 8192 frame samples per case;
+overflow and dropped reports invalidate frame diagnostics and remain visible in the
+report. A completed case may have invalid frame diagnostics; do not treat missing
+frames as zero cost. Unattributed case frames are counted separately.
+
+Frame phases report supported-sample counts, mean, p95 bin and maximum. Unsupported
+phases are unavailable, not zero; GPU duration and platform deadlines require API 31.
+Before API 31 the deadline is approximated using refresh rate at callback time, with
+observed refresh ranges recorded. Phase durations may overlap and do not sum to a
+pipeline total. They do not by themselves identify texture upload, GC or another root
+cause. See the [Android FrameMetrics reference](https://developer.android.com/reference/android/view/FrameMetrics).
+
+Frame histograms use 1 ms bins: bin 16 represents durations from 16 to below 17 ms;
+1000 is overflow. Report counts differ between policies, so a miss percentage alone
+cannot rank smoothness. Short action windows often have too few frames for a useful
+p95; inspect count and maximum as well. Case p95 readiness can be the slowest action
+in a short script, so separate opening, forward and reverse actions.
+
+## Fixtures and scope
+
+Eight unchanged synthetic files totaling about 22 MiB remain bundled only in this variant:
+`raster.cbz` (ten JPEG pages), `strips.cbz` (six mixed/tall PNG pages), `vector.pdf`
+(eight vector-pattern pages), `images.epub` (six WebP image-spine pages), `fallback.cbz`
+(three GIF pages), and `issue-a.cbz`/`issue-b.cbz`/`issue-c.cbz` (two pages each).
+Setup verifies the manifest hashes and prepares private files before measurement.
+Use **Export synthetic comics ZIP** for manual opening through a document provider.
+Results do not include the comics. Generated artwork uses the repository MIT license;
+no private or third-party comics belong in the pack.
+
+```bash
+python3 scripts/verify-render-bench-fixtures.py
+# Regeneration only, with host Pillow 13.0.0:
+python3 scripts/generate-render-bench-fixtures.py
+```
+
+The series case uses three actual documents/renderers and the continuous View. It
+does not drive the production database, adjacent loader or progress/grant coordinator.
+Application-private files do not reproduce provider latency or a process/kernel-cold
+launch. Rotation/backgrounding and real-provider operation still need appropriate
+manual/connected checks. Sampled memory is not full process/PSS/GPU memory; 500 ms
+samples may miss peaks. Exact-gap area-time may already display softer fallback and
+is not blank-screen time or a complete visual-quality assessment.
+
+## Build, verify and analyze
+
+Use the [pinned toolchain](BUILDING.md):
 
 ```bash
 scripts/build-render-bench.sh
 ```
 
-The signed, non-debuggable APK is copied to
-`dist/ComicViewer-RenderBench-v<bench-version>-<source>.apk`. It uses the local Android
-debug signing key, which is separate from being a debuggable build. It uses the normal
-release optimizer; no production signing credentials are required. The new application
-has its own stable version and code in `gradle.properties`; increase its code before
-distributing changed contents under that application ID. The embedded source revision
-ends in `-dirty` for an uncommitted build.
+The optimized, non-debuggable APK is signed by the local debug key and copied to
+`dist/ComicViewer-RenderBench-v<bench-version>-<source>.apk`. The independent benchmark
+version/code lives in `gradle.properties`; increment before distributing changed
+contents. Dirty builds carry `-dirty` in their revision. No production signing key
+is required and no test-only installer flag is used.
 
-Transfer the APK to the test phone and install it with its package installer. The
-separate identity avoids replacing the normal app or touching its library/grants.
-Launch it, optionally enter the OS distribution label, select a suite and tap
-**Run comparison**. Leave the app visible. Stop, backgrounding or rotation interrupts
-the run and preserves its recorded cases/checkpoints. Runs keep the screen awake
-while visible; they do not continue as a background service.
-Real trim/low-memory callbacks clear optional pixels, suspend speculation and stop
-the run, with the reason recorded. Decoder disposal runs on the worker, not inside
-the main-thread callback. Pressure-interrupted cases are excluded from timing comparisons.
-
-## What each suite compares
-
-Every policy uses **High** buffering, the same visible-cache/frame budgets, existing
-decoder concurrency and the same timed input sequence. The baseline is the current
-High policy inside the same instrumented binary; it is not an unmodified historical APK.
-All policies include safe disposal of unadopted results. Repetitions reverse the policy
-order to reduce order/warm-cache bias. No production default is changed by the benchmark.
-Each fixture/mode first opens one baseline viewport as a separate warm-up case
-(`repeat: -1`, status `warmup`), excluded from paired comparisons. This reduces first-use
-codec/JIT effects; it does not eliminate thermal or OS-cache variation.
-
-| Configuration | Change from baseline | What it can estimate |
-| --- | --- | --- |
-| `baseline_high` | Existing High selection and limits | Reference for this build/device |
-| `lookahead_only` | Direction-aware candidates extending up to six viewports / six future pages or spreads, clipped by a byte prefix and bounded reservations | Value of candidate selection/distance as a bundle |
-| `refill_only` | Completion-triggered refill of the original range with bounded pending bytes | Value of a bounded refill pump; original range still limits reach |
-| `future_frame_only` | Joint scale planning within each predicted future frame instead of the current first-visible scale clamp | Whether preparing the expected tile levels avoids extra waits |
-| `history_fallback_only` | A soft quarter-cache history allowance and shared-cache coarser PDF fallback lookup | Reversal/transition behavior; raster fallback already existed |
-| `capacity_admission_64` / `96` | Requested larger cache plus prospective native/system admission, including pending output and future visible/backing growth of live renderers | Capacity and the safety admission policy together; these are deliberately not independent factors |
-| `combined_original_cap` | First four changes at the original High byte ceiling | Combined scheduling/continuity benefit at comparable capacity |
-| `combined_96_mib_requested` | Combined changes plus a requested 96 MiB ceiling and prospective admission | Whether extra usable capacity adds benefit on the tested workload |
-
-The applied byte ceiling is clipped by half the actual Java heap limit; native/system
-guards can refuse work even below that ceiling. A requested 96 MiB cache is not a
-promise of 96 MiB occupancy. Logs record requested/applied capacity, actual occupancy,
-pending output, admission denials and sampled memory. Low-RAM devices still refuse
-speculative decoding. One speculative permit and visible priority remain in force.
-
-**Quick comparison** runs baseline, combined at original capacity, and combined at
-requested 96 MiB over raster page turns, strip scrolling and PDF spreads, twice in
-alternating order. **Individual changes** runs all nine configurations over seven
-format/mode cases, including image EPUB, GIF fallback and three adjacent issue resources.
-**Repeated comparison** repeats the quick workload eight times. Duration estimates in
-the app are approximate and depend on decode speed. Thermal/power state is recorded
-when available; the repeated suite is not a laboratory power or thermal benchmark.
-
-The adjacent-issue scenario exercises actual documents, renderers and the continuous
-View with three resource owners. It does not drive the production library database or
-adjacent loader: progress/SAF/grant/lifecycle correctness remains covered separately by
-connected tests and manual checks. There is no slow adaptive controller, new coarse
-render pass, extra decoder worker or predicted provider-copy scheduler in this build.
-
-## Fixtures
-
-Eight synthetic files totaling about 22 MiB are bundled in the test variant:
-
-- `raster.cbz`: ten 1988 × 3056 JPEG pages with deterministic texture and edge markers.
-- `strips.cbz`: six PNG pages with mixed aspect ratios, up to 800 × 10000.
-- `vector.pdf`: eight pages of vector rectangle patterns, with no external fonts/artwork.
-- `images.epub`: six image-spine WebP pages with varied heights.
-- `fallback.cbz`: three GIF pages for full-image fallback decoding.
-- `issue-a.cbz`, `issue-b.cbz`, `issue-c.cbz`: two-page issues for shared resources/boundaries.
-
-These are ordinary supported comic files, not fake renderer outputs. Setup verifies
-their shipped SHA-256 hashes and prepares private copies before measurements. Use
-**Export synthetic comics ZIP** to save copies for manual opening with your usual
-document provider. Result export does not include the comic files.
-
-The generated pack is checked in with `app/src/renderBench/assets/bench/manifest.json`.
-Verify it without installing image libraries:
+Result ZIPs contain `run.json`, `cases.jsonl`, `events.jsonl`, `actions.jsonl`,
+`checkpoints.jsonl`, `results.csv`, `summary.txt` and `state.json`. No serial, account,
+private library URI or external app inventory is collected. The OS label is entered
+by the user; battery/charging values are context, not energy measurements.
 
 ```bash
-python3 scripts/verify-render-bench-fixtures.py
+python3 scripts/analyze-render-bench.py path/to/results.zip
+python3 scripts/analyze-render-bench.py path/to/results.zip --actions
+python3 scripts/test-analyze-render-bench.py
 ```
 
-Regeneration uses host-only Pillow 13.0.0:
+The analyzer reads protocol-1 exports too. It pairs completed cases by workload and
+repeat, and new actions by cycle/name/occurrence. It rejects duplicate identities,
+excludes incomplete/failed/timed-out/unpaired cases, reports invalid frame diagnostics,
+and leaves unsupported phase deltas unavailable. Repetition counts are descriptive;
+never pool emulator and phone timings as equivalent trials. Physical evidence governs
+performance/default decisions; emulators provide correctness and mechanism coverage.
+
+Developer checks, in addition to the repository gate:
 
 ```bash
-python3 scripts/generate-render-bench-fixtures.py
-```
-
-Seeds and ZIP timestamps are fixed. Encoder/library changes may change bytes; review
-and commit the generated files and manifest together. Both devices must use the same
-APK/fixture hashes. All artwork is generated by the script for this repository and is
-available under the repository's MIT license. Do not add private or third-party comics
-to this pack. Extreme input-limit fixtures are intentionally outside the core phone run.
-
-## Export and interpret results
-
-After a run tap **Export results ZIP**, choose a local destination in Android's file
-picker and return that ZIP for analysis. Results stay private until explicitly exported.
-The most recent run is available after restarting the app, including an interrupted
-run's last saved checkpoint. File-picker interaction is outside the measured period.
-
-The ZIP contains `run.json`, `cases.jsonl`, `events.jsonl`, `results.csv`, `summary.txt`
-and `state.json` where available. Case-start/end markers are persisted outside timed
-actions. It contains model/API/OS-label information, source/configuration/fixture
-identity, policy order, readiness events, frame metrics, retained/pending bitmap peaks,
-500 ms Java/native allocation samples, and availability/timeout/failure information.
-It contains no serial number, account identifier, private library URI, or external
-app inventory. The OS label is user-provided, not inferred from the model.
-
-```bash
-python3 scripts/analyze-render-bench.py path/to/exported-results.zip
-```
-
-The analyzer pairs candidates with the completed baseline case for the same fixture,
-mode and repeat. It reports descriptive changes in readiness and missing-area time,
-excluding failed, interrupted, timed-out and unpaired cases. Two repeats do not provide
-statistical confidence. Compare effects within each device rather than attributing a
-cross-phone difference to hardware or operating system alone. Check frame misses,
-memory/pressure, actual cache use and thermal conditions before choosing a configuration.
-
-Important limits:
-
-- `exact_missing_area_ms` integrates the fraction of currently drawn image area that
-  lacks its requested exact-resolution tiles. The area may already display softer
-  fallback pixels. It is not a count of blank screen milliseconds or final visual QA.
-- Readiness is sampled at roughly 16 ms and times out at eight seconds. Percentiles
-  summarize a small set of scripted actions; raw events retain those actions separately.
-  Any timeout invalidates that case for timing comparison. Scrolling includes a fixed
-  settling wait; inspect missing-area time across the motion as well as readiness afterward.
-- Frame metrics exclude first-draw frames and count lost reports. Before API 31,
-  deadlines are approximated from the display's initial refresh rate. Frame p95 is a
-  1 ms histogram bin, with overflow at 1000 ms. On-time frames can show missing detail.
-- Fresh renderer sessions do not flush OS file caches or establish process-cold launch.
-  These runs use app-private fixture files, not a real provider's latency.
-- Native allocated bytes and owned bitmap counters are not full process/GPU memory.
-  The 500 ms sampler can miss short peaks. The in-app suite does not collect logcat,
-  `dumpsys`, heap dumps, Perfetto or privileged system traces.
-- Synthetic pressure is not currently part of the timing suite. Connected tests cover
-  pressure policy; genuine system memory pressure/kill behavior needs separate evidence.
-- Unexpected termination can prevent final records. An incomplete checkpoint never
-  counts as a passing test. Rotation, provider selection, visual seams/blur and
-  background/resume still need guided manual checks.
-
-## Developer checks
-
-Use the normal repository verification gate plus:
-
-```bash
-./gradlew --dependency-verification strict testDebugUnitTest lintRenderBench assembleRenderBench
+./gradlew --dependency-verification strict testDebugUnitTest testRenderBenchUnitTest lintRenderBench assembleRenderBench
 ./gradlew --dependency-verification strict connectedDebugAndroidTest
 ```
 
-The connected suite includes a real-decoder stationary refill regression requiring
-24 tiles to fill from four-tile submissions without intervening draws, within one shared
-ceiling. Its injected memory supplier makes it deterministic; it is not a real-memory
-pressure benchmark. The API 26 fixture-copy helpers use `InputLimits.copy` instead of
-the newer `InputStream.transferTo` method.
-
-For emulator automation only, the test launcher accepts `--es suite smoke` through
-`am start`; the regular launcher requires a user tap. Smoke exercises the core formats
-and series scenario once with baseline/combined at original capacity. It is a functional
-check, not a hardware benchmark. Inspect/export results through the same app UI.
-`--es suite smoke_all` exercises all nine configurations with the same shortened
-gestures and one repeat. Warm-up cases remain separate. These automation-only modes
-do not replace the full-length on-device comparisons.
-
-Before distributing, verify the benchmark is non-debuggable, requests no permissions,
-and contains the expected fixture hashes. Verify the normal release APK contains no
-`bench/` assets or `RenderBenchActivity`. Keep result bundles and local test notes under
-Git-ignored `private/`, never in the fixture source set.
+Emulator-only launch extras `suite=smoke_v2` cover all new focused configurations
+with shortened actions (51 measured cases + eight warm-ups). `suite=smoke_v2_session`
+checks nine reused sessions with two cycles each. Older `smoke`/`smoke_all` entries
+remain available. These automation modes are functional checks, not hardware forecasts.
+Normal launcher use requires a tap. Keep local reports and device-specific notes in
+Git-ignored `private/`. Verify no requested permissions, expected hashes/signature,
+and absence of benchmark assets/classes from the normal release before delivery.

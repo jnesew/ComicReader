@@ -24,7 +24,11 @@ final class BenchFiles {
         directory = new File(context.getFilesDir(), "bench-runs/" + System.currentTimeMillis());
         if (!directory.mkdirs()) throw new IOException("Cannot create run directory");
         JSONObject meta = new JSONObject();
-        meta.put("schema", 1); meta.put("suite", suite); meta.put("source", BuildConfig.BENCH_SOURCE);
+        meta.put("schema", 2); meta.put("protocol", BenchPlan.PROTOCOL);
+        meta.put("suite", suite); meta.put("source", BuildConfig.BENCH_SOURCE);
+        meta.put("session_reuse", new BenchPlan(suite).sustained());
+        meta.put("frame_attribution", "intended_vsync_timestamp; bounded 8192 frames per case; 250ms drain grace");
+        meta.put("readiness_poll_ms", 16); meta.put("action_window_settle_ms", new BenchPlan(suite).shortRun() ? 60 : 180);
         meta.put("warmup", "One initial baseline viewport per fixture/mode; repeat -1, excluded from comparisons");
         meta.put("package", context.getPackageName());
         android.content.pm.PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
@@ -34,11 +38,18 @@ final class BenchFiles {
         meta.put("android", Build.VERSION.RELEASE); meta.put("api", Build.VERSION.SDK_INT);
         meta.put("security_patch", Build.VERSION.SECURITY_PATCH); meta.put("os_user_label", osLabel);
         meta.put("heap_limit_bytes", Runtime.getRuntime().maxMemory());
+        ActivityManager manager = context.getSystemService(ActivityManager.class);
+        meta.put("memory_class_mib", manager == null ? JSONObject.NULL : manager.getMemoryClass());
+        meta.put("large_memory_class_mib", manager == null ? JSONObject.NULL : manager.getLargeMemoryClass());
+        meta.put("large_heap_requested", (context.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_LARGE_HEAP) != 0);
+        meta.put("abis", new JSONArray(Build.SUPPORTED_ABIS));
+        meta.put("available_processors", Runtime.getRuntime().availableProcessors());
+        meta.put("initial_refresh_hz", context.getSystemService(android.view.WindowManager.class).getDefaultDisplay().getRefreshRate());
         meta.put("memory", memory(context));
         meta.put("fixture_manifest", new JSONObject(new String(readAsset(context, "manifest.json"), StandardCharsets.UTF_8)));
-        meta.put("limits", "Fresh session, not kernel-cache cold. Exact-resolution gaps may have softer fallback. No full GPU/process PSS, external trace or energy measurement. Synthetic local files, not a SAF provider benchmark.");
+        meta.put("limits", "Protocol 2 changes measurement windows/scroll settling. Fresh sessions except sustained suite; not kernel-cache cold. Exact gaps may have fallback. Frame phases overlap and do not identify an upload bottleneck alone. No full GPU/process PSS or energy measurement; synthetic local files, not a provider benchmark.");
         write("run.json", meta.toString(2));
-        write("cases.jsonl", ""); write("events.jsonl", "");
+        write("cases.jsonl", ""); write("events.jsonl", ""); write("actions.jsonl", ""); write("checkpoints.jsonl", "");
     }
     void write(String name, String data) throws IOException {
         try (FileOutputStream out = new FileOutputStream(new File(directory, name))) {
@@ -49,6 +60,8 @@ final class BenchFiles {
         if (events++ < 12000) append("events.jsonl", value);
     }
     synchronized void result(JSONObject value) throws IOException { append("cases.jsonl", value); }
+    synchronized void action(JSONObject value) throws IOException { append("actions.jsonl", value); }
+    synchronized void checkpoint(JSONObject value) throws IOException { append("checkpoints.jsonl", value); }
     private void append(String name, JSONObject value) throws IOException {
         try (FileOutputStream out = new FileOutputStream(new File(directory, name), true)) {
             out.write((value.toString() + "\n").getBytes(StandardCharsets.UTF_8));
@@ -72,6 +85,8 @@ final class BenchFiles {
             out.put("power_save", power.isPowerSaveMode());
             if (Build.VERSION.SDK_INT >= 29) out.put("thermal_status", power.getCurrentThermalStatus());
         }
+        android.os.BatteryManager battery = context.getSystemService(android.os.BatteryManager.class);
+        if (battery != null) { out.put("battery_percent", battery.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)); out.put("charging", battery.isCharging()); }
         return out;
     }
     static File fixture(Context context, String name) throws Exception {
@@ -112,7 +127,7 @@ final class BenchFiles {
                     zip.putNextEntry(new ZipEntry(name)); zip.write(readAsset(context, name)); zip.closeEntry();
                 }
             } else {
-                for (String name : new String[]{"run.json", "cases.jsonl", "events.jsonl", "summary.txt", "results.csv", "state.json"}) {
+                for (String name : new String[]{"run.json", "cases.jsonl", "events.jsonl", "actions.jsonl", "checkpoints.jsonl", "summary.txt", "results.csv", "state.json"}) {
                     File file = new File(run, name);
                     if (!file.isFile()) continue;
                     zip.putNextEntry(new ZipEntry(name)); Files.copy(file.toPath(), zip); zip.closeEntry();

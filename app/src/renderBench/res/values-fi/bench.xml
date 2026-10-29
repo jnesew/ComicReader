@@ -1,5 +1,8 @@
 <resources>
     <string name="bench_app_name">ComicViewer Render Bench</string>
+    <string name="bench_focused">Kierros 2: lukutilat ja syyt (noin 15–25 minuuttia)</string>
+    <string name="bench_sustained">Pitkät lukuistunnot (noin 10–20 minuuttia)</string>
+    <string name="bench_device">Todellinen sovelluskeko: %1$d MiB · Virkistystaajuus: %2$.1f Hz</string>
     <string name="bench_intro">Paikallinen renderöintivertailu. Käyttää synteettisiä sarjakuvia ja erillisiä sovellustietoja. Pidä kirkkaus, virkistystaajuus ja lataustila samoina. Pidä sovellus näkyvissä; kääntäminen tai taustalle siirtäminen pysäyttää testin. Tulokset mittaavat tavoitetarkkuuden valmistumista; välimuistin pehmeämmät kuvat voivat näkyä yksityiskohtien latautuessa.</string>
     <string name="bench_quick">Pikavertailu (noin 3–5 minuuttia)</string>
     <string name="bench_full">Yksittäiset muutokset (noin 10–20 minuuttia)</string>
