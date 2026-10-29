@@ -1,22 +1,22 @@
 # Standalone rendering comparison
 
-**ComicViewer Render Bench 1.3.0** is an offline, optimized diagnostic APK with a
+**ComicViewer Render Bench 1.4.0** is an offline, optimized diagnostic APK with a
 separate `<configured application ID>.renderbench` identity and separate app data.
 It installs alongside ComicViewer, requests no Android permissions, and needs no
 ADB or Google services. The ordinary release/debug app does not contain its launcher,
 fixture pack or runner. The reader now uses bounded, prioritized preparation at
 its existing capacity. The larger candidate ceiling remains a benchmark choice.
 
-## Next live-device battery
+## Run on a phone
 
-Install the 1.3.0 APK over the previous benchmark. Its higher version code preserves
+Install the 1.4.0 APK over the previous benchmark. Its higher version code preserves
 existing reports; normal ComicViewer and its library remain separate. On each phone:
 
 1. Open **ComicViewer Render Bench**. Check the displayed actual app heap and refresh
    rate. Optionally enter the OS distribution label.
 2. Select **Fast scroll: uncovered tiles and preparation**, tap **Run comparison**, and leave the app visible.
 3. When it finishes, tap **Export results ZIP** and save the report locally.
-4. The existing **Reader candidate** and **Reader candidate: sustained sessions** suites remain available for a broader check when needed.
+4. **Reader comparison** and **Reader comparison: sustained sessions** provide broader mode and reuse coverage.
 
 The fast-scroll suite targets transient dark placeholders. The previous round-two and
 Quick/Individual/Repeated choices remain available as diagnostic references.
@@ -33,24 +33,19 @@ A finished runner does not by itself mean every case passed: inspect case status
 The first readiness timeout ends that case, records its last coverage/motion state,
 and continues the battery; final status becomes `completed_with_case_errors`.
 
-## Fast-scroll preparation controls
+## Fast-scroll comparison
 
-`scrolling` compares the frozen original High baseline, the existing reader candidate,
-and three diagnostic changes at the **same original shared capacity**. It runs
-three workloads (raster continuous, tall strips and three-document series), five
-policies, four speeds and two repeats: **120 measured cases plus three warmups**. Normal reader
-defaults remain the existing candidate; none of the new controls is enabled there.
+`scrolling` compares `baseline_high` (the original High policy) with
+`reader_candidate` (the current reader policy), at the **same original shared
+capacity**. Existing policy IDs remain stable so older result exports stay
+readable. Three workloads (raster continuous, tall strips and three-document
+series), two policies, four speeds and two repeats give **48 measured cases plus
+three warmups**.
 
-| Policy | Difference from `reader_candidate` | Cost being tested |
-| --- | --- | --- |
-| `scroll_pipeline_2` | Up to two outstanding speculative tiles per renderer instead of one | One extra reserved output can keep the existing decoder fed while the main thread delivers scroll frames; may retain work that soon becomes stale |
-| `scroll_tall_bands_2` | Up to two approaching viewport bands on tall raster pages instead of one | More runway before the reader reaches unprepared content; may spend work on farther pixels |
-| `scroll_pipeline_and_bands_2` | Both controls together | Checks whether the controls help one another or only increase wasted work |
-
-All retain bounded admission, priority replacement, the per-generation repeat guard,
-visible priority, pressure cooldown/background suspension and **one active speculative
-decode across the session**. PDF preparation retains one near band. No extra worker,
-capacity increase, full-page preview pass or adaptive controller is introduced.
+The current policy retains bounded admission, priority replacement, per-generation
+repeat suppression, visible priority, pressure cooldown/background suspension and
+one active speculative decode across the session. It prepares one near band for
+tall pages/PDFs and keeps the existing memory ceiling.
 
 Cases request **1, 2, 4 and 8 viewport heights per second**, in forward and
 reverse directions, using four consecutive drags per action. **Each speed has its
@@ -119,7 +114,7 @@ the earlier reader's High policy within this instrumented APK. `reader_candidate
 uses the new reader policy. No adaptive controller, extra worker or new coarse
 rendering pass is introduced.
 
-## Reader candidate comparison
+## Reader policy comparison
 
 `candidate` runs **48 measured cases**: the same eight workloads and common anchor
 probes as round two, three policies, two repeats with reversed order, and eight
@@ -289,10 +284,24 @@ version/code lives in `gradle.properties`; increment before distributing changed
 contents. Dirty builds carry `-dirty` in their revision. No production signing key
 is required and no test-only installer flag is used.
 
+### Report metadata and privacy
+
+Reports record non-unique diagnostic context: model/manufacturer, Android version,
+API/security patch, CPU ABIs/count, actual app heap and memory classes, viewport,
+refresh rate, sampled memory/pressure/thermal state and battery/charging status.
+These fields distinguish hardware/runtime limits that can change a result. They
+are observations, not model-specific reader presets.
+
+The APK does not request network access and exports only when the user chooses a
+destination. No hardware serial, Android ID, advertising ID, IMEI, account, private
+library URI or external app inventory is collected. The optional OS distribution
+label is user-entered; include only information appropriate for the intended
+recipient. Source and generated fixtures contain no personal device records;
+keep local result exports and device-specific analyses in Git-ignored `private/`.
+
 Result ZIPs contain `run.json`, `cases.jsonl`, `events.jsonl`, `actions.jsonl`,
-`checkpoints.jsonl`, `results.csv`, `summary.txt` and `state.json`. No serial, account,
-private library URI or external app inventory is collected. The OS label is entered
-by the user; battery/charging values are context, not energy measurements.
+`checkpoints.jsonl`, `results.csv`, `summary.txt` and `state.json`.
+Battery/charging values are context, not energy measurements.
 
 ```bash
 python3 scripts/analyze-render-bench.py path/to/results.zip
@@ -322,7 +331,7 @@ Normal launcher use requires a tap. Keep local reports and device-specific notes
 Git-ignored `private/`. Verify no requested permissions, expected hashes/signature,
 and absence of benchmark assets/classes from the normal release before delivery.
 
-`suite=smoke_scrolling` checks the five scroll policies over all three workloads,
+`suite=smoke_scrolling` checks both scroll policies over all three workloads,
 with one repeat, two drags per action and the 2/8 viewport-per-second targets
-(30 measured cases plus three warmups).
+(12 measured cases plus three warmups).
 It is a shortened functional profile, not a substitute for the full speed ladder.

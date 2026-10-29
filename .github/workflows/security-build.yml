@@ -73,8 +73,17 @@ jobs:
           export COMICVIEWER_REQUIRE_SIGNING_TESTS=1
           python3 -m unittest discover -s scripts/tests -v
 
-      - name: Test and build unsigned release
-        run: ./gradlew --no-daemon --dependency-verification strict verifyToolchainDependencies testDebugUnitTest lintRelease assembleRelease assembleDebugAndroidTest
+      - name: Check rendering fixtures and result analysis
+        run: |
+          python3 scripts/verify-render-bench-fixtures.py
+          python3 scripts/test-analyze-render-bench.py
+
+      - name: Test and build release and diagnostic variants
+        run: >-
+          ./gradlew --no-daemon --dependency-verification strict
+          verifyToolchainDependencies testDebugUnitTest testRenderBenchUnitTest
+          lintRelease lintRenderBench lintReaderTest assembleRelease
+          assembleRenderBench assembleReaderTest assembleDebugAndroidTest
 
       - name: Verify Unicode database round-trip
         run: scripts/verify-database-roundtrip.sh
@@ -107,3 +116,26 @@ jobs:
 
       - name: Verify isolated reproducible builds
         run: scripts/verify-reproducible-build.sh
+
+      - name: Confirm diagnostic APK permissions and reader isolation
+        shell: bash
+        run: |
+          for variant in readerTest renderBench; do
+            apk="app/build/outputs/apk/$variant/app-$variant.apk"
+            permissions="$($ANDROID_HOME/build-tools/35.0.1/aapt2 dump permissions "$apk")"
+            if grep -q '^uses-permission:' <<<"$permissions"; then
+              printf '%s\n' "$permissions" >&2
+              exit 1
+            fi
+            unzip -tq "$apk"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          for variant, filename in [('release', 'app-release-unsigned.apk'), ('readerTest', 'app-readerTest.apk')]:
+              path = Path('app/build/outputs/apk') / variant / filename
+              with zipfile.ZipFile(path) as apk:
+                  assert not any(n.startswith('assets/bench/') for n in apk.namelist()), path
+              mapping = Path('app/build/outputs/mapping') / variant / 'mapping.txt'
+              assert not any(line.startswith('io.github.jnesew.comicviewer.bench.') for line in mapping.read_text().splitlines()), mapping
+          PY

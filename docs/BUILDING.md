@@ -46,12 +46,13 @@ a different certificate. Prefer a test device for instrumentation runs.
 
 ### Standard reader alongside an installed release
 
-Run `scripts/build-reader-debug.sh` to build **ComicViewer Reader Test**, the
+Run `scripts/build-reader-test.sh` to build **ComicViewer Reader Test**, the
 standard reader with the current branch's changes and a separate
 `<configured application ID>.readertest` identity. Its source-stamped APK is copied
-to `dist/`. It uses the local debug signing key, is debuggable and unoptimized,
-and contains no benchmark runner or synthetic comics. Use the optimized Render
-Bench APK for controlled performance comparisons.
+to `dist/`. It uses the local debug signing key with the release's R8 optimization
+and resource shrinking, is non-debuggable, and contains no benchmark runner or
+synthetic comics. It uses the same reader policy and memory limits as the regular
+release. Use Render Bench for scripted policy comparisons.
 
 The reader test installs alongside the published reader and Render Bench, with
 independent library data, settings and document grants. Select/import comics again
@@ -61,24 +62,13 @@ benchmark-only allowance is not enabled. Its version name follows the reader;
 reader-test APKs are distributed. Release/debug identities and Obtainium metadata
 remain configured by their existing settings.
 
-For a performance comparison with the optimized installed release, use
-`scripts/build-reader-trial.sh control`, then `scripts/build-reader-trial.sh bands`.
-These produce optimized, non-debuggable APKs signed by the same local debug key
-and using the same `.readertest` identity. The control uses the existing reader
-candidate; the bands trial changes only tall-raster approaching range from one
-to two viewports, at the same byte ceiling and decoder concurrency. Neither
-contains benchmark fixtures, counters or a runner. The regular release retains
-its original policy.
-
-Install the control first, then the higher-code bands trial; each updates Reader
-Test while preserving its library/settings/grants. Android does not normally
-allow installing the older control afterward. The independent control and trial
-codes are `comicViewerReaderControlVersionCode` and
-`comicViewerReaderTestVersionCode`; increase both before distributing a changed
-pair, with the trial code higher than the control. The debug helper shares the
-trial code, so a changed debug APK also needs a higher code before distribution.
-Compare the same comic, zoom, buffering setting and direction after a similar
-warm-up; manual impressions do not replace the randomized benchmark comparisons.
+For debugger use, `scripts/build-reader-debug.sh` builds an unoptimized,
+debuggable APK under the same test identity. Both helpers share the independent
+test version code: increase it before distributing changed contents, including
+switching build types. An update with a matching signing key and higher code
+preserves test library/settings/grants. Compare performance using optimized builds
+with the same comic, zoom, buffering setting and direction after similar warm-up;
+debug-versus-optimized impressions do not isolate rendering policy changes.
 
 ## Verification
 

@@ -1,8 +1,8 @@
 <resources>
     <string name="bench_app_name">ComicViewer Render Bench</string>
     <string name="bench_scrolling">Fast scroll: uncovered tiles and preparation</string>
-    <string name="bench_candidate">Reader candidate: priority and bounded reuse</string>
-    <string name="bench_candidate_sustained">Reader candidate: sustained sessions</string>
+    <string name="bench_candidate">Reader comparison: priority and bounded reuse</string>
+    <string name="bench_candidate_sustained">Reader comparison: sustained sessions</string>
     <string name="bench_focused">Round 2: modes and causes (about 15–25 minutes)</string>
     <string name="bench_sustained">Sustained sessions (about 10–20 minutes)</string>
     <string name="bench_device">Actual app heap: %1$d MiB · Current refresh: %2$.1f Hz</string>
@@ -15,7 +15,7 @@
     <string name="bench_stop">Stop</string>
     <string name="bench_export">Export results ZIP</string>
     <string name="bench_fixtures">Export synthetic comics ZIP</string>
-    <string name="bench_os_hint">OS label, e.g. GrapheneOS (optional)</string>
+    <string name="bench_os_hint">OS distribution label (optional)</string>
     <string name="bench_ready">Ready. Results stay on this device until you export them.</string>
     <string name="bench_running">Preparing / running: %1$s</string>
     <string name="bench_finished">Run finished. %1$s</string>

@@ -42,10 +42,7 @@ final class BenchPlan {
         if (!roundTwo()) return BenchPolicy.policies(suite);
         BenchPolicy baseline = new BenchPolicy("baseline_high", false, false, false, false, 0);
         if (scrolling()) return List.of(baseline,
-                new BenchPolicy("reader_candidate", io.github.jnesew.comicviewer.render.RenderTuning.READER),
-                new BenchPolicy("scroll_pipeline_2", io.github.jnesew.comicviewer.render.RenderTuning.scrolling(2, 1)),
-                new BenchPolicy("scroll_tall_bands_2", io.github.jnesew.comicviewer.render.RenderTuning.scrolling(1, 2)),
-                new BenchPolicy("scroll_pipeline_and_bands_2", io.github.jnesew.comicviewer.render.RenderTuning.scrolling(2, 2)));
+                new BenchPolicy("reader_candidate", io.github.jnesew.comicviewer.render.RenderTuning.READER));
         if (candidate()) return List.of(baseline,
                 new BenchPolicy("reader_candidate", io.github.jnesew.comicviewer.render.RenderTuning.READER),
                 new BenchPolicy("reader_candidate_64", io.github.jnesew.comicviewer.render.RenderTuning.reader(64)));

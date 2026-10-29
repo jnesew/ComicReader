@@ -20,16 +20,6 @@ public class RenderExperimentTest {
         assertEquals(1, values.get("uncovered_frames").longValue());
     }
 
-    @Test public void scrollControlsKeepTheReaderCapacityAndClampOptionalWork() {
-        RenderTuning tuning = RenderTuning.scrolling(20, 20);
-        assertEquals(2, tuning.speculativePipeline); assertEquals(2, tuning.tallLookaheadBands);
-        assertEquals(RenderTuning.READER.cacheBytes(256 * MIB, BufferingPolicy.HIGH),
-                tuning.cacheBytes(256 * MIB, BufferingPolicy.HIGH));
-        assertEquals(1, RenderTuning.READER.speculativePipeline);
-        assertEquals(1, RenderTuning.READER.tallLookaheadBands);
-        assertEquals(0, tuning.cacheBytes(256 * MIB, BufferingPolicy.STANDARD));
-    }
-
     @Test public void unchangedPlansDoNotWakeOwnersAndCancelledPlansReleaseTheirPriority() {
         AtomicBoolean room = new AtomicBoolean(true);
         SpeculativeTileCache cache = new SpeculativeTileCache(256 * MIB, BufferingPolicy.HIGH,

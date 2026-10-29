@@ -1,8 +1,8 @@
 <resources>
     <string name="bench_app_name">ComicViewer Render Bench</string>
     <string name="bench_scrolling">Nopea vieritys: puuttuvat ruudut ja ennakkovalmistelu</string>
-    <string name="bench_candidate">Lukijaehdokas: priorisointi ja rajattu uudelleenkäyttö</string>
-    <string name="bench_candidate_sustained">Lukijaehdokas: pitkäkestoiset istunnot</string>
+    <string name="bench_candidate">Lukijavertailu: priorisointi ja rajattu uudelleenkäyttö</string>
+    <string name="bench_candidate_sustained">Lukijavertailu: pitkäkestoiset istunnot</string>
     <string name="bench_focused">Kierros 2: lukutilat ja syyt (noin 15–25 minuuttia)</string>
     <string name="bench_sustained">Pitkät lukuistunnot (noin 10–20 minuuttia)</string>
     <string name="bench_device">Todellinen sovelluskeko: %1$d MiB · Virkistystaajuus: %2$.1f Hz</string>
@@ -15,7 +15,7 @@
     <string name="bench_stop">Pysäytä</string>
     <string name="bench_export">Vie tulokset ZIP-tiedostona</string>
     <string name="bench_fixtures">Vie synteettiset sarjakuvat ZIP-tiedostona</string>
-    <string name="bench_os_hint">Käyttöjärjestelmä, esim. GrapheneOS (valinnainen)</string>
+    <string name="bench_os_hint">Käyttöjärjestelmän jakelu (valinnainen)</string>
     <string name="bench_ready">Valmis. Tulokset säilyvät laitteella, kunnes viet ne.</string>
     <string name="bench_running">Valmistelu / testi: %1$s</string>
     <string name="bench_finished">Testi päättyi. %1$s</string>

@@ -4,8 +4,17 @@ All notable public changes to ComicViewer for Android are recorded here.
 
 ## Unreleased
 
+### Rendering
+
+- Prioritized immediate page preparation and reused cached tiles within the existing
+  memory limits, with bounded reservations and protection against repeated speculative decoding.
+- Matched preparation to the expected next frame and limited tall-page/PDF work to
+  nearby bands while preserving visible priority and memory-pressure handling.
+
 ### Development
 
+- Added a separate offline Render Bench APK with synthetic fixtures, local exports
+  and per-action coverage/frame diagnostics, plus an optimized side-by-side reader test build.
 - Patched Guava across the Android build and test tooling for CVE-2026-102554,
   retaining strict dependency verification and an empty app runtime dependency graph.
 

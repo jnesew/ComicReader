@@ -96,8 +96,8 @@ final class BenchRunner {
                     .put("shared_cap_bytes", shared.limitBytes()).put("requested_cache_mib", policy.tuning.cacheMiB)
                     .put("bounded_admission", policy.tuning.boundedAdmission()).put("refill", policy.tuning.refill)
                     .put("prioritized", policy.tuning.prioritized)
-                    .put("speculative_pipeline", policy.tuning.prioritized ? policy.tuning.speculativePipeline : 16)
-                    .put("tall_lookahead_bands", policy.tuning.prioritized ? policy.tuning.tallLookaheadBands : JSONObject.NULL)
+                    .put("speculative_pipeline", policy.tuning.prioritized ? 1 : 16)
+                    .put("tall_lookahead_bands", policy.tuning.prioritized ? 1 : JSONObject.NULL)
                     .put("byte_lookahead", policy.tuning.byteLookahead).put("predicted_frame", policy.tuning.predictedFrame)
                     .put("history_fallback", policy.tuning.historyFallback);
             frames = host.beginFrames(); metrics.start(SystemClock.elapsedRealtimeNanos());

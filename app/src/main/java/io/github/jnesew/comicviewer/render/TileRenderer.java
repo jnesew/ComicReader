@@ -193,7 +193,7 @@ public final class TileRenderer implements AutoCloseable {
         this.invalidator = invalidator;
         this.errorListener = errorListener;
         this.speculativeTiles = speculativeTiles;
-        this.tuning = speculativeTiles == null ? RenderTuning.DEFAULT_READER : speculativeTiles.tuning();
+        this.tuning = speculativeTiles == null ? RenderTuning.READER : speculativeTiles.tuning();
         this.metrics = speculativeTiles == null ? null : speculativeTiles.metrics();
         this.pageCacheDirectory = new File(
                 context.getCacheDir(), "page_tiles/session-" + Long.toUnsignedString(System.nanoTime()));
@@ -537,7 +537,7 @@ public final class TileRenderer implements AutoCloseable {
         synchronized (pending) {
             // Refill the nearest tile on completion. Farther queued reservations must
             // not hold the allowance when a new near-frame plan arrives.
-            int speculativeLimit = tuning.prioritized ? tuning.speculativePipeline : 16;
+            int speculativeLimit = tuning.prioritized ? 1 : 16;
             if (closed || (speculative && speculativeQueued >= speculativeLimit)) return;
             TileTask existing = pending.get(key);
             if (existing != null) {
