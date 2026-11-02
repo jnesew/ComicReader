@@ -37,11 +37,11 @@ public final class BufferingPolicy {
                 Math.max(256L * MIB, totalMemoryBytes / 20L);
         if (availableMemoryBytes < systemReserve) return false;
         long javaUsed = Math.max(0L, heapBytes - availableHeapBytes);
-        // Bound estimated Java + native allocations and leave room for one bounded fallback
-        // decode (InputLimits.MAX_FALLBACK_BITMAP_PIXELS * 4), not just the cached output tile.
+        // Pixel reservations cover backing/output allocations. Keep additional codec headroom
+        // proportional to the largest backing allowed by this session, including on small heaps.
         long allocationCeiling = Math.min(512L * MIB,
-                Math.min(heapBytes * 2L, totalMemoryBytes / 8L));
-        long decodeReserve = 128L * MIB;
+                Math.min(heapBytes, totalMemoryBytes / 8L));
+        long decodeReserve = backingBytesPerDocument(heapBytes) + 8L * MIB;
         return nativeAllocatedBytes >= 0L && allocationCeiling >= decodeReserve &&
                 javaUsed <= allocationCeiling - decodeReserve &&
                 nativeAllocatedBytes <= allocationCeiling - decodeReserve - javaUsed;
@@ -71,14 +71,29 @@ public final class BufferingPolicy {
         };
     }
 
-    public static long visibleBytesPerRenderer(long heapBytes) {
+    public static long backingBytesPerDocument(long heapBytes) {
         return Math.min(64L * MIB, Math.max(24L * MIB, heapBytes / 8L));
+    }
+
+    /** Retained tiles, sampled backing images and admitted output share this session ceiling. */
+    public static long sessionBytes(long heapBytes) {
+        return Math.min(192L * MIB, Math.max(48L * MIB, heapBytes / 2L));
+    }
+
+    public static long previewBytes(long heapBytes) {
+        return Math.min(12L * MIB, Math.max(4L * MIB, heapBytes / 32L));
+    }
+
+    /** Leave room for previews, one backing image and three in-flight raster tiles. */
+    public static long visibleSessionBytes(long heapBytes) {
+        return Math.max(8L * MIB, sessionBytes(heapBytes) - previewBytes(heapBytes) -
+                backingBytesPerDocument(heapBytes) - 8L * MIB);
     }
 
     /** Three open renderers plus speculative tiles must leave substantial Java heap free. */
     public static long speculativeBytes(String value, long heapBytes) {
         if (STANDARD.equals(normalize(value))) return 0L;
-        long visible = 3L * visibleBytesPerRenderer(heapBytes);
+        long visible = 3L * backingBytesPerDocument(heapBytes);
         long room = Math.max(0L, heapBytes * 3L / 5L - visible -
                 Math.max(16L * MIB, heapBytes / 10L));
         long target = HIGH.equals(normalize(value)) ? 48L * MIB : 24L * MIB;

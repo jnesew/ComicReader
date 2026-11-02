@@ -382,6 +382,8 @@ public final class HomeView extends FrameLayout {
         covers.trimMemory();
     }
 
+    public void setCoverForeground(boolean foreground) { covers.setForeground(foreground); }
+
     public void close() {
         if (closed) return;
         closed = true;

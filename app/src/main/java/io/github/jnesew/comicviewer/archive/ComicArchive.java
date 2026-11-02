@@ -239,14 +239,21 @@ public final class ComicArchive implements ComicDocument {
             callback.onComplete(snapshotPages());
             return;
         }
+        IOException failure = null;
         for (int index = 0; index < count(); index++) {
             if (Thread.currentThread().isInterrupted() || callback.isCancelled()) return;
             ensureOpen();
             if (!indexed[index]) {
-                PageInfo decoded = decodePageInfo(context, zipFile, pageNames.get(index));
-                pageInfo.set(index, decoded);
-                indexed[index] = true;
-                indexedPages++;
+                try {
+                    PageInfo decoded = decodePageInfo(context, zipFile, pageNames.get(index));
+                    pageInfo.set(index, decoded);
+                    indexed[index] = true;
+                    indexedPages++;
+                } catch (IOException | RuntimeException exception) {
+                    if (Thread.currentThread().isInterrupted() || callback.isCancelled() || closed) return;
+                    if (failure == null) failure = exception instanceof IOException io ? io
+                            : new IOException("Android could not inspect this page.", exception);
+                }
             }
             if (index == 0 || index % 12 == 0 || index == count() - 1) {
                 update(progress, context.getString(
@@ -256,6 +263,7 @@ public final class ComicArchive implements ComicDocument {
             }
         }
         if (Thread.currentThread().isInterrupted() || callback.isCancelled()) return;
+        if (failure != null) throw failure;
         indexComplete = true;
         callback.onComplete(snapshotPages());
     }

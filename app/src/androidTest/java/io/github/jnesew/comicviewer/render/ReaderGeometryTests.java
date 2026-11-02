@@ -122,6 +122,34 @@ public final class ReaderGeometryTests {
         } finally { if (fixture.get() != null) onMain(instrumentation, fixture.get()::close); }
     }
 
+    public static void indexingPreservesContinuousMotion(Instrumentation instrumentation) {
+        onMain(instrumentation, () -> {
+            List<PageInfo> pages = new ArrayList<>();
+            for (int i = 0; i < 60; i++) pages.add(new PageInfo("page-" + i, 1000, 2000));
+            try (Fixture f = new Fixture(instrumentation, pages)) {
+                ReadingProgress progress = new ReadingProgress();
+                progress.uri = "test:geometry"; progress.readingMode = ComicCanvasView.CONTINUOUS;
+                f.view.setDocument(f.renderer, pages, progress);
+                f.view.showPage(2, .5f);
+                long now = SystemClock.uptimeMillis();
+                for (int i = 0; i < 3; i++) {
+                    MotionEvent event = MotionEvent.obtain(now, now + i * 30,
+                            new int[]{MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP}[i],
+                            400, new int[]{500, 200, 100}[i], 0);
+                    try { f.view.onTouchEvent(event); } finally { event.recycle(); }
+                }
+                check(f.view.isMotionRunning(), "Fixture did not start continuous motion");
+                int page = f.view.page(); float ratio = f.view.pageRatio();
+                pages.set(0, new PageInfo("page-0", 1000, 4000));
+                f.view.refreshContinuousPageInfo(List.of(new ComicCanvasView.ContinuousDocument(
+                        progress.uri, "Geometry", f.renderer, pages)), progress.uri, page, ratio);
+                check(f.view.isMotionRunning(), "Index refresh cancelled the user fling");
+                check(f.view.page() == page, "Index refresh changed the anchor page");
+                near(ratio, f.view.pageRatio(), .00001f, "Index refresh moved the reading anchor");
+            }
+        });
+    }
+
     static void wheel(ComicCanvasView view, float value) {
         MotionEvent.PointerProperties pointer = new MotionEvent.PointerProperties();
         pointer.id = 0; pointer.toolType = MotionEvent.TOOL_TYPE_MOUSE;

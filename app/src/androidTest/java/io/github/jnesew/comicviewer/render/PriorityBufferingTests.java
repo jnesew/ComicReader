@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /** Exercises actual bitmap accounting, replacement and cancellation without timing rankings. */
@@ -31,7 +32,7 @@ public final class PriorityBufferingTests {
     public static void replacementAndReservations() {
         RenderMetrics metrics = new RenderMetrics(); metrics.start(1);
         // A deliberately small deterministic test allowance, independent of the emulator heap.
-        SpeculativeTileCache cache = new SpeculativeTileCache(16 * MIB, BufferingPolicy.HIGH,
+        RenderCoordinator cache = new RenderCoordinator(16 * MIB, BufferingPolicy.HIGH,
                 () -> true, () -> 0, RenderTuning.reader(64), metrics);
         Object owner = new Object();
         List<Bitmap> bitmaps = new ArrayList<>();
@@ -62,7 +63,7 @@ public final class PriorityBufferingTests {
     }
 
     public static void stalePublicationAndPressure() {
-        SpeculativeTileCache cache = new SpeculativeTileCache(16 * MIB, BufferingPolicy.HIGH,
+        RenderCoordinator cache = new RenderCoordinator(16 * MIB, BufferingPolicy.HIGH,
                 () -> true, () -> 0, RenderTuning.reader(64), null);
         Object first = new Object(), second = new Object(); Bitmap bitmap = tile();
         try {
@@ -83,7 +84,7 @@ public final class PriorityBufferingTests {
 
     public static void runningPrefetchBecomesVisible(Instrumentation instrumentation) {
         BlockingDocument document = new BlockingDocument();
-        SpeculativeTileCache shared = new SpeculativeTileCache(256 * MIB, BufferingPolicy.HIGH,
+        RenderCoordinator shared = new RenderCoordinator(256 * MIB, BufferingPolicy.HIGH,
                 () -> true, () -> 0, RenderTuning.READER, null);
         AtomicReference<String> error = new AtomicReference<>();
         TileRenderer renderer = new TileRenderer(instrumentation.getTargetContext(), document,
@@ -117,10 +118,56 @@ public final class PriorityBufferingTests {
         }
     }
 
+    public static void prefetchRecoversAfterAdmissionOutOfMemory(Instrumentation instrumentation) {
+        AtomicInteger samples = new AtomicInteger();
+        AtomicLong now = new AtomicLong(1_000L);
+        RenderMetrics metrics = new RenderMetrics(); metrics.start(1);
+        RenderCoordinator shared = new RenderCoordinator(256 * MIB, BufferingPolicy.HIGH,
+                () -> {
+                    // Reserve checks once, then admission checks before and after taking the permit.
+                    if (samples.incrementAndGet() == 3) throw new OutOfMemoryError("Memory sample failed");
+                    return true;
+                }, now::get, RenderTuning.READER, metrics);
+        BlockingDocument document = new BlockingDocument(false, 1);
+        AtomicReference<String> error = new AtomicReference<>();
+        TileRenderer renderer = new TileRenderer(instrumentation.getTargetContext(), document,
+                () -> { }, error::set, shared);
+        RectF frame = new RectF(0, 0, 512, 512);
+        List<TileRenderer.PageRequest> request = List.of(new TileRenderer.PageRequest(0, frame, frame));
+        Bitmap promoted = null;
+        try {
+            instrumentation.runOnMainSync(() -> renderer.prefetchPages(request, 1, 1));
+            long deadline = SystemClock.elapsedRealtime() + 5_000;
+            while ((shared.enabled() || shared.reservedBytes() != 0) &&
+                    SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(20);
+            check(!shared.enabled(), "Injected OOM did not activate pressure cooldown");
+            check(shared.reservedBytes() == 0, "Failed admission leaked its output reservation");
+            check(document.calls.get() == 0, "Failed admission reached the decoder");
+            check(metrics.snapshot(2).get("render_failures").longValue() == 1,
+                    "The renderer did not handle exactly one injected OOM");
+            shared.setForeground(false);
+            shared.setForeground(true);
+            check(!shared.enabled(), "Resume bypassed the pressure cooldown");
+            now.addAndGet(30_000);
+            instrumentation.runOnMainSync(() -> renderer.prefetchPages(request, 2, 1));
+            awaitBuffered(shared, renderer);
+            check(document.calls.get() == 1, "Prefetch did not recover without reopening the renderer");
+            promoted = shared.take(renderer, key(0));
+            check(promoted != null && promoted.getPixel(256, 256) == Color.WHITE,
+                    "Recovered prefetch published incorrect pixels");
+            check(error.get() == null, "Optional work showed a visible render error");
+        } finally {
+            instrumentation.runOnMainSync(renderer::close);
+            document.close();
+            if (promoted != null) promoted.recycle();
+            check(shared.committedBytes() == 0, "Recovered renderer retained output or reservations");
+        }
+    }
+
     public static void manualZoomPreparesTheNextVisibleCrop(Instrumentation instrumentation) {
         BlockingDocument document = new BlockingDocument(false, 2);
         RenderMetrics metrics = new RenderMetrics(); metrics.start(SystemClock.elapsedRealtimeNanos());
-        SpeculativeTileCache shared = new SpeculativeTileCache(256 * MIB, BufferingPolicy.HIGH,
+        RenderCoordinator shared = new RenderCoordinator(256 * MIB, BufferingPolicy.HIGH,
                 () -> true, () -> 0, RenderTuning.READER, metrics);
         AtomicReference<ComicCanvasView> view = new AtomicReference<>();
         AtomicReference<String> error = new AtomicReference<>();
@@ -158,7 +205,7 @@ public final class PriorityBufferingTests {
 
     public static void replacedPrefetchWaitsForNearerUseOrNewGeneration(Instrumentation instrumentation) {
         BlockingDocument document = new BlockingDocument(false, 1);
-        SpeculativeTileCache shared = new SpeculativeTileCache(256 * MIB, BufferingPolicy.HIGH,
+        RenderCoordinator shared = new RenderCoordinator(256 * MIB, BufferingPolicy.HIGH,
                 () -> true, () -> 0, RenderTuning.READER, null);
         TileRenderer renderer = new TileRenderer(instrumentation.getTargetContext(), document,
                 () -> { }, message -> { throw new AssertionError(message); }, shared);
@@ -188,7 +235,7 @@ public final class PriorityBufferingTests {
         }
     }
 
-    private static void awaitBuffered(SpeculativeTileCache cache, TileRenderer renderer) {
+    private static void awaitBuffered(RenderCoordinator cache, TileRenderer renderer) {
         long deadline = SystemClock.elapsedRealtime() + 5_000;
         while (!cache.contains(renderer, key(0)) && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(20);
         check(cache.contains(renderer, key(0)), "Optional tile did not become ready");

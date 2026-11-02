@@ -2,6 +2,38 @@
 
 All notable public changes to ComicViewer for Android are recorded here.
 
+## Unreleased
+
+### Rendering policy
+
+- Share a session pixel allowance across visible tiles, optional tiles, sampled backing
+  images, and admitted decoding output, with an allowance reserved for slider previews.
+- Plan visible pages together across issue boundaries and keep reduced resolution stable
+  near the budget boundary instead of repeatedly changing levels while scrolling.
+- Show inexpensive coarse page or strip coverage before detailed tiles and retry allocation
+  failures at a cheaper resolution with bounded attempts.
+- Schedule tile decoding and cleanup through one session queue while keeping each document
+  serialized and retaining the existing three-worker concurrency ceiling.
+- Keep a bounded extracted-page cache independently of decoder eviction to avoid inflating
+  the same archive page again on a backward turn.
+
+### Rendering and library recovery
+
+- Discard superseded visible requests, reject results invalidated by background trimming,
+  and release decoders/documents off the UI thread while preserving decoder ownership.
+- Recover transient visible tile failures with bounded retries and restore optional
+  preparation after memory refusal without increasing cache limits or decoder concurrency.
+- Restore healthy visible pages after allocation failures exhaust a neighboring tile's
+  retries or cancel optional work; discard superseded requests after waiting for decoder capacity.
+- Continue inspecting valid pages after an unreadable page while retaining incomplete-index
+  status; preserve continuous reading motion during background dimension updates.
+- Deliver coalesced cover results to current recycled views and cancel obsolete/background
+  thumbnail work, restoring current requests on return to the library.
+- Reuse extracted files for fallback decoding, reuse resident rendered tiles across scale
+  changes, coalesce index refreshes, and reuse prefetch geometry only when its full inputs match.
+- Protect visible raster decoders from optional churn and add extraction/decoder counters
+  to local rendering diagnostics.
+
 ## 1.4.1 - 2026-10-29
 
 ### Rendering

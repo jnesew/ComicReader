@@ -43,6 +43,7 @@ public final class PagePreviewLoader implements AutoCloseable {
     private int pendingPage = -1;
     private long pendingVersion;
     private long requestVersion;
+    private long cacheGeneration;
     private int activePage = -1;
     private volatile boolean closed;
 
@@ -59,8 +60,7 @@ public final class PagePreviewLoader implements AutoCloseable {
         this.maxHeight = maxHeight;
         this.callback = callback;
 
-        long heapKb = Runtime.getRuntime().maxMemory() / 1024L;
-        int cacheKb = (int) Math.min(12L * 1024L, Math.max(4L * 1024L, heapKb / 32L));
+        int cacheKb = (int) (BufferingPolicy.previewBytes(Runtime.getRuntime().maxMemory()) / 1024L);
         cache = new LruCache<>(cacheKb) {
             @Override
             protected int sizeOf(Integer page, Bitmap bitmap) {
@@ -71,10 +71,11 @@ public final class PagePreviewLoader implements AutoCloseable {
 
     public void request(int requestedPage) {
         int page = Math.max(0, Math.min(requestedPage, document.count() - 1));
-        Bitmap cached = cache.get(page);
+        Bitmap cached;
         long version;
         synchronized (requestLock) {
             if (closed) return;
+            cached = cache.get(page);
             version = ++requestVersion;
             activePage = page;
             if (cached != null && !cached.isRecycled()) {
@@ -98,7 +99,13 @@ public final class PagePreviewLoader implements AutoCloseable {
     }
 
     public void trimMemory() {
-        cache.evictAll();
+        synchronized (requestLock) {
+            cacheGeneration++;
+            requestVersion++;
+            activePage = -1;
+            pendingPage = -1;
+            cache.evictAll();
+        }
     }
 
     @Override
@@ -128,6 +135,7 @@ public final class PagePreviewLoader implements AutoCloseable {
         while (true) {
             int page;
             long version;
+            long generation;
             synchronized (requestLock) {
                 if (closed || pendingPage < 0) {
                     workerRunning = false;
@@ -135,6 +143,7 @@ public final class PagePreviewLoader implements AutoCloseable {
                 }
                 page = pendingPage;
                 version = pendingVersion;
+                generation = cacheGeneration;
                 pendingPage = -1;
             }
 
@@ -144,7 +153,10 @@ public final class PagePreviewLoader implements AutoCloseable {
                 try {
                     bitmap = decode(page);
                     available = bitmap != null;
-                    if (available && !closed) cache.put(page, bitmap);
+                    synchronized (requestLock) {
+                        if (available && !closed && cacheGeneration == generation) cache.put(page, bitmap);
+                        else if (available) { bitmap.recycle(); available = false; }
+                    }
                 } catch (IOException | RuntimeException error) {
                     available = false;
                 } catch (OutOfMemoryError error) {

@@ -18,7 +18,7 @@ import io.github.jnesew.comicviewer.model.ReadingProgress;
 import io.github.jnesew.comicviewer.render.ComicCanvasView;
 import io.github.jnesew.comicviewer.render.PagePreviewLoader;
 import io.github.jnesew.comicviewer.render.TileRenderer;
-import io.github.jnesew.comicviewer.render.SpeculativeTileCache;
+import io.github.jnesew.comicviewer.render.RenderCoordinator;
 import io.github.jnesew.comicviewer.library.LibraryImportCoordinator;
 import io.github.jnesew.comicviewer.ui.ReaderScreen;
 import io.github.jnesew.comicviewer.util.Ui;
@@ -48,7 +48,7 @@ public final class ReaderSession implements AutoCloseable {
     final Context context;
     final LibraryDatabase database;
     final ReaderPreferences preferences;
-    final SpeculativeTileCache speculativeTiles;
+    final RenderCoordinator renderCoordinator;
     final LibraryImportCoordinator imports;
     final Host host;
     ReaderScreen reader;
@@ -74,7 +74,7 @@ public final class ReaderSession implements AutoCloseable {
         this.context = context;
         this.database = database;
         this.preferences = preferences;
-        this.speculativeTiles = new SpeculativeTileCache(
+        this.renderCoordinator = new RenderCoordinator(
                 context, Runtime.getRuntime().maxMemory(), preferences.bufferingLevel());
         this.imports = imports;
         this.host = host;
@@ -125,18 +125,22 @@ public final class ReaderSession implements AutoCloseable {
     }
     public void trimSpeculativeMemory() {
         cancelSpeculative();
-        speculativeTiles.onMemoryPressure();
+        renderCoordinator.onMemoryPressure();
     }
     public void setBufferingLevel(String level) {
         preferences.setBufferingLevel(level);
         String resolved = preferences.bufferingLevel();
-        speculativeTiles.setLevel(resolved);
+        renderCoordinator.setLevel(resolved);
         cancelSpeculative();
         if (reader != null) reader.canvas.setBufferingLevel(resolved);
     }
     public void pauseSpeculative() {
-        speculativeTiles.setForeground(false);
+        renderCoordinator.setForeground(false);
         cancelSpeculative();
+        if (renderer() != null) renderer().suspend();
+        for (DocumentResources resource : continuous.continuousResources.values()) {
+            if (resource.renderer != null) resource.renderer.suspend();
+        }
     }
     public void trimBackgroundMemory() {
         pauseSpeculative();
@@ -144,7 +148,7 @@ public final class ReaderSession implements AutoCloseable {
         trimReaderMemory();
     }
     public void resumeSpeculative() {
-        speculativeTiles.setForeground(true);
+        renderCoordinator.setForeground(true);
         if (readerActive && reader != null) reader.canvas.postInvalidateOnAnimation();
     }
     private void cancelSpeculative() {
@@ -300,7 +304,7 @@ public final class ReaderSession implements AutoCloseable {
                 opened,
                 reader.canvas::postInvalidateOnAnimation,
                 message -> Toast.makeText(context, message, Toast.LENGTH_LONG).show(),
-                speculativeTiles);
+                renderCoordinator);
         reader.canvas.setBufferingLevel(preferences.bufferingLevel());
         if (ComicCanvasView.CONTINUOUS.equals(progress().readingMode)) {
             continuous.continuousResources.put(opened.key(),

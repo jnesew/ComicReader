@@ -27,7 +27,7 @@ final class BenchRunner {
     private final List<String> documentKeys = new ArrayList<>();
     private RenderMetrics metrics;
     private ComicCanvasView canvas;
-    private SpeculativeTileCache shared;
+    private RenderCoordinator shared;
     private BenchFrames frames;
     private String caseId, fixture, mode;
     private int cycle, timeouts, sequence, targetSpeed;
@@ -84,7 +84,7 @@ final class BenchRunner {
             for (ComicDocument document : documents) documentKeys.add(document.key());
             result.put("document_open_index_ms", (SystemClock.elapsedRealtimeNanos() - opening) / 1e6);
             result.put("document_open_count", documents.size()).put("renderer_creation_count", documents.size());
-            shared = new SpeculativeTileCache(host, Runtime.getRuntime().maxMemory(), BufferingPolicy.HIGH, policy.tuning, metrics);
+            shared = new RenderCoordinator(host, Runtime.getRuntime().maxMemory(), BufferingPolicy.HIGH, policy.tuning, metrics);
             host.activeCache(shared);
             canvas = host.ui(() -> new ComicCanvasView(host));
             for (ComicDocument document : documents) renderers.add(new TileRenderer(host, document,
@@ -93,7 +93,7 @@ final class BenchRunner {
             position.readingMode = continuous() ? ComicCanvasView.CONTINUOUS : mode;
             position.zoomMode = mode.equals("spread") ? ComicCanvasView.FIT_PAGE : ComicCanvasView.FIT_WIDTH;
             result.put("initial_zoom_mode", position.zoomMode).put("low_level", BufferingPolicy.HIGH)
-                    .put("shared_cap_bytes", shared.limitBytes()).put("requested_cache_mib", policy.tuning.cacheMiB)
+                    .put("shared_cap_bytes", shared.limitBytes()).put("session_pixel_limit_bytes", shared.pixelLimitBytes()).put("requested_cache_mib", policy.tuning.cacheMiB)
                     .put("bounded_admission", policy.tuning.boundedAdmission()).put("refill", policy.tuning.refill)
                     .put("prioritized", policy.tuning.prioritized)
                     .put("speculative_pipeline", policy.tuning.prioritized ? 1 : 16)
@@ -183,7 +183,7 @@ final class BenchRunner {
             for (TileRenderer renderer : renderers) try { renderer.close(); } catch (Exception failure) { fail(result, failure); }
             host.activeCache(null);
             for (ComicDocument document : documents) try { document.close(); } catch (Exception failure) { fail(result, failure); }
-            if (shared != null && shared.reservedBytes() != 0) fail(result, new IllegalStateException("Reservation leaked after closure"));
+            if (shared != null && shared.pixelBytes() != 0) fail(result, new IllegalStateException("Pixel ownership leaked after closure"));
             result.put("memory_after", BenchFiles.memory(host)).put("timing_started", frames != null);
             for (Window window : windows) files.action(window.value);
             files.result(result); results.add(result);
@@ -197,9 +197,13 @@ final class BenchRunner {
     }
     private void assertBudget() {
         if (renderError.get() != null) throw new IllegalStateException(renderError.get());
+        Map<String, Number> values = metrics.snapshot(SystemClock.elapsedRealtimeNanos());
         if (shared.committedBytes() > shared.limitBytes() ||
-                metrics.snapshot(SystemClock.elapsedRealtimeNanos()).get("peak_shared_plus_pending_bytes").longValue() > shared.limitBytes())
-            throw new AssertionError("Shared retained + pending ceiling exceeded");
+                values.get("peak_shared_plus_pending_bytes").longValue() > shared.limitBytes())
+            throw new AssertionError("Optional retained + pending ceiling exceeded");
+        if (shared.pixelBytes() > shared.pixelLimitBytes() ||
+                values.get("peak_session_pixel_bytes").longValue() > shared.pixelLimitBytes())
+            throw new AssertionError("Session pixel ceiling exceeded");
     }
     private boolean continuous() { return mode.equals("continuous") || mode.equals("series"); }
     private int settle() { return plan.shortRun() ? 60 : 180; }

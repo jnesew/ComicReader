@@ -197,14 +197,20 @@ public final class PdfComicDocument implements ComicDocument {
             callback.onComplete(snapshotPages());
             return;
         }
+        IOException failure = null;
         for (int index = 0; index < count(); index++) {
             if (Thread.currentThread().isInterrupted() || callback.isCancelled()) return;
             synchronized (this) {
                 ensureOpen();
                 if (!indexed[index]) {
-                    pageInfo.set(index, pageInfo(renderer, index));
-                    indexed[index] = true;
-                    indexedPages++;
+                    try {
+                        pageInfo.set(index, pageInfo(renderer, index));
+                        indexed[index] = true;
+                        indexedPages++;
+                    } catch (IOException exception) {
+                        if (Thread.currentThread().isInterrupted() || callback.isCancelled() || closed) return;
+                        if (failure == null) failure = exception;
+                    }
                 }
             }
             if (index == 0 || index % 12 == 0 || index == count() - 1) {
@@ -215,6 +221,7 @@ public final class PdfComicDocument implements ComicDocument {
             }
         }
         if (Thread.currentThread().isInterrupted() || callback.isCancelled()) return;
+        if (failure != null) throw failure;
         indexComplete = true;
         callback.onComplete(snapshotPages());
     }

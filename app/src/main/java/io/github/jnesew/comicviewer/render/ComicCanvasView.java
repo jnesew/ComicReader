@@ -98,6 +98,7 @@ public final class ComicCanvasView extends View {
     private int travelDirection = 1;
     private double lastPrefetchScroll;
     private final java.util.Set<TileRenderer> prefetchOwners = new java.util.HashSet<>();
+    private final java.util.Set<TileRenderer> visibleOwners = new java.util.HashSet<>();
     private int canvasColor = Color.BLACK;
 
     // Paged transform. zoom is a multiplier relative to fit-width.
@@ -166,6 +167,7 @@ public final class ComicCanvasView extends View {
 
     public void setDocument(TileRenderer renderer, List<PageInfo> pages, ReadingProgress progress) {
         updatePrefetchOwners(Collections.emptySet());
+        updateVisibleOwners(Collections.emptySet());
         travelDirection = 1;
         this.renderer = renderer;
         this.pages = pages;
@@ -203,6 +205,7 @@ public final class ComicCanvasView extends View {
 
     public void clearDocument() {
         updatePrefetchOwners(Collections.emptySet());
+        updateVisibleOwners(Collections.emptySet());
         renderer = null;
         pages = Collections.emptyList();
         clearContinuousDocuments();
@@ -331,8 +334,19 @@ public final class ComicCanvasView extends View {
             String anchorKey,
             int anchorPage,
             float anchorRatio) {
+        setContinuousDocuments(documents, anchorKey, anchorPage, anchorRatio, false);
+    }
+
+    public void refreshContinuousPageInfo(List<ContinuousDocument> documents, String anchorKey,
+            int anchorPage, float anchorRatio) {
+        setContinuousDocuments(documents, anchorKey, anchorPage, anchorRatio, true);
+    }
+
+    private void setContinuousDocuments(List<ContinuousDocument> documents, String anchorKey,
+            int anchorPage, float anchorRatio, boolean preserveMotion) {
         if (!continuous || documents == null || documents.isEmpty()) return;
-        scroller.forceFinished(true);
+        double oldScroll = documentScroll;
+        if (!preserveMotion) scroller.forceFinished(true);
         installContinuousDocuments(documents);
         ContinuousPageMap.Position restored = pageMap.restore(
                 new ContinuousPageMap.Anchor(anchorKey, anchorPage, anchorRatio), page);
@@ -342,6 +356,7 @@ public final class ComicCanvasView extends View {
         pendingRestoreRatio = pageRatio;
         pendingRestore = true;
         relayoutDocument();
+        if (preserveMotion && !scroller.isFinished()) flingStartScroll += documentScroll - oldScroll;
         // Adopting/prepending issues moves layout coordinates, not the reader's direction.
         lastPrefetchScroll = documentScroll;
         invalidate();
@@ -531,6 +546,7 @@ public final class ComicCanvasView extends View {
     }
 
     private void drawPaged(Canvas canvas) {
+        updateVisibleOwners(Collections.singleton(renderer));
         clip.set(0f, 0f, getWidth(), getHeight());
         if (!spread || spreadLayout.endFor(page) == page) {
             PageInfo info = pages.get(page);
@@ -669,10 +685,8 @@ public final class ComicCanvasView extends View {
                         pageClip));
             }
         }
-        for (java.util.Map.Entry<TileRenderer, List<TileRenderer.PageRequest>> entry :
-                requests.entrySet()) {
-            entry.getKey().drawPages(canvas, entry.getValue());
-        }
+        updateVisibleOwners(requests.keySet());
+        TileRenderer.drawFrame(canvas, requests);
         prefetchContinuous();
     }
 
@@ -761,6 +775,14 @@ public final class ComicCanvasView extends View {
         }
         prefetchOwners.clear();
         prefetchOwners.addAll(active);
+    }
+
+    private void updateVisibleOwners(java.util.Set<TileRenderer> active) {
+        for (TileRenderer owner : visibleOwners) {
+            if (!active.contains(owner)) owner.clearVisibleRequests();
+        }
+        visibleOwners.clear();
+        visibleOwners.addAll(active);
     }
 
     private void addOffscreenPages(

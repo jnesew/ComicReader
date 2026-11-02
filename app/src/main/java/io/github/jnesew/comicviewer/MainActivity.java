@@ -117,6 +117,7 @@ public final class MainActivity extends Activity implements
         session = new ReaderSession(this, database, preferences, imports, new ReaderSession.Host() {
             @Override public boolean isFinishing() { return MainActivity.this.isFinishing(); }
             @Override public void onReaderActivated() {
+                home.setCoverForeground(false);
                 home.setVisibility(View.GONE);
                 showSystemBars(true);
             }
@@ -212,6 +213,7 @@ public final class MainActivity extends Activity implements
 
     @Override
     protected void onPause() {
+        home.setCoverForeground(false);
         session.saveNow();
         session.pauseSpeculative();
         super.onPause();
@@ -222,6 +224,7 @@ public final class MainActivity extends Activity implements
         super.onResume();
         applyAppearance();
         session.resumeSpeculative();
+        home.setCoverForeground(!session.isActive());
         if (database != null && !session.isActive()) {
             mainHandler.postDelayed(() -> scans.maybeScanLibraryFolder(false), 350L);
         }
@@ -551,6 +554,7 @@ public final class MainActivity extends Activity implements
         applyAppearance();
         reader.setVisibility(View.GONE);
         home.setVisibility(View.VISIBLE);
+        home.setCoverForeground(true);
         home.refresh();
         applyKeepScreenOn();
         showSystemBars(true);

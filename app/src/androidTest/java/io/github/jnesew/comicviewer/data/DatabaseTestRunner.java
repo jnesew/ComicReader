@@ -8,7 +8,7 @@ import android.os.Bundle;
 import android.util.Log;
 import io.github.jnesew.comicviewer.model.PageInfo;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
-import io.github.jnesew.comicviewer.render.SpeculativeTileCache;
+import io.github.jnesew.comicviewer.render.RenderCoordinator;
 import io.github.jnesew.comicviewer.render.BufferingPolicy;
 import io.github.jnesew.comicviewer.render.TileKey;
 import io.github.jnesew.comicviewer.render.RasterRenderingTests;
@@ -24,7 +24,7 @@ public final class DatabaseTestRunner extends Instrumentation {
     private LibraryDatabase db;
     private int current;
     private int failed;
-    private static final int TOTAL = 53;
+    private static final int TOTAL = 80;
 
     @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
 
@@ -37,6 +37,32 @@ public final class DatabaseTestRunner extends Instrumentation {
         run("actualSizeSurvivesRelayout", () -> ReaderGeometryTests.actualSizeRestoresConsistently(this));
         run("continuousZoomPreservesFocus", () -> ReaderGeometryTests.continuousZoomKeepsFocus(this));
         run("mixedRasterFormatsKeepEdgesAndBottomVisible", () -> FormatRenderingTests.mixedRasterPages(this));
+        run("longStripsRecoverAfterBackgroundTrim", () -> FormatRenderingTests.longStripsRecoverAfterBackgroundTrim(this));
+        run("retiringPrefetchKeepsItsReservation", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.retiringPrefetchKeepsItsReservation(this));
+        run("memoryFailureChoosesCheaperPixels", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.memoryFailureChoosesCheaperPixels(this));
+        run("correctedGeometryRecoversAfterOom", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.correctedGeometryCanRecoverAfterOom(this));
+        run("coarseOomRetriesVisibleLevel", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.coarseOomRetriesTheVisibleLevel(this));
+        run("coarseCoveragePrecedesBlockedDetail", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.coarseCoveragePrecedesBlockedDetail(this));
+        run("extractedPagesSurviveDecoderEviction", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.extractedPagesSurviveDecoderEviction(this));
+        run("visibleAndBackingPixelsShareSessionCeiling", io.github.jnesew.comicviewer.render.RenderingRecoveryTests::visibleAndBackingPixelsShareTheSessionCeiling);
+        run("latestVisibleDemandDropsObsoleteQueue", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.latestVisibleDemand(this));
+        run("trimAndCloseDoNotBlockOrRepublish", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.trimAndCloseDoNotWaitForDecode(this));
+        run("retiringDecodersKeepSessionConcurrencyBounded", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.retiredWorkKeepsSessionConcurrencyBounded(this));
+        run("visibleFailuresRecoverWithoutPollingDraws", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.visibleFailuresRetryWithoutPollingDraws(this));
+        run("visibleOomPreservesHealthyDemand", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.visibleOomKeepsHealthyDemand(this));
+        run("speculativeOomPreservesVisibleDemand", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.speculativeOomKeepsVisibleDemand(this));
+        run("queuedWorkDropsObsoleteDemand", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.queuedWorkDropsObsoleteDemand(this));
+        run("pressureDiscardRefillsUnchangedPlan", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.pressureDiscardCanRefillSamePlan(this));
+        run("previewTrimDisposesInflightOutput", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.previewTrimRejectsInFlightOutput(this));
+        run("indexContinuesPastUnreadablePage", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.indexContinuesPastBadPage(this));
+        run("indexRefreshPreservesContinuousMotion", () -> ReaderGeometryTests.indexingPreservesContinuousMotion(this));
+        run("coalescedCoverReachesReboundView", () -> io.github.jnesew.comicviewer.ui.CoverRecoveryTests.coalescedDecodeReachesCurrentView(this));
+        run("prefetchPlanTracksCropAndDimensions", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.planReuseTracksClipAndDimensions(this));
+        run("renderedLevelsReuseResidentPixels", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.renderedLevelsReuseResidentCoverage(this));
+        run("fallbackDecodesAlreadyExtractedFile", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.fallbackUsesExtractedFile(this));
+        run("prefetchPreservesVisibleDecoderWorkingSet", () -> io.github.jnesew.comicviewer.render.RenderingRecoveryTests.speculativePagesPreserveVisibleDecoders(this));
+        run("obsoleteCoverQueueIsCancelled", () -> io.github.jnesew.comicviewer.ui.CoverRecoveryTests.obsoleteQueuedCoversDoNotDecode(this));
+        run("backgroundCoversDisposeAndResume", () -> io.github.jnesew.comicviewer.ui.CoverRecoveryTests.backgroundTrimDisposesAndResumes(this));
         run("maximumHeightPdfPreviewAndBottom", () -> FormatRenderingTests.tallPdfPreview(this));
         run("platformXmlRejectsDtdAndExternalEntities", FormatRenderingTests::platformXmlSecurity);
         run("largeContinuousCollectionScrollsPrecisely", () -> ReaderGeometryTests.longCollectionScrollsPrecisely(this));
@@ -68,6 +94,8 @@ public final class DatabaseTestRunner extends Instrumentation {
                 io.github.jnesew.comicviewer.render.PriorityBufferingTests::stalePublicationAndPressure);
         run("runningPrefetchSatisfiesVisibleRequestAfterNavigation",
                 () -> io.github.jnesew.comicviewer.render.PriorityBufferingTests.runningPrefetchBecomesVisible(this));
+        run("prefetchRecoversAfterAdmissionOutOfMemory",
+                () -> io.github.jnesew.comicviewer.render.PriorityBufferingTests.prefetchRecoversAfterAdmissionOutOfMemory(this));
         run("manualZoomPrefetchMatchesTheNextFrameCrop",
                 () -> io.github.jnesew.comicviewer.render.PriorityBufferingTests.manualZoomPreparesTheNextVisibleCrop(this));
         run("replacedPrefetchRetriesOnlyForNearerUseOrNewGeneration",
@@ -368,7 +396,7 @@ public final class DatabaseTestRunner extends Instrumentation {
     private void speculativeCache() {
         java.util.concurrent.atomic.AtomicLong availableHeap =
                 new java.util.concurrent.atomic.AtomicLong(Long.MAX_VALUE);
-        SpeculativeTileCache cache = new SpeculativeTileCache(512L * 1024L * 1024L,
+        RenderCoordinator cache = new RenderCoordinator(512L * 1024L * 1024L,
                 BufferingPolicy.INCREASED, availableHeap::get);
         Object firstOwner = new Object();
         Object secondOwner = new Object();

@@ -28,6 +28,7 @@ import java.nio.charset.Charset;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -36,6 +37,73 @@ import java.util.zip.ZipOutputStream;
 public final class FormatRenderingTests {
     private static final String[] IMAGES = {"page.png", "page.jpg", "page.webp", "page.bmp", "page.gif", "limit.png"};
     private FormatRenderingTests() { }
+
+    public static void longStripsRecoverAfterBackgroundTrim(Instrumentation instrumentation) {
+        File file = new File(instrumentation.getTargetContext().getCacheDir(), "background-strips.cbz");
+        try {
+            archive(instrumentation, file, false);
+            for (boolean hardware : android.os.Build.VERSION.SDK_INT >= 29
+                    ? new boolean[]{false, true} : new boolean[]{false}) {
+                for (String level : new String[]{BufferingPolicy.STANDARD, BufferingPolicy.HIGH}) {
+                    AtomicLong now = new AtomicLong(1_000L);
+                    RenderCoordinator shared = new RenderCoordinator(512L * 1024L * 1024L,
+                            level, () -> true, now::get);
+                    try (ComicDocument document = open(instrumentation, file);
+                         Fixture f = new Fixture(instrumentation, document, shared, hardware)) {
+                        for (String mode : new String[]{ComicCanvasView.SINGLE, ComicCanvasView.CONTINUOUS}) {
+                            int inset = ComicCanvasView.CONTINUOUS.equals(mode) ? Ui.dp(f.context, 8) : 0;
+                            for (int page : new int[]{0, 5}) {
+                                f.main(() -> {
+                                    ReadingProgress progress = new ReadingProgress();
+                                    progress.uri = document.key(); progress.readingMode = mode;
+                                    f.view.setBufferingLevel(level);
+                                    f.view.setDocument(f.renderer, document.pages(), progress);
+                                });
+                                for (float ratio : new float[]{.1234567f, .500017f, .712349f}) {
+                                    String position = (hardware ? "gpu/" : "software/") + level + "/" + mode +
+                                            "/page=" + page + "/ratio=" + ratio;
+                                    f.main(() -> f.view.showPage(page, ratio));
+                                    f.await(() -> f.stripHasNoGaps(inset),
+                                            "Strip did not render before backgrounding: " + position);
+                                    int[] before = new int[800 * 600];
+                                    int[] after = new int[before.length];
+                                    f.output.getPixels(before, 0, 800, 0, 0, 800, 600);
+                                    float anchor = f.view.pageRatio();
+                                    f.main(() -> {
+                                        shared.setForeground(false);
+                                        f.renderer.cancelPrefetch();
+                                        shared.onMemoryPressure();
+                                        f.renderer.trimMemory();
+                                        shared.setForeground(true);
+                                    });
+                                    ReaderGeometryTests.check(!shared.enabled(), "Resume bypassed pressure cooldown");
+                                    f.await(() -> {
+                                        f.output.getPixels(after, 0, 800, 0, 0, 800, 600);
+                                        return java.util.Arrays.equals(before, after);
+                                    }, "Background trim changed strip pixels or left missing tiles: " + position);
+                                    f.main(() -> ReaderGeometryTests.check(
+                                            f.view.page() == page && f.view.pageRatio() == anchor,
+                                            "Background recovery moved the reading anchor: " + position));
+                                    now.addAndGet(30_000L);
+                                    if (BufferingPolicy.HIGH.equals(level)) {
+                                        ReaderGeometryTests.check(shared.enabled(),
+                                                "Pressure cooldown did not expire: " + position);
+                                        // A tall tile can already cover the whole next band. Empty shared
+                                        // storage is therefore valid; it does not establish stalled prefetch.
+                                        f.await(() -> f.stripHasNoGaps(inset),
+                                                "Strip changed after pressure cooldown: " + position);
+                                    }
+                                    ReaderGeometryTests.check(shared.committedBytes() <= shared.limitBytes(),
+                                            "Background recovery exceeded the shared tile budget");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (IOException error) { throw new AssertionError(error); }
+        finally { file.delete(); }
+    }
 
     public static void platformXmlSecurity() {
         for (Charset encoding : new Charset[]{StandardCharsets.UTF_8, StandardCharsets.UTF_16,
@@ -281,21 +349,30 @@ public final class FormatRenderingTests {
         final Context context;
         final ComicCanvasView view;
         final TileRenderer renderer;
+        final HardwareFrame hardwareFrame;
         final AtomicReference<String> error = new AtomicReference<>();
         final Bitmap output = Bitmap.createBitmap(800, 600, Bitmap.Config.ARGB_8888);
         Fixture(Instrumentation instrumentation, ComicDocument document) {
+            this(instrumentation, document, null, false);
+        }
+        Fixture(Instrumentation instrumentation, ComicDocument document, RenderCoordinator shared,
+                boolean hardware) {
             this.instrumentation = instrumentation; context = instrumentation.getTargetContext();
             AtomicReference<ComicCanvasView> created = new AtomicReference<>();
             main(() -> created.set(new ComicCanvasView(context)));
             view = created.get();
-            renderer = new TileRenderer(context, document, () -> { }, error::set, null, 24 * 1024);
+            renderer = new TileRenderer(context, document, () -> { }, error::set, shared, 24 * 1024);
+            hardwareFrame = hardware ? new HardwareFrame() : null;
             main(() -> { view.layout(0, 0, 800, 600); view.setDocument(renderer, document.pages(), new ReadingProgress()); });
         }
         void main(Runnable runnable) { ReaderGeometryTests.onMain(instrumentation, runnable); }
         void await(java.util.function.BooleanSupplier ready, String message) {
             long until = SystemClock.elapsedRealtime() + 15000;
             do {
-                main(() -> view.draw(new Canvas(output)));
+                main(() -> {
+                    if (hardwareFrame != null) hardwareFrame.draw(view, output);
+                    else view.draw(new Canvas(output));
+                });
                 ReaderGeometryTests.check(error.get() == null, "Render failure: " + error.get());
                 if (ready.getAsBoolean()) return;
                 SystemClock.sleep(20);
@@ -308,6 +385,14 @@ public final class FormatRenderingTests {
                     Math.abs(Color.green(actual) - Color.green(color)) < 20 &&
                     Math.abs(Color.blue(actual) - Color.blue(color)) < 20;
         }
+        boolean stripHasNoGaps(int inset) {
+            // Scan every row so a one-pixel tile seam cannot fall between sample points.
+            for (int y = 1; y < 599; y++) {
+                if (!color(inset + 4, y, Color.RED) || !color(400, y, Color.WHITE) ||
+                        !color(795 - inset, y, Color.BLUE)) return false;
+            }
+            return true;
+        }
         int edgeRuns(int y) {
             int runs = 0, previous = 0;
             for (int x = 0; x < 800; x++) {
@@ -317,6 +402,58 @@ public final class FormatRenderingTests {
             }
             return runs;
         }
-        @Override public void close() { main(() -> { view.clearDocument(); renderer.close(); }); output.recycle(); }
+        @Override public void close() {
+            main(() -> {
+                view.clearDocument(); renderer.close();
+                if (hardwareFrame != null) hardwareFrame.close();
+            });
+            output.recycle();
+        }
+    }
+
+    /** Exercise Android's real GPU Canvas rather than treating bitmap Canvas output as GPU evidence. */
+    @android.annotation.TargetApi(29)
+    private static final class HardwareFrame implements AutoCloseable {
+        final android.media.ImageReader images = android.media.ImageReader.newInstance(
+                800, 600, android.graphics.PixelFormat.RGBA_8888, 2,
+                android.hardware.HardwareBuffer.USAGE_GPU_SAMPLED_IMAGE |
+                        android.hardware.HardwareBuffer.USAGE_GPU_COLOR_OUTPUT);
+        final android.graphics.RenderNode node = new android.graphics.RenderNode("strip-regression");
+        final android.graphics.HardwareRenderer renderer = new android.graphics.HardwareRenderer();
+
+        HardwareFrame() {
+            node.setPosition(0, 0, 800, 600);
+            renderer.setSurface(images.getSurface());
+            renderer.setContentRoot(node);
+        }
+
+        void draw(ComicCanvasView view, Bitmap output) {
+            Canvas canvas = node.beginRecording();
+            try {
+                ReaderGeometryTests.check(canvas.isHardwareAccelerated(), "GPU diagnostic used software Canvas");
+                view.draw(canvas);
+            } finally { node.endRecording(); }
+            renderer.createRenderRequest().setWaitForPresent(true).syncAndDraw();
+            try (android.media.Image image = images.acquireNextImage()) {
+                ReaderGeometryTests.check(image != null, "GPU diagnostic produced no image");
+                try (android.hardware.HardwareBuffer buffer = image.getHardwareBuffer()) {
+                    ReaderGeometryTests.check(buffer != null, "GPU diagnostic produced no buffer");
+                    Bitmap hardware = Bitmap.wrapHardwareBuffer(buffer, null);
+                    ReaderGeometryTests.check(hardware != null, "GPU diagnostic produced no bitmap");
+                    try {
+                        Bitmap readable = hardware.copy(Bitmap.Config.ARGB_8888, false);
+                        ReaderGeometryTests.check(readable != null, "GPU diagnostic could not read pixels");
+                        try { new Canvas(output).drawBitmap(readable, 0, 0, null); }
+                        finally { readable.recycle(); }
+                    } finally { hardware.recycle(); }
+                }
+            }
+        }
+
+        @Override public void close() {
+            node.discardDisplayList();
+            renderer.destroy();
+            images.close();
+        }
     }
 }

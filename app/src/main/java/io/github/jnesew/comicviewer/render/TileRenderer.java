@@ -2,8 +2,6 @@ package io.github.jnesew.comicviewer.render;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.BitmapRegionDecoder;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -13,26 +11,19 @@ import android.graphics.Region;
 import android.graphics.RegionIterator;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.LruCache;
 
 import io.github.jnesew.comicviewer.R;
 import io.github.jnesew.comicviewer.document.ComicDocument;
 import io.github.jnesew.comicviewer.model.PageInfo;
-import io.github.jnesew.comicviewer.util.InputLimits;
 import io.github.jnesew.comicviewer.util.RenderedTilePolicy;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -46,38 +37,42 @@ public final class TileRenderer implements AutoCloseable {
     }
 
     private static final int RASTER_TILE_SIZE = 768;
-    private static final int MAX_OPEN_DECODERS = 4;
+    private static final int MAX_VISIBLE_ATTEMPTS = 3;
 
     private final Context context;
     private final ComicDocument archive;
     private final File pageCacheDirectory;
-    private static final AtomicLong taskOrder = new AtomicLong();
-    private final ThreadPoolExecutor executor = new ThreadPoolExecutor(
-            1, 1, 0L, TimeUnit.MILLISECONDS, new PriorityBlockingQueue<>(), runnable -> {
-        Thread thread = new Thread(runnable, "comic-tile-decoder");
-        thread.setPriority(Thread.NORM_PRIORITY - 1);
-        return thread;
-    });
+    private final RenderScheduler scheduler;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable invalidator;
     private final ErrorListener errorListener;
-    private final LruCache<TileKey, Bitmap> tiles;
-    private final SpeculativeTileCache speculativeTiles;
+    private final RenderCoordinator.VisibleTiles tiles;
+    private final RenderCoordinator renderCoordinator;
     private final RenderTuning tuning;
     private final RenderMetrics metrics;
     private volatile java.util.List<PageRequest> refillRequests = java.util.Collections.emptyList();
+    private volatile PrefetchPlan cachedPrefetchPlan;
     private long refillSignature;
     private int refillMaxTiles;
     private final AtomicBoolean refillPosted = new AtomicBoolean();
     private final java.util.Set<TileKey> refusedPrefetch = new java.util.HashSet<>();
+    private final java.util.Set<TileKey> deferredDecoderPrefetch = new java.util.HashSet<>();
     private final Map<TileKey, Integer> preparedPrefetch = new HashMap<>();
     private final Map<TileKey, TileTask> pending = new HashMap<>();
-    private volatile boolean retainEvictedTiles = true;
+    private java.util.Set<TileKey> visibleKeys = java.util.Collections.emptySet();
+    private java.util.Set<Integer> visiblePageIndexes = java.util.Collections.emptySet();
+    private final Map<TileKey, VisibleFailure> visibleFailures = new HashMap<>();
+    private final Map<Integer, MemoryFailure> memoryFailures = new HashMap<>();
+    private final Map<Integer, RenderLevel> renderLevels = new HashMap<>();
+    private long lifecycleGeneration;
+    private long pressureGeneration;
+    private final AtomicBoolean cleanupPosted = new AtomicBoolean();
+    private final java.util.concurrent.CountDownLatch cleanupDone = new java.util.concurrent.CountDownLatch(1);
+    private final java.util.List<Runnable> closeCallbacks = new ArrayList<>();
+    private final RasterPageDecoder rasterDecoder;
     private int speculativeQueued;
     private final PrefetchGeneration prefetchGeneration = new PrefetchGeneration();
     private float visibleRenderScale = Float.NaN;
-    private final LinkedHashMap<Integer, DecoderHolder> decoders =
-            new LinkedHashMap<>(8, 0.75f, true);
     private final Paint imagePaint = createImagePaint();
     private final Paint placeholderPaint = new Paint();
     private volatile boolean closed;
@@ -106,38 +101,152 @@ public final class TileRenderer implements AutoCloseable {
     }
 
     public void drawPages(Canvas canvas, java.util.List<PageRequest> requests) {
-        if (closed) return;
-        if (archive.isUnavailable()) {
-            for (PageRequest request : requests) drawUnavailable(canvas, request);
-            return;
+        drawFrame(canvas, java.util.Collections.singletonMap(this, requests));
+    }
+
+    /** Plan all visible documents together before publishing any owner's demand. */
+    static void drawFrame(Canvas canvas, Map<TileRenderer, java.util.List<PageRequest>> requests) {
+        java.util.List<FramePage> frame = new ArrayList<>();
+        java.util.List<RenderedTilePolicy.Region> regions = new ArrayList<>();
+        long budget = Long.MAX_VALUE;
+        for (Map.Entry<TileRenderer, java.util.List<PageRequest>> entry : requests.entrySet()) {
+            TileRenderer renderer = entry.getKey();
+            if (!renderer.canRender()) continue;
+            if (renderer.archive.isUnavailable()) {
+                for (PageRequest request : entry.getValue()) renderer.drawUnavailable(canvas, request);
+                continue;
+            }
+            budget = Math.min(budget, renderer.tiles.maxSize() * 1024L * 3L / 4L);
+            for (PageRequest request : entry.getValue()) {
+                if (request.destination.width() <= 0 || request.destination.height() <= 0) continue;
+                RectF visible = new RectF(request.destination);
+                if (!visible.intersect(request.clip)) continue;
+                PageInfo info = renderer.archive.page(request.page);
+                float scale = request.destination.width() / info.width;
+                RenderedTilePolicy.Region region = new RenderedTilePolicy.Region(
+                        clamp((int) Math.floor((visible.left - request.destination.left) / scale), 0, info.width - 1),
+                        clamp((int) Math.floor((visible.top - request.destination.top) / scale), 0, info.height - 1),
+                        clamp((int) Math.ceil((visible.right - request.destination.left) / scale), 1, info.width),
+                        clamp((int) Math.ceil((visible.bottom - request.destination.top) / scale), 1, info.height),
+                        info.width, info.height, scale);
+                regions.add(region);
+                frame.add(new FramePage(renderer, request, info, region));
+            }
         }
-        java.util.ArrayList<PageRequest> visibleRequests = new java.util.ArrayList<>();
-        java.util.ArrayList<RenderedTilePolicy.Region> regions = new java.util.ArrayList<>();
-        for (PageRequest request : requests) {
-            if (request.destination.width() <= 0 || request.destination.height() <= 0) continue;
-            RectF visible = new RectF(request.destination);
-            if (!visible.intersect(request.clip)) continue;
-            PageInfo info = archive.page(request.page);
-            float scale = request.destination.width() / info.width;
-            regions.add(new RenderedTilePolicy.Region(
-                    clamp((int) Math.floor((visible.left - request.destination.left) / scale), 0, info.width - 1),
-                    clamp((int) Math.floor((visible.top - request.destination.top) / scale), 0, info.height - 1),
-                    clamp((int) Math.ceil((visible.right - request.destination.left) / scale), 1, info.width),
-                    clamp((int) Math.ceil((visible.bottom - request.destination.top) / scale), 1, info.height),
-                    info.width, info.height, scale));
-            visibleRequests.add(request);
+        boolean[] raster = new boolean[frame.size()];
+        for (int i = 0; i < raster.length; i++) raster[i] = !frame.get(i).renderer.usesRenderedTiles();
+        float[] scales = RenderedTilePolicy.mixedFrameScales(regions, raster, budget);
+        float[] targets = RenderedTilePolicy.mixedFrameScales(regions, raster, Long.MAX_VALUE);
+        float[] previous = new float[frame.size()];
+        for (int i = 0; i < frame.size(); i++) {
+            FramePage page = frame.get(i);
+            synchronized (page.renderer.pending) {
+                RenderLevel old = page.renderer.renderLevels.get(page.request.page);
+                if (old != null && old.width == page.info.width && old.height == page.info.height &&
+                        old.target == targets[i]) previous[i] = old.scale;
+            }
         }
-        float[] scales = archive.supportsRenderedTiles()
-                ? RenderedTilePolicy.frameScales(regions, tiles.maxSize() * 1024L * 3L / 4L)
-                : RenderedTilePolicy.rasterFrameScales(regions, tiles.maxSize() * 1024L * 3L / 4L);
-        if (scales.length != 0) visibleRenderScale = scales[0];
-        for (int i = 0; i < visibleRequests.size(); i++) {
-            PageRequest request = visibleRequests.get(i);
-            drawPage(canvas, request.page, request.destination, request.clip, scales[i]);
+        RenderedTilePolicy.retainCoarserLevels(regions, raster, scales, previous, budget);
+        Map<TileRenderer, java.util.Set<TileKey>> demand = new LinkedHashMap<>();
+        for (TileRenderer renderer : requests.keySet()) demand.put(renderer, new java.util.HashSet<>());
+        for (int i = 0; i < frame.size(); i++) {
+            FramePage page = frame.get(i);
+            TileRenderer renderer = page.renderer;
+            synchronized (renderer.pending) {
+                MemoryFailure failure = renderer.memoryFailures.get(page.request.page);
+                if (failure != null && failure.width == page.info.width && failure.height == page.info.height) {
+                    scales[i] = Math.min(scales[i], failure.scale);
+                } else if (failure != null) {
+                    renderer.memoryFailures.remove(page.request.page);
+                }
+            }
+            synchronized (renderer.pending) {
+                renderer.renderLevels.put(page.request.page, new RenderLevel(
+                        page.info.width, page.info.height, targets[i], scales[i]));
+            }
+            renderer.visibleRenderScale = scales[i];
+            renderer.addDemand(demand.get(renderer), page, scales[i]);
+            if (renderer.prepareCoarse(page.request.page, page.region, scales[i])) {
+                renderer.addDemand(demand.get(renderer), page, renderer.coarseScale(scales[i]));
+            }
+        }
+        for (Map.Entry<TileRenderer, java.util.Set<TileKey>> entry : demand.entrySet()) {
+            entry.getKey().replaceVisibleDemand(entry.getValue());
+        }
+        for (int i = 0; i < frame.size(); i++) {
+            FramePage page = frame.get(i);
+            page.renderer.drawPage(canvas, page.request.page, page.request.destination,
+                    page.request.clip, scales[i]);
         }
     }
 
+    private record RenderLevel(int width, int height, float target, float scale) { }
+
+    private record FramePage(TileRenderer renderer, PageRequest request, PageInfo info,
+            RenderedTilePolicy.Region region) { }
+
+    private void addDemand(java.util.Set<TileKey> demand, FramePage page, float scale) {
+        boolean rendered = archive.supportsRenderedTiles();
+        int sample = rendered ? 1 : Math.round(1f / scale);
+        int edge = rendered ? RenderedTilePolicy.sourceTileSize(scale) : RASTER_TILE_SIZE * sample;
+        for (int y = page.region.top / edge; y <= (page.region.bottom - 1) / edge; y++) {
+            for (int x = page.region.left / edge; x <= (page.region.right - 1) / edge; x++) {
+                demand.add(key(page.request.page, page.info, sample, scale, x, y));
+            }
+        }
+    }
+
+    private float coarseScale(float scale) {
+        return Math.max(archive.supportsRenderedTiles() ? RenderedTilePolicy.MIN_RENDER_SCALE : 1f / 64f,
+                scale / 4f);
+    }
+
+    private boolean prepareCoarse(int page, RenderedTilePolicy.Region region, float scale) {
+        synchronized (pending) { if (memoryFailures.containsKey(page)) return false; }
+        long bytes = archive.supportsRenderedTiles() ? RenderedTilePolicy.tileBytes(region, scale)
+                : RenderedTilePolicy.rasterTileBytes(region, scale);
+        return tuning.prioritized && bytes > 4L * 1024 * 1024 && coarseScale(scale) < scale;
+    }
+
     public boolean isUnavailable() { return archive.isUnavailable(); }
+
+    private boolean canRender() {
+        return !closed && renderCoordinator.isForeground();
+    }
+
+    public void clearVisibleRequests() { replaceVisibleDemand(java.util.Collections.emptySet()); }
+
+    private void replaceVisibleDemand(java.util.Set<TileKey> demand) {
+        synchronized (pending) {
+            if (visibleKeys.equals(demand)) return;
+            java.util.Set<Integer> pages = visiblePages(demand);
+            if (!visiblePageIndexes.equals(pages)) {
+                refusedPrefetch.removeAll(deferredDecoderPrefetch);
+                deferredDecoderPrefetch.clear();
+            }
+            visibleKeys = demand;
+            renderCoordinator.visibleDemand(this, demand);
+            visiblePageIndexes = pages;
+            visibleFailures.keySet().retainAll(demand);
+            memoryFailures.keySet().retainAll(pages);
+            renderLevels.keySet().retainAll(pages);
+            for (TileTask task : new ArrayList<>(pending.values())) {
+                if (!task.speculative && !demand.contains(task.key) && scheduler.remove(task)) completeTask(task);
+            }
+        }
+    }
+
+    private static java.util.Set<Integer> visiblePages(java.util.Set<TileKey> keys) {
+        java.util.Set<Integer> pages = new java.util.HashSet<>();
+        for (TileKey key : keys) pages.add(key.page());
+        return pages;
+    }
+
+    /** Invalidate queued/running visible demand without waiting for native decoding. */
+    public void suspend() {
+        clearVisibleRequests();
+        cancelPrefetch();
+    }
 
     public String documentKey() { return archive.key(); }
 
@@ -179,59 +288,36 @@ public final class TileRenderer implements AutoCloseable {
             ComicDocument archive,
             Runnable invalidator,
             ErrorListener errorListener,
-            SpeculativeTileCache speculativeTiles) {
-        this(context, archive, invalidator, errorListener, speculativeTiles,
-                (int) (BufferingPolicy.visibleBytesPerRenderer(
+            RenderCoordinator renderCoordinator) {
+        this(context, archive, invalidator, errorListener, renderCoordinator,
+                (int) (BufferingPolicy.visibleSessionBytes(
                         Runtime.getRuntime().maxMemory()) / 1024L));
     }
 
     /** Deterministic cache-size seam for real Android rendering regression tests. */
     TileRenderer(Context context, ComicDocument archive, Runnable invalidator,
-            ErrorListener errorListener, SpeculativeTileCache speculativeTiles, int cacheKb) {
+            ErrorListener errorListener, RenderCoordinator renderCoordinator, int cacheKb) {
         this.archive = archive;
         this.context = context.getApplicationContext();
         this.invalidator = invalidator;
         this.errorListener = errorListener;
-        this.speculativeTiles = speculativeTiles;
-        this.tuning = speculativeTiles == null ? RenderTuning.READER : speculativeTiles.tuning();
-        this.metrics = speculativeTiles == null ? null : speculativeTiles.metrics();
+        if (renderCoordinator == null) renderCoordinator = new RenderCoordinator(
+                Runtime.getRuntime().maxMemory(), BufferingPolicy.STANDARD, () -> true, () -> 0);
+        this.renderCoordinator = renderCoordinator;
+        this.scheduler = renderCoordinator.scheduler();
+        this.tuning = renderCoordinator.tuning();
+        this.metrics = renderCoordinator.metrics();
         this.pageCacheDirectory = new File(
                 context.getCacheDir(), "page_tiles/session-" + Long.toUnsignedString(System.nanoTime()));
         if (!pageCacheDirectory.mkdirs() && !pageCacheDirectory.isDirectory()) {
             throw new IllegalStateException("Could not create the page tile cache.");
         }
+        rasterDecoder = new RasterPageDecoder(archive, pageCacheDirectory, metrics, renderCoordinator, this);
         placeholderPaint.setColor(Color.rgb(24, 26, 31));
 
-        tiles = new LruCache<>(cacheKb) {
-            @Override
-            protected int sizeOf(TileKey key, Bitmap bitmap) {
-                return Math.max(1, bitmap.getAllocationByteCount() / 1024);
-            }
-
-            @Override
-            protected void entryRemoved(boolean evicted, TileKey key, Bitmap oldValue,
-                    Bitmap newValue) {
-                // Recently visible pages compete with ahead-of-reader tiles within the same
-                // existing speculative ceiling, rather than disappearing on a backward turn.
-                if (evicted && retainEvictedTiles && !closed && speculativeTiles != null) {
-                    speculativeTiles.putHistory(TileRenderer.this, key, oldValue);
-                }
-            }
-        };
-        if (speculativeTiles != null) {
-            speculativeTiles.registerOwner(this, cacheKb * 1024L,
-                    archive.supportsRenderedTiles() ? 0 : cacheKb * 1024L);
-            if (tuning.refill) speculativeTiles.onWorkAvailable(this, this::scheduleRefill);
-        }
-    }
-
-    private void residentBytes() {
-        if (speculativeTiles == null) return;
-        long backing = 0;
-        for (DecoderHolder holder : decoders.values()) {
-            if (holder.fallback != null) backing += holder.fallback.getAllocationByteCount();
-        }
-        speculativeTiles.residentBytes(this, tiles.size() * 1024L, backing);
+        tiles = renderCoordinator.visibleTiles(this, cacheKb);
+        renderCoordinator.registerOwner(this);
+        if (tuning.refill) renderCoordinator.onWorkAvailable(this, this::scheduleRefill);
     }
 
     private void scheduleRefill() {
@@ -281,6 +367,29 @@ public final class TileRenderer implements AutoCloseable {
         int firstY = visibleTop / sourceTile;
         int lastY = Math.max(firstY, (visibleBottom - 1) / sourceTile);
         java.util.List<Map.Entry<TileKey, Bitmap>> rasterFallbacks = null;
+        RenderedTilePolicy.Region region = new RenderedTilePolicy.Region(visibleLeft, visibleTop,
+                visibleRight, visibleBottom, page.width, page.height, scale);
+        boolean missingDetail = false;
+        for (int y = firstY; y <= lastY && !missingDetail; y++) {
+            for (int x = firstX; x <= lastX; x++) {
+                if (tiles.get(key(pageIndex, page, sample, renderScale, x, y)) == null) {
+                    missingDetail = true; break;
+                }
+            }
+        }
+        if (missingDetail && prepareCoarse(pageIndex, region, renderScale)) {
+            float coarse = coarseScale(renderScale);
+            int coarseSample = rendered ? 1 : Math.round(1f / coarse);
+            int edge = rendered ? RenderedTilePolicy.sourceTileSize(coarse) : RASTER_TILE_SIZE * coarseSample;
+            for (int y = visibleTop / edge; y <= (visibleBottom - 1) / edge; y++) {
+                for (int x = visibleLeft / edge; x <= (visibleRight - 1) / edge; x++) {
+                    requestTile(key(pageIndex, page, coarseSample, coarse, x, y), pageIndex,
+                            coarseSample, coarse, new Rect(x * edge, y * edge,
+                                    Math.min(page.width, (x + 1) * edge), Math.min(page.height, (y + 1) * edge)), false, true);
+                }
+            }
+        }
+
 
         for (int tileY = firstY; tileY <= lastY; tileY++) {
             for (int tileX = firstX; tileX <= lastX; tileX++) {
@@ -298,16 +407,13 @@ public final class TileRenderer implements AutoCloseable {
                         destination.top + source.bottom * scale);
                 TileKey key = key(pageIndex, page, sample, renderScale, tileX, tileY);
                 Bitmap bitmap = tiles.get(key);
-                if (bitmap == null && speculativeTiles != null) {
-                    bitmap = speculativeTiles.take(this, key);
-                    if (bitmap != null) tiles.put(key, bitmap);
-                }
+                if (bitmap == null) bitmap = tiles.adoptOptional(key);
                 boolean missing = bitmap == null || bitmap.isRecycled();
                 double fallbackArea = 0;
                 if (!missing) {
                     canvas.drawBitmap(bitmap, null, tileDestination, imagePaint);
                 } else {
-                    if (rendered) {
+                    if (rendered && !tuning.prioritized) {
                         if (drawRenderedFallback(canvas, pageIndex, page, source, tileDestination, renderScale)
                                 && metrics != null) {
                             RectF covered = new RectF(tileDestination);
@@ -315,10 +421,10 @@ public final class TileRenderer implements AutoCloseable {
                         }
                     } else {
                         if (rasterFallbacks == null) {
-                            rasterFallbacks = rasterFallbacks(pageIndex, sample);
+                            rasterFallbacks = cachedFallbacks(pageIndex, sample, renderScale, rendered);
                         }
-                        fallbackArea = drawRasterFallback(canvas, page, destination, visible,
-                                tileDestination, source, rasterFallbacks);
+                        fallbackArea = drawCachedFallback(canvas, page, destination, visible,
+                                tileDestination, source, rasterFallbacks, rendered);
                     }
                     requestTile(key, pageIndex, sample, renderScale, source, false);
                 }
@@ -337,32 +443,90 @@ public final class TileRenderer implements AutoCloseable {
         return archive.supportsRenderedTiles();
     }
 
-    public synchronized void trimMemory() {
-        if (closed) return;
-        cancelPrefetch();
-        if (speculativeTiles != null) speculativeTiles.removeOwner(this);
-        discardVisibleTiles();
-        for (DecoderHolder holder : decoders.values()) holder.close();
-        decoders.clear();
-        residentBytes();
+    public void trimMemory() { trimMemory(true); }
+
+    private void trimMemory(boolean clearFailures) {
+        synchronized (pending) {
+            if (closed) return;
+            lifecycleGeneration++;
+            cancelPrefetch();
+            if (clearFailures) { visibleFailures.clear(); memoryFailures.clear(); renderLevels.clear(); }
+            for (TileTask task : new ArrayList<>(pending.values())) {
+                scheduler.remove(task);
+                completeTask(task);
+            }
+            renderCoordinator.removeOwner(this);
+            renderCoordinator.visibleDemand(this, visibleKeys);
+            discardVisibleTiles();
+            queueCleanup();
+        }
     }
 
     @Override
-    public synchronized void close() {
-        if (closed) return;
-        closed = true;
-        prefetchGeneration.close();
-        cancelPrefetch();
-        executor.shutdownNow();
-        discardVisibleTiles();
+    public void close() { closeAfter(null); }
+
+    /** The document owner runs its final close after this worker has released its decoders. */
+    public void closeAfter(Runnable afterClose) {
         synchronized (pending) {
-            for (TileTask task : new ArrayList<>(pending.values())) completeTask(task);
+            if (afterClose != null) {
+                if (cleanupDone.getCount() == 0) {
+                    new Thread(afterClose, "comic-document-close").start();
+                    return;
+                }
+                closeCallbacks.add(afterClose);
+            }
+            if (closed) return;
+            closed = true;
+            lifecycleGeneration++;
+            prefetchGeneration.close();
+            cancelPrefetch();
+            visibleKeys = java.util.Collections.emptySet();
+            visiblePageIndexes = java.util.Collections.emptySet();
+            visibleFailures.clear();
+            memoryFailures.clear();
+            discardVisibleTiles();
+            for (TileTask task : new ArrayList<>(pending.values())) {
+                scheduler.remove(task);
+                completeTask(task);
+            }
+            renderCoordinator.removeOwner(this);
+            queueCleanup();
+            scheduler.interrupt(this);
         }
-        if (speculativeTiles != null) speculativeTiles.removeOwner(this);
-        for (DecoderHolder holder : decoders.values()) holder.close();
-        decoders.clear();
-        if (speculativeTiles != null) speculativeTiles.unregisterOwner(this);
-        deleteTree(pageCacheDirectory);
+        if (Looper.myLooper() != Looper.getMainLooper() && !scheduler.isWorker(this)) {
+            boolean interrupted = false;
+            for (;;) {
+                try { awaitStopped(); break; }
+                catch (InterruptedException ignored) { interrupted = true; }
+            }
+            if (interrupted) Thread.currentThread().interrupt();
+        }
+    }
+
+    public void awaitStopped() throws InterruptedException { cleanupDone.await(); }
+
+    private void queueCleanup() {
+        if (!cleanupPosted.compareAndSet(false, true)) return;
+        scheduler.execute(this, new RenderScheduler.Work(0) {
+            @Override public void run() {
+                cleanupPosted.set(false);
+                rasterDecoder.trimMemory();
+                if (!closed) return;
+                renderCoordinator.unregisterOwner(TileRenderer.this);
+                try {
+                    deleteTree(pageCacheDirectory);
+                    for (;;) {
+                        java.util.List<Runnable> callbacks;
+                        synchronized (pending) {
+                            if (closeCallbacks.isEmpty()) { cleanupDone.countDown(); break; }
+                            callbacks = new ArrayList<>(closeCallbacks);
+                            closeCallbacks.clear();
+                        }
+                        for (Runnable callback : callbacks) callback.run();
+                    }
+                } finally { cleanupDone.countDown(); }
+            }
+        });
     }
 
     /** Offscreen requests have their own budget and never enter frame scale selection. */
@@ -376,17 +540,32 @@ public final class TileRenderer implements AutoCloseable {
     }
 
     private void planPrefetchPages(java.util.List<PageRequest> requests, long signature, int maxTiles) {
-        if (closed || archive.isUnavailable() || speculativeTiles == null ||
-                !speculativeTiles.enabled() || maxTiles <= 0) return;
+        if (closed || archive.isUnavailable() || !renderCoordinator.enabled() || maxTiles <= 0) return;
         if (prefetchGeneration.begin(signature)) {
             dropQueuedPrefetch();
-            synchronized (pending) { refusedPrefetch.clear(); preparedPrefetch.clear(); }
+            synchronized (pending) { refusedPrefetch.clear(); preparedPrefetch.clear(); deferredDecoderPrefetch.clear(); }
+        }
+        synchronized (pending) {
+            long currentPressure = renderCoordinator.pressureGeneration();
+            if (pressureGeneration != currentPressure) {
+                pressureGeneration = currentPressure;
+                refusedPrefetch.clear();
+                deferredDecoderPrefetch.clear();
+                preparedPrefetch.clear();
+            }
         }
         if (tuning.refill) {
             refillRequests = new ArrayList<>(requests);
             refillSignature = signature;
             refillMaxTiles = maxTiles;
         }
+        PrefetchPlan cached = cachedPrefetchPlan;
+        if (tuning.prioritized && cached != null && cached.matches(requests)) {
+            queuePrefetchCandidates(cached.candidates, cached.priorities, maxTiles);
+            return;
+        }
+        Map<PageRequest, PageInfo> planningPages = new java.util.IdentityHashMap<>();
+        for (PageRequest request : requests) planningPages.put(request, archive.page(request.page));
         Map<PageRequest, Float> predictedScales = tuning.predictedFrame
                 ? new java.util.IdentityHashMap<>() : java.util.Collections.emptyMap();
         if (tuning.predictedFrame) {
@@ -402,7 +581,7 @@ public final class TileRenderer implements AutoCloseable {
                 for (PageRequest request : frame) {
                     RectF area = new RectF(request.destination);
                     area.intersect(request.clip);
-                    PageInfo info = archive.page(request.page);
+                    PageInfo info = planningPages.get(request);
                     float scale = request.destination.width() / info.width;
                     regions.add(new RenderedTilePolicy.Region(
                             clamp((int) Math.floor((area.left - request.destination.left) / scale), 0, info.width - 1),
@@ -429,22 +608,23 @@ public final class TileRenderer implements AutoCloseable {
                     request.destination.height() <= 0f) break;
             RectF area = new RectF(request.destination);
             if (!area.intersect(request.clip)) continue;
-            PageInfo page = archive.page(request.page);
+            PageInfo page = planningPages.get(request);
             float scale = request.destination.width() / page.width;
             int left = clamp((int) Math.floor((area.left - request.destination.left) / scale), 0, page.width - 1);
             int top = clamp((int) Math.floor((area.top - request.destination.top) / scale), 0, page.height - 1);
             int right = clamp((int) Math.ceil((area.right - request.destination.left) / scale), 1, page.width);
             int bottom = clamp((int) Math.ceil((area.bottom - request.destination.top) / scale), 1, page.height);
-            RenderedTilePolicy.Region region = new RenderedTilePolicy.Region(
-                    left, top, right, bottom, page.width, page.height, scale);
-            java.util.List<RenderedTilePolicy.Region> single = java.util.Collections.singletonList(region);
-            float planned = archive.supportsRenderedTiles()
-                    ? RenderedTilePolicy.frameScales(single, tiles.maxSize() * 1024L * 3L / 4L)[0]
-                    : RenderedTilePolicy.rasterFrameScales(single, tiles.maxSize() * 1024L * 3L / 4L)[0];
+            float planned;
             if (predictedScales.containsKey(request)) {
                 planned = predictedScales.get(request);
-            } else if (!Float.isNaN(visibleRenderScale)) {
-                planned = Math.min(planned, visibleRenderScale);
+            } else {
+                RenderedTilePolicy.Region region = new RenderedTilePolicy.Region(
+                        left, top, right, bottom, page.width, page.height, scale);
+                java.util.List<RenderedTilePolicy.Region> single = java.util.Collections.singletonList(region);
+                planned = archive.supportsRenderedTiles()
+                        ? RenderedTilePolicy.frameScales(single, tiles.maxSize() * 1024L * 3L / 4L)[0]
+                        : RenderedTilePolicy.rasterFrameScales(single, tiles.maxSize() * 1024L * 3L / 4L)[0];
+                if (!Float.isNaN(visibleRenderScale)) planned = Math.min(planned, visibleRenderScale);
             }
             boolean rendered = archive.supportsRenderedTiles();
             int sample = rendered ? 1 : Math.max(1, Math.round(1f / planned));
@@ -466,7 +646,7 @@ public final class TileRenderer implements AutoCloseable {
                     if (tuning.boundedAdmission() && !plannedKeys.add(key)) continue;
                     if (tuning.boundedAdmission()) {
                         planBytes += estimated;
-                        if (planBytes > speculativeTiles.limitBytes()) {
+                        if (planBytes > renderCoordinator.limitBytes()) {
                             if (tuning.prioritized) break requestsLoop;
                             return;
                         }
@@ -476,7 +656,7 @@ public final class TileRenderer implements AutoCloseable {
                         candidates.add(new PrefetchTile(key, request.page, sample, renderScale, source));
                         continue;
                     }
-                    if (tiles.get(key) != null || speculativeTiles.contains(this, key)) continue;
+                    if (tiles.get(key) != null || renderCoordinator.contains(this, key)) continue;
                     synchronized (pending) { if (tuning.boundedAdmission() && refusedPrefetch.contains(key)) continue; }
                     considered++;
                     requestTile(key, request.page, sample, renderScale,
@@ -485,28 +665,65 @@ public final class TileRenderer implements AutoCloseable {
             }
         }
         if (tuning.prioritized) {
-            speculativeTiles.plan(this, priorities);
+            cachedPrefetchPlan = new PrefetchPlan(requests, planningPages, candidates, priorities);
+            queuePrefetchCandidates(candidates, priorities, maxTiles);
+        }
+    }
+
+    private void queuePrefetchCandidates(java.util.List<PrefetchTile> candidates,
+            Map<TileKey, Integer> priorities, int maxTiles) {
+        renderCoordinator.plan(this, priorities);
+        synchronized (pending) {
+            for (TileTask task : new ArrayList<>(pending.values())) {
+                if (task.speculative && !priorities.containsKey(task.key) && scheduler.remove(task)) {
+                    completeTask(task);
+                }
+            }
+        }
+        int queued = 0;
+        for (PrefetchTile tile : candidates) {
+            if (tiles.get(tile.key) != null || renderCoordinator.contains(this, tile.key)) continue;
             synchronized (pending) {
-                for (TileTask task : new ArrayList<>(pending.values())) {
-                    if (task.speculative && !priorities.containsKey(task.key) && executor.remove(task)) {
-                        completeTask(task);
-                    }
-                }
+                if (pending.containsKey(tile.key) || refusedPrefetch.contains(tile.key)) continue;
+                if (preparedAlready(tile.key, renderCoordinator.priority(this, tile.key))) continue;
             }
-            int queued = 0;
-            for (PrefetchTile tile : candidates) {
-                if (tiles.get(tile.key) != null || speculativeTiles.contains(this, tile.key)) continue;
-                synchronized (pending) {
-                    if (pending.containsKey(tile.key) || refusedPrefetch.contains(tile.key)) continue;
-                    if (preparedAlready(tile.key, speculativeTiles.priority(this, tile.key))) continue;
-                }
-                if (queued++ >= maxTiles) break;
-                requestTile(tile.key, tile.page, tile.sample, tile.scale, tile.source, true);
-            }
+            if (queued++ >= maxTiles) break;
+            requestTile(tile.key, tile.page, tile.sample, tile.scale, tile.source, true);
         }
     }
 
     private record PrefetchTile(TileKey key, int page, int sample, float scale, Rect source) { }
+
+    private final class PrefetchPlan {
+        final java.util.List<PageRequest> requests = new ArrayList<>();
+        final java.util.List<PageInfo> pages = new ArrayList<>();
+        final java.util.List<PrefetchTile> candidates;
+        final Map<TileKey, Integer> priorities;
+        final float visibleScale = visibleRenderScale;
+        final long byteLimit = renderCoordinator.limitBytes();
+        PrefetchPlan(java.util.List<PageRequest> source, Map<PageRequest, PageInfo> planningPages,
+                java.util.List<PrefetchTile> candidates,
+                Map<TileKey, Integer> priorities) {
+            for (PageRequest request : source) {
+                requests.add(new PageRequest(request.page, request.destination, request.clip, request.frame, request.reverse));
+                pages.add(planningPages.get(request));
+            }
+            this.candidates = candidates;
+            this.priorities = priorities;
+        }
+        boolean matches(java.util.List<PageRequest> next) {
+            if (requests.size() != next.size() || Float.compare(visibleScale, visibleRenderScale) != 0 ||
+                    byteLimit != renderCoordinator.limitBytes()) return false;
+            for (int i = 0; i < next.size(); i++) {
+                PageRequest old = requests.get(i), request = next.get(i);
+                PageInfo previous = pages.get(i), page = archive.page(request.page);
+                if (old.page != request.page || old.frame != request.frame || old.reverse != request.reverse ||
+                        !old.destination.equals(request.destination) || !old.clip.equals(request.clip) ||
+                        previous.width != page.width || previous.height != page.height) return false;
+            }
+            return true;
+        }
+    }
 
     /** A replacement may not repeatedly decode the same optional output in one window.
      * A strictly nearer use can retry once at its new rank; visible work is never suppressed. */
@@ -519,48 +736,72 @@ public final class TileRenderer implements AutoCloseable {
 
     public void cancelPrefetch() {
         refillRequests = java.util.Collections.emptyList();
+        cachedPrefetchPlan = null;
         prefetchGeneration.cancel();
         dropQueuedPrefetch();
-        if (speculativeTiles != null && tuning.prioritized) speculativeTiles.cancelPlan(this);
+        if (tuning.prioritized) renderCoordinator.cancelPlan(this);
     }
 
     private void dropQueuedPrefetch() {
         synchronized (pending) {
             for (TileTask task : new ArrayList<>(pending.values())) {
-                if (task.speculative && executor.remove(task)) completeTask(task);
+                if (task.speculative && scheduler.remove(task)) completeTask(task);
             }
         }
     }
 
     private void requestTile(TileKey key, int pageIndex, int sample,
             float renderScale, Rect source, boolean speculative) {
+        requestTile(key, pageIndex, sample, renderScale, source, speculative, false);
+    }
+
+    private void requestTile(TileKey key, int pageIndex, int sample,
+            float renderScale, Rect source, boolean speculative, boolean coarse) {
         synchronized (pending) {
             // Refill the nearest tile on completion. Farther queued reservations must
             // not hold the allowance when a new near-frame plan arrives.
             int speculativeLimit = tuning.prioritized ? 1 : 16;
-            if (closed || (speculative && speculativeQueued >= speculativeLimit)) return;
+            if (!canRender() || (speculative && speculativeQueued >= speculativeLimit)) return;
+            // Publication can win between the draw/planner's lookup and this admission lock.
+            Bitmap ready = tiles.get(key);
+            if ((ready != null && !ready.isRecycled()) ||
+                    (renderCoordinator.contains(this, key))) {
+                if (!speculative) mainHandler.post(invalidator);
+                return;
+            }
+            MemoryFailure memoryFailure = memoryFailures.get(pageIndex);
+            if (memoryFailure != null && (memoryFailure.width != key.width() || memoryFailure.height != key.height())) {
+                memoryFailures.remove(pageIndex);
+                memoryFailure = null;
+            }
+            if (!speculative && memoryFailure != null &&
+                    (memoryFailure.attempts >= MAX_VISIBLE_ATTEMPTS ||
+                            android.os.SystemClock.uptimeMillis() < memoryFailure.retryAt)) return;
+            VisibleFailure failure = visibleFailures.get(key);
+            if (!speculative && failure != null && (failure.attempts >= MAX_VISIBLE_ATTEMPTS ||
+                    android.os.SystemClock.uptimeMillis() < failure.retryAt)) return;
             TileTask existing = pending.get(key);
             if (existing != null) {
                 if (!speculative && existing.speculative) {
                     existing.seenVisible = true;
-                    if (executor.remove(existing)) completeTask(existing);
+                    if (scheduler.remove(existing)) completeTask(existing);
                     else return; // The running tile will invalidate when finished.
                 } else return;
             }
             long reservation = speculative && tuning.boundedAdmission() ? estimateBytes(source, renderScale) : 0L;
-            int priority = speculative && tuning.prioritized ? speculativeTiles.priority(this, key) : Integer.MAX_VALUE;
+            int priority = speculative && tuning.prioritized ? renderCoordinator.priority(this, key) : Integer.MAX_VALUE;
             if (speculative && tuning.prioritized && preparedAlready(key, priority)) return;
             if (reservation > 0 && !(tuning.prioritized
-                    ? speculativeTiles.reserve(this, key, reservation)
-                    : speculativeTiles.reserve(reservation))) return;
+                    ? renderCoordinator.reserve(this, key, reservation)
+                    : renderCoordinator.reserve(reservation))) return;
             TileTask task = new TileTask(key, pageIndex, sample,
                     renderScale, new Rect(source), speculative, prefetchGeneration.current(),
-                    taskOrder.incrementAndGet(), reservation, priority);
+                    reservation, priority, coarse);
             pending.put(key, task);
             if (speculative) speculativeQueued++;
-            else if (speculativeTiles != null) speculativeTiles.visibleQueued();
+            else renderCoordinator.visibleQueued();
             try {
-                executor.execute(task);
+                scheduler.execute(this, task);
             } catch (RejectedExecutionException ignored) {
                 completeTask(task);
             }
@@ -574,15 +815,15 @@ public final class TileRenderer implements AutoCloseable {
 
     private void completeTask(TileTask task) {
         if (!task.finished.compareAndSet(false, true)) return;
-        task.releaseReservation();
+        if (!task.running) task.releaseReservation();
         synchronized (pending) {
             pending.remove(task.key, task);
             if (task.speculative) speculativeQueued--;
         }
-        if (!task.speculative && speculativeTiles != null) speculativeTiles.visibleFinished();
+        if (!task.speculative && renderCoordinator != null) renderCoordinator.visibleFinished();
     }
 
-    private final class TileTask implements Runnable, Comparable<TileTask> {
+    private final class TileTask extends RenderScheduler.Work {
         final TileKey key;
         final int pageIndex;
         final int sample;
@@ -590,16 +831,18 @@ public final class TileRenderer implements AutoCloseable {
         final Rect source;
         final boolean speculative;
         final long epoch;
-        final long order;
+        final long lifecycle;
         final long reservation;
         final int priority;
         final long queuedAt;
         final AtomicBoolean finished = new AtomicBoolean();
         final AtomicBoolean reservationReleased = new AtomicBoolean();
         volatile boolean seenVisible;
+        volatile boolean running;
 
         TileTask(TileKey key, int pageIndex, int sample, float renderScale,
-                Rect source, boolean speculative, long epoch, long order, long reservation, int priority) {
+                Rect source, boolean speculative, long epoch, long reservation, int priority, boolean coarse) {
+            super(speculative ? 3 : coarse ? 1 : 2);
             this.key = key;
             this.pageIndex = pageIndex;
             this.sample = sample;
@@ -607,25 +850,21 @@ public final class TileRenderer implements AutoCloseable {
             this.source = source;
             this.speculative = speculative;
             this.epoch = epoch;
-            this.order = order;
+            this.lifecycle = lifecycleGeneration;
             this.reservation = reservation;
             this.priority = priority;
             this.queuedAt = metrics == null ? 0 : android.os.SystemClock.elapsedRealtimeNanos();
         }
 
-        @Override public int compareTo(TileTask other) {
-            return BufferingPolicy.compareTasks(speculative, order, other.speculative, other.order);
-        }
-
         void releaseReservation() {
             if (reservation > 0 && reservationReleased.compareAndSet(false, true)) {
-                speculativeTiles.release(reservation);
+                renderCoordinator.release(reservation);
             }
         }
 
         boolean publishReserved(Bitmap bitmap) {
             return reservationReleased.compareAndSet(false, true) &&
-                    speculativeTiles.publishReserved(TileRenderer.this, key, bitmap, reservation);
+                    renderCoordinator.publishReserved(TileRenderer.this, key, bitmap, reservation);
         }
         void rememberPrepared() {
             if (!tuning.prioritized) return;
@@ -638,22 +877,44 @@ public final class TileRenderer implements AutoCloseable {
 
         @Override public void run() {
             boolean slot = false;
+            long outputReservation = 0;
             long started = metrics == null ? 0 : android.os.SystemClock.elapsedRealtimeNanos();
             try {
-                if (closed || !matchesPageDimensions(key)) return;
+                synchronized (pending) {
+                    if (!current() || (!speculative && !visibleKeys.contains(key))) return;
+                    running = true;
+                }
                 if (speculative) {
                     if (!prefetchGeneration.isCurrent(epoch) ||
-                            !speculativeTiles.beginSpeculativeDecode()) return;
+                            !renderCoordinator.beginSpeculativeDecode()) return;
                     slot = true;
                 }
+                if (speculative && !seenVisible && !archive.supportsRenderedTiles() &&
+                        rasterDecoder.wouldDisplaceVisible(pageIndex, visiblePageIndexes)) {
+                    synchronized (pending) {
+                        if (rasterDecoder.wouldDisplaceVisible(pageIndex, visiblePageIndexes)) {
+                            if (prefetchGeneration.isCurrent(epoch)) {
+                                refusedPrefetch.add(key);
+                                deferredDecoderPrefetch.add(key);
+                            }
+                            if (metrics != null) metrics.decoderDenied();
+                            return;
+                        }
+                    }
+                }
+                if (!speculative) {
+                    outputReservation = estimateBytes(source, renderScale);
+                    if (!renderCoordinator.reserveDecode(outputReservation)) {
+                        outputReservation = 0;
+                        throw new OutOfMemoryError("Session pixel budget exhausted");
+                    }
+                }
                 Bitmap decoded = decodeTile(pageIndex, sample, renderScale, source);
+                if (decoded == null) throw new IOException("Decoder returned no bitmap.");
                 if (metrics != null) metrics.decode(speculative,
                         android.os.SystemClock.elapsedRealtimeNanos() - started, started - queuedAt);
-                synchronized (TileRenderer.this) {
-                    residentBytes();
-                    boolean owned;
-                    synchronized (pending) { owned = pending.get(key) == this && !finished.get(); }
-                    if (decoded != null && !closed && owned && matchesPageDimensions(key)) {
+                synchronized (pending) {
+                    if (current() && (speculative || visibleKeys.contains(key))) {
                         // A running prefetch that became visible must satisfy that visible request,
                         // even when navigation has already advanced the offscreen generation.
                         if (speculative && !(tuning.prioritized && seenVisible)) {
@@ -663,13 +924,13 @@ public final class TileRenderer implements AutoCloseable {
                                         if (tuning.prioritized) adopted[0] = publishReserved(decoded);
                                         else {
                                             releaseReservation();
-                                            adopted[0] = speculativeTiles.offer(TileRenderer.this, key, decoded, false);
+                                            adopted[0] = renderCoordinator.offer(TileRenderer.this, key, decoded, false);
                                         }
                                     });
                             if (!current || !adopted[0]) {
                                 if (metrics != null && !current) metrics.stale();
                                 if (current && tuning.boundedAdmission() && (!tuning.prioritized ||
-                                        speculativeTiles.planned(TileRenderer.this, key))) synchronized (pending) {
+                                        renderCoordinator.planned(TileRenderer.this, key))) synchronized (pending) {
                                     if (prefetchGeneration.isCurrent(epoch)) refusedPrefetch.add(key);
                                 }
                                 decoded.recycle();
@@ -679,18 +940,38 @@ public final class TileRenderer implements AutoCloseable {
                             }
                         } else {
                             releaseReservation();
-                            tiles.put(key, decoded);
+                            long reserved = outputReservation;
+                            outputReservation = 0;
+                            tiles.put(key, decoded, reserved);
+                            visibleFailures.remove(key);
+                            errorReported = false;
                             if (metrics != null) metrics.published(decoded.getAllocationByteCount());
-                            residentBytes();
                             mainHandler.post(invalidator);
                         }
                     } else if (decoded != null) decoded.recycle();
                 }
             } catch (OutOfMemoryError error) {
                 if (metrics != null) metrics.failure();
-                if (speculativeTiles != null) speculativeTiles.onMemoryPressure();
-                trimMemory();
-                if (!speculative) reportError(context.getString(R.string.error_tile_memory));
+                synchronized (pending) {
+                    if (current()) {
+                        renderCoordinator.onMemoryPressure();
+                        trimMemory(false);
+                        if (!speculative || seenVisible) {
+                            RenderLevel requested = renderLevels.get(pageIndex);
+                            retryAfterMemoryFailure(key, requested == null ? renderScale : requested.scale);
+                        }
+                        // Trimming cancels all visible work. Recover the remaining demand even
+                        // when this tile has exhausted its retries or was only speculative.
+                        long generation = lifecycleGeneration;
+                        mainHandler.post(() -> {
+                            synchronized (pending) {
+                                if (canRender() && lifecycleGeneration == generation && !visibleKeys.isEmpty()) {
+                                    invalidator.run();
+                                }
+                            }
+                        });
+                    }
+                }
             } catch (IOException | RuntimeException error) {
                 if (metrics != null) metrics.failure();
                 if (speculative && tuning.boundedAdmission()) {
@@ -698,60 +979,80 @@ public final class TileRenderer implements AutoCloseable {
                         if (prefetchGeneration.isCurrent(epoch)) refusedPrefetch.add(key);
                     }
                 }
-                if (!speculative) reportError(context.getString(R.string.error_render_page, pageIndex + 1));
+                synchronized (pending) {
+                    if (current() && (!speculative || seenVisible)) {
+                        retryVisible(key);
+                        if (!speculative) reportError(key, context.getString(R.string.error_render_page, pageIndex + 1));
+                    }
+                }
             } finally {
-                if (slot) speculativeTiles.endSpeculativeDecode();
+                if (outputReservation != 0) renderCoordinator.releaseDecode(outputReservation);
+                releaseReservation();
+                if (slot) renderCoordinator.endSpeculativeDecode();
                 if (speculative && seenVisible && !closed) mainHandler.post(invalidator);
                 completeTask(this);
-                if (tuning.refill && speculativeTiles != null && (slot || !speculative)) {
-                    speculativeTiles.workFinished();
+                if (tuning.refill && (slot || !speculative)) {
+                    renderCoordinator.workFinished();
                 }
             }
         }
+
+        private boolean current() {
+            return canRender() && lifecycleGeneration == lifecycle && pending.get(key) == this &&
+                    !finished.get() && matchesPageDimensions(key);
+        }
     }
 
-    private synchronized Bitmap decodeTile(
-            int pageIndex, int sample, float renderScale, Rect source) throws IOException {
-        if (closed) throw new IOException("Renderer is closed.");
-        if (archive.supportsRenderedTiles()) {
-            return archive.renderTile(pageIndex, source, renderScale);
-        }
-        DecoderHolder holder = decoderFor(pageIndex);
-        if (holder.regionDecoder != null) {
-            BitmapFactory.Options options = new BitmapFactory.Options();
-            options.inSampleSize = sample;
-            options.inPreferredConfig = Bitmap.Config.ARGB_8888;
-            Bitmap result = holder.regionDecoder.decodeRegion(source, options);
-            if (result == null) throw new IOException("Region decoder returned no bitmap.");
-            return result;
-        }
+    private record MemoryFailure(int width, int height, int attempts, float scale, long retryAt) { }
 
-        int fallbackSample = InputLimits.boundedBitmapSample(
-                holder.width, holder.height, sample, tiles.maxSize() * 1024L / 4L);
-        if (holder.fallback == null || holder.fallbackSample != fallbackSample) {
-            // Keep one full-decoder backing image, bounded by this renderer's existing
-            // visible-cache budget. Four decoder holders must not retain four 128 MiB images.
-            for (DecoderHolder cached : decoders.values()) cached.clearFallback();
-            BitmapFactory.Options options = new BitmapFactory.Options();
-            options.inSampleSize = fallbackSample;
-            options.inPreferredConfig = Bitmap.Config.ARGB_8888;
-            try (InputStream stream = archive.openPage(pageIndex)) {
-                holder.fallback = BitmapFactory.decodeStream(stream, null, options);
+    private void retryAfterMemoryFailure(TileKey key, float scale) {
+        if (!visiblePageIndexes.contains(key.page())) return;
+        MemoryFailure old = memoryFailures.get(key.page());
+        int attempts = old == null ? 1 : old.attempts + 1;
+        float cheaper = Math.max(archive.supportsRenderedTiles() ? RenderedTilePolicy.MIN_RENDER_SCALE
+                : 1f / 64f, scale / 2f);
+        MemoryFailure failure = new MemoryFailure(key.width(), key.height(), attempts, cheaper,
+                android.os.SystemClock.uptimeMillis() + 250);
+        memoryFailures.put(key.page(), failure);
+        if (attempts >= MAX_VISIBLE_ATTEMPTS) {
+            reportError(key, context.getString(R.string.error_tile_memory));
+            return;
+        }
+        long generation = lifecycleGeneration;
+        mainHandler.postDelayed(() -> {
+            synchronized (pending) {
+                if (canRender() && lifecycleGeneration == generation &&
+                        memoryFailures.get(key.page()) == failure) invalidator.run();
             }
-            holder.fallbackSample = fallbackSample;
-            if (holder.fallback == null) throw new IOException("Bitmap decoder returned no image.");
-        }
+        }, 250);
+    }
 
-        int left = clamp(source.left / fallbackSample, 0, holder.fallback.getWidth() - 1);
-        int top = clamp(source.top / fallbackSample, 0, holder.fallback.getHeight() - 1);
-        int right = clamp((source.right + fallbackSample - 1) / fallbackSample,
-                left + 1, holder.fallback.getWidth());
-        int bottom = clamp((source.bottom + fallbackSample - 1) / fallbackSample,
-                top + 1, holder.fallback.getHeight());
-        Bitmap tile = Bitmap.createBitmap(holder.fallback, left, top, right - left, bottom - top);
-        // Android can return the source bitmap for a full-region crop. The decoder holder
-        // recycles its fallback later, so cached tiles must own independent pixels.
-        return tile == holder.fallback ? tile.copy(Bitmap.Config.ARGB_8888, false) : tile;
+    private record VisibleFailure(int attempts, long retryAt) { }
+
+    private void retryVisible(TileKey key) {
+        if (!canRender() || !visibleKeys.contains(key)) return;
+        VisibleFailure previous = visibleFailures.get(key);
+        int attempts = previous == null ? 1 : previous.attempts + 1;
+        long delay = attempts == 1 ? 250L : 1_000L;
+        VisibleFailure failure = new VisibleFailure(attempts, android.os.SystemClock.uptimeMillis() + delay);
+        visibleFailures.put(key, failure);
+        if (attempts >= MAX_VISIBLE_ATTEMPTS) return;
+        long generation = lifecycleGeneration;
+        mainHandler.postDelayed(() -> {
+            synchronized (pending) {
+                if (canRender() && lifecycleGeneration == generation && visibleKeys.contains(key) &&
+                        visibleFailures.get(key) == failure) invalidator.run();
+            }
+        }, delay);
+    }
+
+    private Bitmap decodeTile(int pageIndex, int sample, float renderScale, Rect source)
+            throws IOException {
+        if (closed) throw new IOException("Renderer is closed.");
+        if (archive.supportsRenderedTiles()) return archive.renderTile(pageIndex, source, renderScale);
+        java.util.Set<Integer> visible;
+        synchronized (pending) { visible = new java.util.HashSet<>(visiblePageIndexes); }
+        return rasterDecoder.decode(pageIndex, sample, source, visible, tiles.maxSize() * 1024L);
     }
 
     private boolean matchesPageDimensions(TileKey key) {
@@ -759,83 +1060,41 @@ public final class TileRenderer implements AutoCloseable {
         return page.width == key.width() && page.height == key.height();
     }
 
-    private DecoderHolder decoderFor(int pageIndex) throws IOException {
-        DecoderHolder existing = decoders.get(pageIndex);
-        if (existing != null) return existing;
-
-        PageInfo page = archive.page(pageIndex);
-        InputLimits.validateImageDimensions(page.width, page.height);
-        String extension = extension(page.name);
-        File file = new File(pageCacheDirectory, String.format(java.util.Locale.ROOT,
-                "page-%05d%s", pageIndex, extension));
-        if (!file.isFile()) {
-            long start = metrics == null ? 0 : android.os.SystemClock.elapsedRealtimeNanos();
-            archive.extractPage(pageIndex, file);
-            if (metrics != null) metrics.extracted(android.os.SystemClock.elapsedRealtimeNanos() - start);
-        }
-
-        // The document's page index can still contain provisional dimensions. Validate
-        // the actual file before constructing a decoder or planning a full-image allocation.
-        BitmapFactory.Options bounds = new BitmapFactory.Options();
-        bounds.inJustDecodeBounds = true;
-        BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
-        InputLimits.validateImageDimensions(bounds.outWidth, bounds.outHeight);
-
-        BitmapRegionDecoder regionDecoder = null;
-        try {
-            regionDecoder = BitmapRegionDecoder.newInstance(file.getAbsolutePath(), false);
-        } catch (IOException | RuntimeException ignored) {
-            // Animated GIF and a few older bitmap encodings need the full-decoder fallback.
-        }
-        DecoderHolder created = new DecoderHolder(file, regionDecoder, bounds.outWidth, bounds.outHeight);
-        decoders.put(pageIndex, created);
-        trimDecoders();
-        return created;
-    }
-
-    private void trimDecoders() {
-        while (decoders.size() > MAX_OPEN_DECODERS) {
-            Map.Entry<Integer, DecoderHolder> eldest = decoders.entrySet().iterator().next();
-            decoders.remove(eldest.getKey());
-            eldest.getValue().close();
-        }
-    }
-
-    private void reportError(String message) {
+    private void reportError(TileKey key, String message) {
         if (errorReported || closed) return;
         errorReported = true;
-        mainHandler.post(() -> errorListener.onRenderError(message));
+        long generation = lifecycleGeneration;
+        mainHandler.post(() -> {
+            synchronized (pending) {
+                if (canRender() && lifecycleGeneration == generation && visibleKeys.contains(key)) {
+                    errorListener.onRenderError(message);
+                }
+            }
+        });
     }
 
-    private synchronized void discardVisibleTiles() {
-        // Trimming/closure/OOM must release pixels, not transfer them to another cache.
-        retainEvictedTiles = false;
-        try {
-            tiles.evictAll();
-        } finally {
-            retainEvictedTiles = true;
-        }
-    }
+    private void discardVisibleTiles() { tiles.evictAll(); }
 
-    private java.util.List<Map.Entry<TileKey, Bitmap>> rasterFallbacks(int page, int sample) {
-        Map<TileKey, Bitmap> cached = speculativeTiles == null
-                ? new LinkedHashMap<>() : speculativeTiles.snapshot(this);
+    private java.util.List<Map.Entry<TileKey, Bitmap>> cachedFallbacks(int page, int sample,
+            float renderScale, boolean rendered) {
+        Map<TileKey, Bitmap> cached = renderCoordinator.snapshot(this);
         cached.putAll(tiles.snapshot());
         java.util.List<Map.Entry<TileKey, Bitmap>> result = new ArrayList<>();
         for (Map.Entry<TileKey, Bitmap> entry : cached.entrySet()) {
             if (entry.getKey().page() == page && matchesPageDimensions(entry.getKey()) &&
-                    entry.getKey().sample() != sample &&
+                    (rendered ? entry.getKey().renderScale() != renderScale : entry.getKey().sample() != sample) &&
                     !entry.getValue().isRecycled()) result.add(entry);
         }
         // Coarse pixels fill gaps first; finer cached tiles can then replace them.
-        result.sort((first, second) ->
-                Integer.compare(second.getKey().sample(), first.getKey().sample()));
+        result.sort((first, second) -> rendered
+                ? Float.compare(first.getKey().renderScale(), second.getKey().renderScale())
+                : Integer.compare(second.getKey().sample(), first.getKey().sample()));
         return result;
     }
 
-    private double drawRasterFallback(Canvas canvas, PageInfo page, RectF pageDestination,
+    private double drawCachedFallback(Canvas canvas, PageInfo page, RectF pageDestination,
             RectF visible, RectF requestedDestination, Rect requestedSource,
-            java.util.List<Map.Entry<TileKey, Bitmap>> cached) {
+            java.util.List<Map.Entry<TileKey, Bitmap>> cached, boolean rendered) {
         if (cached.isEmpty()) return 0;
         // Diagnostics only. Union in integer source coordinates prevents double-counting
         // overlapping coarse/fine fallback tiles; project and clip to the actual viewport.
@@ -846,7 +1105,8 @@ public final class TileRenderer implements AutoCloseable {
         float scale = pageDestination.width() / page.width;
         for (Map.Entry<TileKey, Bitmap> entry : cached) {
             TileKey address = entry.getKey();
-            int edge = RASTER_TILE_SIZE * address.sample();
+            int edge = rendered ? RenderedTilePolicy.sourceTileSize(address.renderScale())
+                    : RASTER_TILE_SIZE * address.sample();
             int left = address.x() * edge;
             int top = address.y() * edge;
             RectF target = new RectF(pageDestination.left + left * scale,
@@ -897,8 +1157,8 @@ public final class TileRenderer implements AutoCloseable {
                     Math.min(page.width, sourceLeft + fallbackSourceTile),
                     Math.min(page.height, sourceTop + fallbackSourceTile));
             Bitmap fallback = tiles.get(key(pageIndex, page, 1, fallbackScale, tileX, tileY));
-            if (fallback == null && tuning.historyFallback && speculativeTiles != null) {
-                fallback = speculativeTiles.borrow(this, key(pageIndex, page, 1, fallbackScale, tileX, tileY));
+            if (fallback == null && tuning.historyFallback && renderCoordinator != null) {
+                fallback = renderCoordinator.borrow(this, key(pageIndex, page, 1, fallbackScale, tileX, tileY));
             }
             if (fallback != null && !fallback.isRecycled()) {
                 canvas.drawBitmap(
@@ -939,13 +1199,6 @@ public final class TileRenderer implements AutoCloseable {
         return new TileKey(pageIndex, sample, renderScale, x, y, page.width, page.height);
     }
 
-    private static String extension(String name) {
-        int dot = name.lastIndexOf('.');
-        if (dot < 0 || dot < name.lastIndexOf('/')) return ".img";
-        String value = name.substring(dot).toLowerCase(java.util.Locale.ROOT);
-        return value.length() <= 6 ? value : ".img";
-    }
-
     private static int clamp(int value, int minimum, int maximum) {
         return Math.max(minimum, Math.min(maximum, value));
     }
@@ -957,31 +1210,4 @@ public final class TileRenderer implements AutoCloseable {
         file.delete();
     }
 
-    private static final class DecoderHolder {
-        private final File file;
-        private final BitmapRegionDecoder regionDecoder;
-        private final int width;
-        private final int height;
-        private Bitmap fallback;
-        private int fallbackSample;
-
-        private DecoderHolder(File file, BitmapRegionDecoder regionDecoder, int width, int height) {
-            this.file = file;
-            this.regionDecoder = regionDecoder;
-            this.width = width;
-            this.height = height;
-        }
-
-        private void close() {
-            if (regionDecoder != null && !regionDecoder.isRecycled()) regionDecoder.recycle();
-            clearFallback();
-            file.delete();
-        }
-
-        private void clearFallback() {
-            if (fallback != null && !fallback.isRecycled()) fallback.recycle();
-            fallback = null;
-            fallbackSample = 0;
-        }
-    }
 }

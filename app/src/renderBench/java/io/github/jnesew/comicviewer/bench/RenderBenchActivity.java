@@ -8,7 +8,7 @@ import android.view.*;
 import android.widget.*;
 import io.github.jnesew.comicviewer.R;
 import io.github.jnesew.comicviewer.render.ComicCanvasView;
-import io.github.jnesew.comicviewer.render.SpeculativeTileCache;
+import io.github.jnesew.comicviewer.render.RenderCoordinator;
 import org.json.JSONObject;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -24,7 +24,7 @@ public final class RenderBenchActivity extends Activity {
     private volatile boolean running;
     private volatile boolean destroyed;
     private volatile BenchFrames frameStats;
-    private volatile SpeculativeTileCache activeCache;
+    private volatile RenderCoordinator activeCache;
     private volatile String interruptionReason = "";
     private HandlerThread frameThread;
     private Handler frameHandler;
@@ -157,14 +157,14 @@ public final class RenderBenchActivity extends Activity {
         frameStats = null; frames.seal();
         return frames.result();
     }
-    void activeCache(SpeculativeTileCache cache) {
+    void activeCache(RenderCoordinator cache) {
         activeCache = cache;
         if (cache != null && stopped.get()) cache.setForeground(false);
     }
     String interruptionReason() { return interruptionReason; }
     private void stopRun(String reason) {
         interruptionReason = reason; stopped.set(true);
-        SpeculativeTileCache cache = activeCache;
+        RenderCoordinator cache = activeCache;
         if (cache != null) cache.setForeground(false);
     }
     private String summary() {
@@ -205,7 +205,7 @@ public final class RenderBenchActivity extends Activity {
         if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
             stopRun("ui_hidden");
         } else if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE) {
-            SpeculativeTileCache cache = activeCache;
+            RenderCoordinator cache = activeCache;
             if (cache != null) cache.onMemoryPressure();
             stopRun("system_trim_" + level);
         }
@@ -213,7 +213,7 @@ public final class RenderBenchActivity extends Activity {
     @Override public void onLowMemory() {
         super.onLowMemory();
         if (running) {
-            SpeculativeTileCache cache = activeCache;
+            RenderCoordinator cache = activeCache;
             if (cache != null) cache.onMemoryPressure();
             stopRun("system_low_memory");
         }

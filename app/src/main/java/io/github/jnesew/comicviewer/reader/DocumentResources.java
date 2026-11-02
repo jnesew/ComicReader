@@ -26,10 +26,7 @@ final class DocumentResources implements AutoCloseable {
     @Override public synchronized void close() {
         if (closed) return;
         closed = true;
-        try {
-            if (renderer != null) renderer.close();
-        } finally {
-            document.close();
-        }
+        if (renderer != null) renderer.closeAfter(document::close);
+        else document.close();
     }
 }

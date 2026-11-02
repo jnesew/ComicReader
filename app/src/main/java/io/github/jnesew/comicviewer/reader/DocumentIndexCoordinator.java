@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 /** Indexes borrowed resources; only the session may dispose them. */
 final class DocumentIndexCoordinator {
     private final ReaderSession session;
+    private final java.util.Set<DocumentResources> refreshPending = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final ExecutorService worker = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "comic-index-worker");
         thread.setPriority(Thread.NORM_PRIORITY - 1);
@@ -60,7 +61,7 @@ final class DocumentIndexCoordinator {
                         }
                     }
                     @Override public void onPagesUpdated() {
-                        session.mainHandler.post(() -> refresh(resource, generation));
+                        queueRefresh(resource, generation);
                     }
                     @Override public void onComplete(List<PageInfo> pages) {
                         synchronized (resource) {
@@ -72,7 +73,7 @@ final class DocumentIndexCoordinator {
                             if (!current(resource, generation)) return;
                             resource.progress.indexedPages = count;
                             resource.progress.indexComplete = true;
-                            refresh(resource, generation);
+                            queueRefresh(resource, generation);
                             session.host.onLibraryChanged();
                         });
                     }
@@ -83,11 +84,19 @@ final class DocumentIndexCoordinator {
         });
     }
 
+    private void queueRefresh(DocumentResources resource, int generation) {
+        if (!refreshPending.add(resource)) return;
+        session.mainHandler.post(() -> {
+            refreshPending.remove(resource);
+            refresh(resource, generation);
+        });
+    }
+
     private void refresh(DocumentResources resource, int generation) {
         if (!current(resource, generation) || !session.readerActive) return;
         if (session.reader.canvas.isContinuous()) {
             session.continuous.refreshContinuousDocuments(session.document().key(),
-                    session.reader.canvas.page(), session.reader.canvas.pageRatio());
+                    session.reader.canvas.page(), session.reader.canvas.pageRatio(), true);
         } else if (session.active == resource) {
             session.reader.canvas.onPageInfoChanged();
         }

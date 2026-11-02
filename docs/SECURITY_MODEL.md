@@ -31,14 +31,26 @@ fail with a controlled I/O error. Temporary archive, PDF, page, and cover writes
 Image dimensions are checked before preview/full-bitmap allocation, and PDF/CBZ counts are checked
 before page-sized arrays are allocated.
 
-Raster formats without region decoding use a sampled full-image backing bitmap. Each renderer
-retains at most one such bitmap, sampled to its existing visible-tile cache byte budget and the
-32-megapixel hard fallback limit. Actual image headers are validated before decoder construction
-and supply the allocation dimensions even while the page index contains provisional metadata.
-Tile caches and the shared speculative cache keep their existing
-ceilings; memory-pressure trimming also releases decoder backing images. This bounds retained
-application bitmaps, not every temporary allocation inside Android's decoders. File-size limits
-are rejection ceilings rather than a promise that every document below them fits every device.
+Visible and optional tiles, sampled backing images, and admitted tile output share one reader
+session pixel allowance: half the Java heap class, bounded to 48–192 MiB. The allowance reserves
+4–12 MiB for the slider preview cache. Visible pages are planned together across issue boundaries;
+optional pixels and offscreen history are released first when visible allocations need room.
+Tile decoding and cleanup use one session scheduler with at most three workers and serialized
+work for each document, including retiring work that cannot be interrupted inside a platform codec.
+
+Raster formats without region decoding retain at most one sampled full-image backing bitmap per
+document. Its 24–64 MiB per-document limit and the 32-megapixel hard fallback limit apply in addition
+to the shared session allowance; the decoder increases sampling when the shared allowance cannot
+admit the preferred backing image. Actual image headers are validated before decoder construction
+and supply allocation dimensions even while page-index metadata is provisional. Extracted page
+files can survive decoder eviction within a 256 MiB cache per open document; an atomic extraction
+can temporarily require one additional page file. Closing the document removes its page cache.
+
+Memory-pressure trimming releases backing images and tiles; visible allocation failures retry at
+a cheaper resolution with bounded attempts. This bounds retained and admitted application pixels,
+not all temporary allocations inside Android's decoders, delayed reclamation, or GPU copies.
+File-size limits are rejection ceilings rather than a promise that every document below them fits
+every device.
 
 EPUB and ComicInfo XML is decoded strictly as UTF-8 or UTF-16 before parsing. DTD and entity
 declarations are rejected before the platform DOM parser sees them, and external resolution is

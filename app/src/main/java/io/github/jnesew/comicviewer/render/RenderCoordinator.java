@@ -13,9 +13,13 @@ import java.util.function.LongSupplier;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongPredicate;
 
-/** One byte ceiling shared by all renderers in a reader session. Entries are evicted before visible tiles. */
-public final class SpeculativeTileCache {
+/** Session-wide pixel accounting, tile retention, optional-work admission and scheduling. */
+public final class RenderCoordinator {
     private final LinkedHashMap<Key, Bitmap> entries = new LinkedHashMap<>(16, .75f, true);
+    private final LinkedHashMap<Key, Bitmap> visibleEntries = new LinkedHashMap<>(32, .75f, true);
+    private final Map<Object, java.util.Set<TileKey>> visibleDemand = new LinkedHashMap<>();
+    private long visibleBytes;
+    private long decodingBytes;
     private final long heapBytes;
     private final BooleanSupplier memoryAvailable;
     private LongPredicate memoryAdmission;
@@ -23,7 +27,7 @@ public final class SpeculativeTileCache {
     private RenderTuning tuning = RenderTuning.READER;
     private RenderMetrics metrics;
     private long reservedBytes;
-    private final Map<Object, long[]> owners = new LinkedHashMap<>();
+    private final Map<Object, Long> backingAllocations = new LinkedHashMap<>();
     private final Map<Object, Runnable> wakeups = new LinkedHashMap<>();
     private final Map<Object, Map<TileKey, Integer>> plans = new LinkedHashMap<>();
     private final java.util.Set<Key> history = new java.util.HashSet<>();
@@ -31,33 +35,36 @@ public final class SpeculativeTileCache {
     private long usedBytes;
     private boolean foreground = true;
     private long pressureUntil;
+    private long pressureGeneration;
+    private boolean memoryRefused;
     private final Semaphore decodeSlot = new Semaphore(1);
+    private final RenderScheduler scheduler = new RenderScheduler();
     private final AtomicInteger visibleWaiting = new AtomicInteger();
 
-    public SpeculativeTileCache(Context context, long heapBytes, String level) {
+    public RenderCoordinator(Context context, long heapBytes, String level) {
         this(context, heapBytes, level, RenderTuning.READER, null);
     }
 
-    public SpeculativeTileCache(Context context, long heapBytes, String level,
+    public RenderCoordinator(Context context, long heapBytes, String level,
             RenderTuning tuning, RenderMetrics metrics) {
         this(heapBytes, level, new AndroidBufferingMemory(context, heapBytes), tuning, metrics);
     }
 
-    private SpeculativeTileCache(long heapBytes, String level, AndroidBufferingMemory memory,
+    private RenderCoordinator(long heapBytes, String level, AndroidBufferingMemory memory,
             RenderTuning tuning, RenderMetrics metrics) {
         this(heapBytes, level, memory, SystemClock::elapsedRealtime, tuning, metrics);
         memoryAdmission = memory::hasRoomFor;
     }
 
     /** Instrumentation seam; production uses the Android system/native monitor above. */
-    public SpeculativeTileCache(long heapBytes, String level, LongSupplier availableHeapBytes) {
+    public RenderCoordinator(long heapBytes, String level, LongSupplier availableHeapBytes) {
         this(heapBytes, level,
                 () -> availableHeapBytes.getAsLong() >=
                         Math.max(16L * 1024L * 1024L, heapBytes / 10L),
                 SystemClock::elapsedRealtime);
     }
 
-    public SpeculativeTileCache(long heapBytes, String level,
+    public RenderCoordinator(long heapBytes, String level,
             BooleanSupplier memoryAvailable, LongSupplier clock) {
         this.heapBytes = heapBytes;
         this.memoryAvailable = memoryAvailable;
@@ -67,7 +74,7 @@ public final class SpeculativeTileCache {
     }
 
     /** Deterministic Android/JVM test seam; not the production pressure monitor. */
-    public SpeculativeTileCache(long heapBytes, String level, BooleanSupplier memoryAvailable,
+    public RenderCoordinator(long heapBytes, String level, BooleanSupplier memoryAvailable,
             LongSupplier clock, RenderTuning tuning, RenderMetrics metrics) {
         this(heapBytes, level, memoryAvailable, clock);
         this.tuning = tuning; this.metrics = metrics; setLevel(level);
@@ -81,13 +88,171 @@ public final class SpeculativeTileCache {
     public synchronized boolean enabled() {
         return limitBytes > 0L && foreground && clock.getAsLong() >= pressureUntil;
     }
+    public synchronized boolean isForeground() { return foreground; }
+    synchronized long pressureGeneration() { return pressureGeneration; }
     public synchronized long usedBytes() { return usedBytes; }
     public synchronized long limitBytes() { return limitBytes; }
     RenderTuning tuning() { return tuning; }
     RenderMetrics metrics() { return metrics; }
 
-    public synchronized void registerOwner(Object owner, long visibleBudget, long backingBudget) {
-        owners.put(owner, new long[]{visibleBudget, backingBudget, 0, 0});
+    public long pixelLimitBytes() {
+        return BufferingPolicy.sessionBytes(heapBytes) - BufferingPolicy.previewBytes(heapBytes);
+    }
+    long visibleLimitBytes() { return BufferingPolicy.visibleSessionBytes(heapBytes); }
+    long backingLimitBytes() { return BufferingPolicy.backingBytesPerDocument(heapBytes); }
+
+    /** A lightweight owner view; all pixels live in the same session LRU. */
+    final class VisibleTiles {
+        private final Object owner;
+        private final int maxKb;
+        VisibleTiles(Object owner, int maxKb) { this.owner = owner; this.maxKb = maxKb; }
+        int maxSize() { return (int) Math.min(maxKb, visibleLimitBytes() / 1024L); }
+        Bitmap get(TileKey tile) {
+            synchronized (RenderCoordinator.this) { return visibleEntries.get(new Key(owner, tile)); }
+        }
+        void put(TileKey tile, Bitmap bitmap) { put(tile, bitmap, 0); }
+        void put(TileKey tile, Bitmap bitmap, long reservation) {
+            synchronized (RenderCoordinator.this) {
+                if (reservation != 0) releaseDecode(reservation);
+                Key key = new Key(owner, tile);
+                Bitmap previous = visibleEntries.put(key, bitmap);
+                if (previous != null) visibleBytes -= previous.getAllocationByteCount();
+                visibleBytes += bitmap.getAllocationByteCount();
+                trimVisible(owner, maxSize() * 1024L);
+                recordMemory();
+            }
+        }
+        Bitmap adoptOptional(TileKey tile) {
+            Bitmap bitmap;
+            synchronized (RenderCoordinator.this) {
+                Key key = new Key(owner, tile);
+                bitmap = entries.remove(key);
+                boolean recent = history.remove(key);
+                if (bitmap != null) {
+                    usedBytes -= bitmap.getAllocationByteCount();
+                    if (!recent && metrics != null) metrics.useful(bitmap.getAllocationByteCount());
+                    put(tile, bitmap);
+                }
+            }
+            if (bitmap != null && tuning.prioritized) workFinished();
+            return bitmap;
+        }
+        Map<TileKey, Bitmap> snapshot() {
+            synchronized (RenderCoordinator.this) {
+                Map<TileKey, Bitmap> result = new LinkedHashMap<>();
+                for (Map.Entry<Key, Bitmap> entry : visibleEntries.entrySet()) {
+                    if (entry.getKey().owner == owner) result.put(entry.getKey().tile, entry.getValue());
+                }
+                return result;
+            }
+        }
+        void evictAll() {
+            synchronized (RenderCoordinator.this) {
+                java.util.Iterator<Map.Entry<Key, Bitmap>> iterator = visibleEntries.entrySet().iterator();
+                while (iterator.hasNext()) {
+                    Map.Entry<Key, Bitmap> entry = iterator.next();
+                    if (entry.getKey().owner == owner) {
+                        visibleBytes -= entry.getValue().getAllocationByteCount(); iterator.remove();
+                    }
+                }
+                recordMemory();
+            }
+        }
+    }
+
+    VisibleTiles visibleTiles(Object owner, int maxKb) { return new VisibleTiles(owner, maxKb); }
+
+    synchronized void visibleDemand(Object owner, java.util.Set<TileKey> keys) {
+        if (keys.isEmpty()) visibleDemand.remove(owner);
+        else visibleDemand.put(owner, keys);
+    }
+
+    private boolean visible(Key key) {
+        java.util.Set<TileKey> demand = visibleDemand.get(key.owner);
+        return demand != null && demand.contains(key.tile);
+    }
+
+    private long ownerVisibleBytes(Object owner) {
+        long bytes = 0;
+        for (Map.Entry<Key, Bitmap> entry : visibleEntries.entrySet()) {
+            if (entry.getKey().owner == owner) bytes += entry.getValue().getAllocationByteCount();
+        }
+        return bytes;
+    }
+
+    private void trimVisible(Object owner, long ownerLimit) {
+        while (visibleBytes > visibleLimitBytes() || ownerVisibleBytes(owner) > ownerLimit ||
+                pixelBytes() > pixelLimitBytes()) {
+            Key victim = null;
+            boolean ownerOver = ownerVisibleBytes(owner) > ownerLimit;
+            for (Key key : visibleEntries.keySet()) {
+                if ((!ownerOver || key.owner == owner) && !visible(key)) { victim = key; break; }
+            }
+            if (victim == null) {
+                for (Key key : visibleEntries.keySet()) {
+                    if (!ownerOver || key.owner == owner) { victim = key; break; }
+                }
+            }
+            if (victim == null) break;
+            Bitmap bitmap = visibleEntries.remove(victim);
+            visibleBytes -= bitmap.getAllocationByteCount();
+            // Already allocated pixels may survive a backward turn within the optional ceiling.
+            if (enabled() && bitmap.getAllocationByteCount() <= limitBytes - usedBytes - reservedBytes &&
+                    bitmap.getAllocationByteCount() <= pixelLimitBytes() - pixelBytes()) {
+                Bitmap old = entries.put(victim, bitmap);
+                if (old != null) usedBytes -= old.getAllocationByteCount();
+                usedBytes += bitmap.getAllocationByteCount(); history.add(victim);
+            }
+        }
+    }
+
+    private long backingBytes() {
+        long bytes = 0;
+        for (long bytesHeld : backingAllocations.values()) bytes += bytesHeld;
+        return bytes;
+    }
+
+    public synchronized long pixelBytes() {
+        return visibleBytes + usedBytes + reservedBytes + decodingBytes + backingBytes();
+    }
+
+    private boolean makeRoom(long additional) {
+        while (additional > pixelLimitBytes() - pixelBytes()) {
+            if (!entries.isEmpty()) {
+                Key victim = entries.keySet().iterator().next();
+                Bitmap bitmap = entries.remove(victim); history.remove(victim);
+                usedBytes -= bitmap.getAllocationByteCount();
+                if (metrics != null) metrics.evicted(bitmap.getAllocationByteCount());
+                continue;
+            }
+            Key victim = null;
+            for (Key key : visibleEntries.keySet()) if (!visible(key)) { victim = key; break; }
+            if (victim == null) return false;
+            visibleBytes -= visibleEntries.remove(victim).getAllocationByteCount();
+        }
+        return true;
+    }
+
+    synchronized boolean reserveDecode(long bytes) {
+        if (bytes <= 0 || !makeRoom(bytes)) return false;
+        decodingBytes += bytes; recordMemory(); return true;
+    }
+    synchronized void releaseDecode(long bytes) {
+        decodingBytes -= bytes;
+        if (decodingBytes < 0) throw new IllegalStateException("Unbalanced decode reservation");
+        recordMemory();
+    }
+
+    synchronized boolean claimBacking(Object owner, long bytes) {
+        Long held = backingAllocations.get(owner);
+        if (held == null || bytes < 0) return false;
+        long growth = Math.max(0, bytes - held);
+        if (!makeRoom(growth)) return false;
+        backingAllocations.put(owner, bytes); recordMemory(); return true;
+    }
+
+    public synchronized void registerOwner(Object owner) {
+        backingAllocations.put(owner, 0L);
     }
     public synchronized void onWorkAvailable(Object owner, Runnable wakeup) { wakeups.put(owner, wakeup); }
     public void workFinished() {
@@ -103,13 +268,8 @@ public final class SpeculativeTileCache {
         }
         for (Runnable callback : callbacks) callback.run();
     }
-    public synchronized void residentBytes(Object owner, long visible, long backing) {
-        long[] state = owners.get(owner);
-        if (state != null) { state[2] = visible; state[3] = backing; }
-        recordMemory();
-    }
     public synchronized void unregisterOwner(Object owner) {
-        owners.remove(owner); wakeups.remove(owner); plans.remove(owner);
+        backingAllocations.remove(owner); wakeups.remove(owner); plans.remove(owner); visibleDemand.remove(owner);
     }
     /** Lower rank means nearer use. All owners compete under the same byte ceiling. */
     void plan(Object owner, Map<TileKey, Integer> candidates) {
@@ -167,12 +327,7 @@ public final class SpeculativeTileCache {
         return offer(owner, key, bitmap, false);
     }
     private long futureGrowth() {
-        if (tuning.cacheMiB == 0) return 0L;
-        long total = 0L;
-        for (long[] state : owners.values()) {
-            total += Math.max(0, state[0] - state[2]) + Math.max(0, state[1] - state[3]);
-        }
-        return total;
+        return tuning.cacheMiB == 0 ? 0 : Math.max(0, pixelLimitBytes() - pixelBytes());
     }
     /** Reservations bound resident plus queued output. The native guard also covers future growth. */
     public synchronized boolean reserve(long bytes) {
@@ -180,7 +335,7 @@ public final class SpeculativeTileCache {
             if (metrics != null) metrics.capacityDenied();
             return false;
         }
-        if (!hasMemoryRoom(bytes)) {
+        if (!makeRoom(bytes) || !hasMemoryRoom(bytes)) {
             if (metrics != null) metrics.memoryDenied();
             return false;
         }
@@ -197,9 +352,9 @@ public final class SpeculativeTileCache {
     public synchronized long freeBytes() { return Math.max(0, limitBytes - usedBytes - reservedBytes); }
     private void recordMemory() {
         if (metrics == null) return;
-        long visible = 0, backing = 0;
-        for (long[] state : owners.values()) { visible += state[2]; backing += state[3]; }
-        metrics.memory(visible, backing, usedBytes, reservedBytes);
+        long visible = visibleBytes, backing = 0;
+        for (long bytesHeld : backingAllocations.values()) backing += bytesHeld;
+        metrics.memory(visible, backing, usedBytes, reservedBytes, decodingBytes);
     }
 
     public synchronized void setForeground(boolean foreground) {
@@ -208,6 +363,7 @@ public final class SpeculativeTileCache {
     }
 
     public synchronized void onMemoryPressure() {
+        pressureGeneration++;
         pressureUntil = clock.getAsLong() + 30_000L;
         clear();
     }
@@ -217,11 +373,19 @@ public final class SpeculativeTileCache {
     public boolean beginSpeculativeDecode() {
         if (!hasMemoryRoom() || visibleWaiting.get() != 0 ||
                 !decodeSlot.tryAcquire()) return false;
-        if (visibleWaiting.get() == 0 && hasMemoryRoom()) return true;
-        decodeSlot.release();
-        return false;
+        boolean admitted = false;
+        try {
+            admitted = visibleWaiting.get() == 0 && hasMemoryRoom();
+            return admitted;
+        } finally {
+            // A pressure-sample OOM must not strand the session's only permit.
+            // The caller owns it only once admission has returned successfully.
+            if (!admitted) decodeSlot.release();
+        }
     }
     public void endSpeculativeDecode() { decodeSlot.release(); }
+
+    RenderScheduler scheduler() { return scheduler; }
 
     public synchronized boolean contains(Object owner, TileKey key) {
         return entries.containsKey(new Key(owner, key));
@@ -251,7 +415,7 @@ public final class SpeculativeTileCache {
     public synchronized boolean offer(Object owner, TileKey key, Bitmap bitmap, boolean recent) {
         if (bitmap == null || bitmap.isRecycled() || !hasMemoryRoom()) return false;
         long size = bitmap.getAllocationByteCount();
-        if (size > limitBytes) return false;
+        if (size > limitBytes || !makeRoom(size)) return false;
         Key id = new Key(owner, key);
         if (tuning.prioritized && recent) {
             Bitmap old = entries.get(id);
@@ -281,6 +445,8 @@ public final class SpeculativeTileCache {
 
     public synchronized void removeOwner(Object owner) {
         plans.remove(owner);
+        visibleDemand.remove(owner);
+        visibleTiles(owner, Integer.MAX_VALUE).evictAll();
         Iterator<Map.Entry<Key, Bitmap>> iterator = entries.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<Key, Bitmap> entry = iterator.next();
@@ -331,13 +497,18 @@ public final class SpeculativeTileCache {
         try {
             if (tuning.boundedAdmission()
                     ? memoryAdmission.test(additional + reservedBytes + futureGrowth())
-                    : memoryAvailable.getAsBoolean()) return true;
+                    : memoryAvailable.getAsBoolean()) {
+                memoryRefused = false;
+                return true;
+            }
         } catch (RuntimeException ignored) {
             // A failed sample cannot authorize speculative allocations.
         } finally {
             if (metrics != null) metrics.guard(System.nanoTime() - started);
         }
         if (metrics != null) metrics.guardRefused();
+        if (!memoryRefused) pressureGeneration++;
+        memoryRefused = true;
         // Keep the desired plan on a refused sample: restoring it must not create
         // a plan-change/refill loop while the same memory refusal persists.
         if (tuning.prioritized) clearEntries(); else clear();

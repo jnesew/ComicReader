@@ -41,10 +41,19 @@ public final class RenderedTilePolicy {
 
     private static float[] frameScales(java.util.List<Region> regions, long budgetBytes,
             boolean raster) {
+        boolean[] rasterPages = new boolean[regions.size()];
+        java.util.Arrays.fill(rasterPages, raster);
+        return mixedFrameScales(regions, rasterPages, budgetBytes);
+    }
+
+    /** One visible-frame budget also applies across mixed-format issue boundaries. */
+    public static float[] mixedFrameScales(java.util.List<Region> regions, boolean[] rasterPages,
+            long budgetBytes) {
+        if (rasterPages.length != regions.size()) throw new IllegalArgumentException("Page kinds differ");
         float[] scales = new float[regions.size()];
         for (int i = 0; i < scales.length; i++) {
             float display = regions.get(i).displayScale;
-            if (raster) {
+            if (rasterPages[i]) {
                 int sample = 1;
                 while (sample < 64 && sample * 2f <= 1f / Math.max(0.0001f, display)) sample *= 2;
                 scales[i] = 1f / sample;
@@ -57,9 +66,9 @@ public final class RenderedTilePolicy {
             long largest = -1L;
             int reduce = -1;
             for (int i = 0; i < scales.length; i++) {
-                long bytes = tileBytes(regions.get(i), scales[i], raster);
+                long bytes = tileBytes(regions.get(i), scales[i], rasterPages[i]);
                 total += bytes;
-                if (scales[i] > (raster ? 1f / 64f : MIN_RENDER_SCALE) && bytes > largest) {
+                if (scales[i] > (rasterPages[i] ? 1f / 64f : MIN_RENDER_SCALE) && bytes > largest) {
                     largest = bytes;
                     reduce = i;
                 }
@@ -71,6 +80,19 @@ public final class RenderedTilePolicy {
 
     public static long tileBytes(Region region, float scale) {
         return tileBytes(region, scale, false);
+    }
+
+    /** Keep a reduced level until the complete sharper frame has 25% spare capacity. */
+    public static void retainCoarserLevels(java.util.List<Region> regions, boolean[] raster,
+            float[] scales, float[] previous, long budgetBytes) {
+        long sharperBytes = 0;
+        for (int i = 0; i < scales.length; i++) {
+            sharperBytes += tileBytes(regions.get(i), scales[i], raster[i]);
+        }
+        if (sharperBytes <= budgetBytes * 3L / 4L) return;
+        for (int i = 0; i < scales.length; i++) {
+            if (previous[i] > 0 && previous[i] < scales[i]) scales[i] = previous[i];
+        }
     }
 
     public static long rasterTileBytes(Region region, float scale) {

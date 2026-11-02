@@ -4,8 +4,19 @@
 separate `<configured application ID>.renderbench` identity and separate app data.
 It installs alongside ComicViewer, requests no Android permissions, and needs no
 ADB or Google services. The ordinary release/debug app does not contain its launcher,
-fixture pack or runner. The reader now uses bounded, prioritized preparation at
-its existing capacity. The larger candidate ceiling remains a benchmark choice.
+fixture pack or runner. The reader uses bounded, prioritized preparation under a
+shared session pixel allowance. Larger optional-cache requests remain benchmark choices
+and compete with other allocations under that same session allowance.
+
+Reports stamped `render_core=session-pixels-1` use shared visible-frame planning,
+resolution hysteresis, and a session scheduler. The prioritized reader policy also prepares
+coarse visible coverage before detail. All controls in one run use that common core;
+`baseline_high` controls the older preparation options, not the complete historical engine.
+Compare source stamps and core metadata before interpreting results from older APKs.
+`peak_shared_plus_pending_bytes` still counts only optional pixels and reservations.
+`peak_visible_pending_bytes` and `peak_session_pixel_bytes` separately report visible
+output and the combined retained/admitted pixel peak. These counters exclude codec
+internals, delayed reclamation, and graphics-driver memory.
 
 ## Run on a phone
 
@@ -110,9 +121,16 @@ absolute timings are not a controlled implementation comparison.
 
 All policies use High buffering, the existing visible-frame/zoom budgets and decoder
 concurrency, and the same input script for the workload. `baseline_high` preserves
-the earlier reader's High policy within this instrumented APK. `reader_candidate`
+the earlier reader's High buffering policy within this instrumented APK. Shared
+correctness fixes for visible-demand cancellation, lifecycle disposal and bounded
+failure recovery apply to every policy. `reader_candidate`
 uses the new reader policy. No adaptive controller, extra worker or new coarse
 rendering pass is introduced.
+
+Renderer disposal is deferred until its worker leaves native decoding. Retiring
+work and its replacements share the existing allowance of three concurrent tile
+decodes for the session, including the single speculative permit; closing and
+reopening issues cannot multiply native tile work while an old call is blocked.
 
 ## Reader policy comparison
 
@@ -139,11 +157,29 @@ farther reserved outputs cannot block the next useful region. Owners that leave 
 candidate region cancel their queued work and plans. A running prefetch that
 becomes visible can satisfy that request without redecoding it.
 
+The reader reuses a prefetch geometry plan only while page dimensions, destination,
+clip, predicted-frame grouping, traversal direction, visible render scale and byte
+ceiling match. Refill still checks current pixel residency, pressure, priority and
+request ownership. Raster fallback decodes its validated extracted file rather than
+inflating the page again. Optional work cannot displace four currently visible
+raster decoders; an available offscreen holder is the first eviction choice.
+Rendered pages can draw borrowed resident coverage from finer or coarser levels
+without allocating an extra coarse pass or increasing retention.
+
 Successful optional preparation is remembered within the current lookahead generation.
 Evicting a tile cannot trigger an endless decode/replace/refill cycle: the same key
-can retry only for a strictly nearer priority or a new generation. Visible requests
-are always allowed. The per-generation record is bounded to 128 keys per renderer;
+can retry only for a strictly nearer priority, a new generation, or a pressure discard
+that invalidated those pixels. Persistent refused samples do not repeatedly reset
+that history. Visible requests bypass optional preparation history; transient visible
+failures receive at most three attempts while the same tile remains demanded.
+The per-generation record is bounded to 128 keys per renderer;
 `repeat_prefetch_skips` records attempts suppressed by this rule.
+
+Diagnostics include `page_extractions`, `decoder_opens`, `decoder_evictions` and
+`decoder_denials` to distinguish extraction churn from bitmap-cache misses and decode
+failures. An intentional optional decoder refusal is not a rendering failure.
+Visible residency is sampled when speculative pixels transfer into the visible cache,
+as well as on decode completion and trimming.
 
 Retained and reserved outputs share one ceiling. The ordinary reader retains its
 existing heap-derived capacity; the 64 MiB allowance is an explicit diagnostic

@@ -108,6 +108,11 @@ final class ContinuousSeriesController {
 
     void refreshContinuousDocuments(
             String anchorKey, int anchorPage, float anchorRatio) {
+        refreshContinuousDocuments(anchorKey, anchorPage, anchorRatio, false);
+    }
+
+    void refreshContinuousDocuments(
+            String anchorKey, int anchorPage, float anchorRatio, boolean preserveMotion) {
         if (!session.reader.canvas.isContinuous() || session.progress() == null) return;
         List<ReadingProgress> issues = session.database.seriesIssues(session.progress().seriesId);
         ArrayList<ComicCanvasView.ContinuousDocument> documents = new ArrayList<>();
@@ -121,7 +126,9 @@ final class ContinuousSeriesController {
             }
         }
         if (!documents.isEmpty()) {
-            session.reader.canvas.setContinuousDocuments(documents, anchorKey, anchorPage, anchorRatio);
+            if (preserveMotion) {
+                session.reader.canvas.refreshContinuousPageInfo(documents, anchorKey, anchorPage, anchorRatio);
+            } else session.reader.canvas.setContinuousDocuments(documents, anchorKey, anchorPage, anchorRatio);
         }
         updateContinuousBoundaries();
     }
@@ -223,7 +230,7 @@ final class ContinuousSeriesController {
                     readyDocument,
                     session.reader.canvas::postInvalidateOnAnimation,
                     message -> Toast.makeText(session.context, message, Toast.LENGTH_LONG).show(),
-                    session.speculativeTiles);
+                    session.renderCoordinator);
             DocumentResources resource = new DocumentResources(
                     readyDocument, openedRenderer, activated);
             session.mainHandler.post(() -> {
@@ -264,7 +271,7 @@ final class ContinuousSeriesController {
         ComicDocument notice = new io.github.jnesew.comicviewer.document.UnavailableComicDocument(item);
         TileRenderer renderer = new TileRenderer(session.context, notice,
                 session.reader.canvas::postInvalidateOnAnimation, message -> { },
-                session.speculativeTiles);
+                session.renderCoordinator);
         continuousResources.put(uriKey, new DocumentResources(notice, renderer, item));
         refreshContinuousDocuments(session.document().key(), session.reader.canvas.page(), session.reader.canvas.pageRatio());
     }

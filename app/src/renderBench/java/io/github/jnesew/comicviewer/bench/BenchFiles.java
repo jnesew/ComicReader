@@ -26,6 +26,9 @@ final class BenchFiles {
         JSONObject meta = new JSONObject();
         meta.put("schema", 2); meta.put("protocol", BenchPlan.PROTOCOL);
         meta.put("suite", suite); meta.put("source", BuildConfig.BENCH_SOURCE);
+        meta.put("render_core", "session-pixels-1");
+        meta.put("render_core_features", "shared frame planning; resolution hysteresis; prioritized coarse coverage");
+        meta.put("memory_accounting", "Optional pending retains its original meaning; visible pending and total session pixel peaks are separate. Pixel limit excludes a fixed preview allowance and codec/GPU internals.");
         meta.put("coverage_metrics", "exact_missing,uncovered,fallback; source-rectangle union; version 1");
         if (new BenchPlan(suite).scrolling()) meta.put("motion_profile", "cancel-ended repeated drags v1; target and delivered speed exported per action");
         meta.put("session_reuse", new BenchPlan(suite).sustained());

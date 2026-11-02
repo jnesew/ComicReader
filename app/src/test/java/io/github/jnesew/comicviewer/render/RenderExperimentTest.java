@@ -22,7 +22,7 @@ public class RenderExperimentTest {
 
     @Test public void unchangedPlansDoNotWakeOwnersAndCancelledPlansReleaseTheirPriority() {
         AtomicBoolean room = new AtomicBoolean(true);
-        SpeculativeTileCache cache = new SpeculativeTileCache(256 * MIB, BufferingPolicy.HIGH,
+        RenderCoordinator cache = new RenderCoordinator(256 * MIB, BufferingPolicy.HIGH,
                 room::get, () -> 0);
         Object first = new Object(), second = new Object();
         java.util.concurrent.atomic.AtomicInteger wakes = new java.util.concurrent.atomic.AtomicInteger();
@@ -67,7 +67,7 @@ public class RenderExperimentTest {
 
     @Test public void pendingOutputsShareTheSameCeilingAndReleaseForAnotherOwner() {
         AtomicBoolean room = new AtomicBoolean(true);
-        SpeculativeTileCache cache = new SpeculativeTileCache(512 * MIB, BufferingPolicy.HIGH,
+        RenderCoordinator cache = new RenderCoordinator(512 * MIB, BufferingPolicy.HIGH,
                 room::get, () -> 0);
         assertTrue(cache.reserve(32 * MIB));
         assertFalse(cache.reserve(17 * MIB));
@@ -124,12 +124,22 @@ public class RenderExperimentTest {
         assertEquals(24 * MIB, metrics.finish(2).get("peak_shared_plus_pending_bytes").longValue());
     }
 
+    @Test public void totalPixelPeakIncludesVisibleOutputWithoutChangingOptionalAccounting() {
+        RenderMetrics metrics = new RenderMetrics(); metrics.start(1);
+        metrics.memory(16 * MIB, 8 * MIB, 4 * MIB, 2 * MIB, 3 * MIB);
+        metrics.memory(0, 0, 8 * MIB, 0, 0);
+        var result = metrics.finish(2);
+        assertEquals(33 * MIB, result.get("peak_session_pixel_bytes").longValue());
+        assertEquals(8 * MIB, result.get("peak_shared_plus_pending_bytes").longValue());
+        assertEquals(3 * MIB, result.get("peak_visible_pending_bytes").longValue());
+    }
+
     @Test public void diagnosticsDistinguishFullCapacityFromMemoryGuardRefusal() {
         AtomicBoolean room = new AtomicBoolean(true); RenderMetrics metrics = new RenderMetrics(); metrics.start(1);
-        SpeculativeTileCache cache = new SpeculativeTileCache(256 * MIB, BufferingPolicy.HIGH,
+        RenderCoordinator cache = new RenderCoordinator(256 * MIB, BufferingPolicy.HIGH,
                 room::get, () -> 0, new RenderTuning(false, false, false, false, 64), metrics);
-        cache.registerOwner(this, 16 * MIB, 32 * MIB); cache.residentBytes(this, 8 * MIB, 4 * MIB);
-        assertEquals(36 * MIB, cache.futureGrowthBytes());
+        cache.registerOwner(this); assertTrue(cache.claimBacking(this, 4 * MIB));
+        assertEquals(cache.pixelLimitBytes() - 4 * MIB, cache.futureGrowthBytes());
         assertTrue(cache.reserve(MIB)); assertFalse(cache.reserve(64 * MIB));
         room.set(false); assertFalse(cache.reserve(MIB));
         java.util.Map<String, Number> result = metrics.finish(2);

@@ -5,10 +5,12 @@ public final class RenderMetrics {
     private long draws, decoded, speculativeDecoded, stale, failures, admissionsDenied;
     private long decodeNanos, queueNanos, extractedNanos, usefulBytes, evictedBytes;
     private long peakVisible, peakBacking, peakShared, peakPending, peakSharedPending;
+    private long peakVisiblePending, peakPixels;
     private long planningNanos, planningCalls, guardNanos, guardCalls;
     private long capacityDenials, memoryDenials, guardRefusals;
     private long priorityEvicted, nearDenied, publications, publishedBytes, largestPublication;
     private long repeatPrefetchSkips;
+    private long pageExtractions, decoderOpens, decoderEvictions, decoderDenials;
     private double frameArea, frameMissing, lastMissing, missingAreaNanos;
     private double frameUncovered, lastUncovered, uncoveredAreaNanos;
     private long uncoveredFrames;
@@ -55,7 +57,10 @@ public final class RenderMetrics {
         decoded++; if (speculative) speculativeDecoded++;
         decodeNanos += duration; queueNanos += queued;
     }
-    public synchronized void extracted(long nanos) { if (collecting) extractedNanos += nanos; }
+    public synchronized void extracted(long nanos) { if (collecting) { extractedNanos += nanos; pageExtractions++; } }
+    public synchronized void decoderOpened() { if (collecting) decoderOpens++; }
+    public synchronized void decoderEvicted() { if (collecting) decoderEvictions++; }
+    public synchronized void decoderDenied() { if (collecting) decoderDenials++; }
     public synchronized void stale() { if (collecting) stale++; }
     public synchronized void failure() { if (collecting) failures++; }
     public synchronized void denied() { if (collecting) admissionsDenied++; }
@@ -75,10 +80,15 @@ public final class RenderMetrics {
         largestPublication = Math.max(largestPublication, bytes);
     }
     public synchronized void memory(long visible, long backing, long shared, long pending) {
+        memory(visible, backing, shared, pending, 0);
+    }
+    public synchronized void memory(long visible, long backing, long shared, long pending, long visiblePending) {
         if (!collecting) return;
         peakVisible = Math.max(peakVisible, visible); peakBacking = Math.max(peakBacking, backing);
         peakShared = Math.max(peakShared, shared); peakPending = Math.max(peakPending, pending);
         peakSharedPending = Math.max(peakSharedPending, shared + pending);
+        peakVisiblePending = Math.max(peakVisiblePending, visiblePending);
+        peakPixels = Math.max(peakPixels, visible + backing + shared + pending + visiblePending);
     }
     /** Fixed schema, usable without Android JSON in policy tests. */
     public synchronized java.util.Map<String, Number> finish(long now) {
@@ -94,6 +104,10 @@ public final class RenderMetrics {
         result.put("speculative_decoded_tiles", speculativeDecoded);
         result.put("decode_ms", decodeNanos / 1e6); result.put("queue_ms", queueNanos / 1e6);
         result.put("extract_ms", extractedNanos / 1e6);
+        result.put("page_extractions", pageExtractions);
+        result.put("decoder_opens", decoderOpens);
+        result.put("decoder_evictions", decoderEvictions);
+        result.put("decoder_denials", decoderDenials);
         result.put("exact_missing_area_ms", missingAreaNanos / 1e6);
         result.put("uncovered_area_ms", uncoveredAreaNanos / 1e6);
         result.put("uncovered_frames", uncoveredFrames);
@@ -104,6 +118,8 @@ public final class RenderMetrics {
         result.put("peak_visible_bytes", peakVisible); result.put("peak_backing_bytes", peakBacking);
         result.put("peak_shared_bytes", peakShared); result.put("peak_pending_bytes", peakPending);
         result.put("peak_shared_plus_pending_bytes", peakSharedPending);
+        result.put("peak_visible_pending_bytes", peakVisiblePending);
+        result.put("peak_session_pixel_bytes", peakPixels);
         result.put("planning_calls", planningCalls); result.put("planning_ms", planningNanos / 1e6);
         result.put("guard_checks", guardCalls); result.put("guard_check_ms", guardNanos / 1e6);
         result.put("capacity_denials", capacityDenials); result.put("memory_denials", memoryDenials);

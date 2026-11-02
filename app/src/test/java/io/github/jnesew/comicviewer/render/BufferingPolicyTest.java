@@ -72,14 +72,14 @@ public class BufferingPolicyTest {
         assertEquals(0, BufferingPolicy.lookaheadViewports(BufferingPolicy.STANDARD));
         assertEquals(0, BufferingPolicy.queuedTiles(BufferingPolicy.STANDARD));
         assertEquals(0L, BufferingPolicy.speculativeBytes(BufferingPolicy.STANDARD, 512L * MIB));
-        assertEquals(64L * MIB, BufferingPolicy.visibleBytesPerRenderer(512L * MIB));
-        assertEquals(24L * MIB, BufferingPolicy.visibleBytesPerRenderer(128L * MIB));
+        assertEquals(64L * MIB, BufferingPolicy.backingBytesPerDocument(512L * MIB));
+        assertEquals(24L * MIB, BufferingPolicy.backingBytesPerDocument(128L * MIB));
     }
 
     @Test public void extraTilesFitSharedHeadroomAcrossThreeIssues() {
         assertEquals(0L, BufferingPolicy.speculativeBytes(BufferingPolicy.HIGH, 128L * MIB));
         for (long heap : new long[]{192L * MIB, 256L * MIB, 512L * MIB, 1024L * MIB}) {
-            long visible = 3L * BufferingPolicy.visibleBytesPerRenderer(heap);
+            long visible = 3L * BufferingPolicy.backingBytesPerDocument(heap);
             long standard = BufferingPolicy.speculativeBytes(BufferingPolicy.STANDARD, heap);
             long increased = BufferingPolicy.speculativeBytes(BufferingPolicy.INCREASED, heap);
             long high = BufferingPolicy.speculativeBytes(BufferingPolicy.HIGH, heap);

@@ -53,8 +53,6 @@ public final class RasterRenderingTests {
         try (Fixture fixture = new Fixture(instrumentation)) {
             fixture.awaitReady(single(0), FIRST);
             fixture.awaitReady(single(1), FIRST);
-            check(fixture.shared.snapshot(fixture.renderer).keySet().stream()
-                    .anyMatch(key -> key.page() == 0), "Displaced page was discarded");
             fixture.draw(single(0));
             check(fixture.white(FIRST), "Backward turn exposed dark placeholders");
             check(fixture.shared.usedBytes() <= fixture.shared.limitBytes(), "Buffer exceeded cap");
@@ -138,7 +136,7 @@ public final class RasterRenderingTests {
 
     private static final class Fixture implements AutoCloseable {
         final Instrumentation instrumentation;
-        final SpeculativeTileCache shared;
+        final RenderCoordinator shared;
         final AtomicReference<String> error = new AtomicReference<>();
         final Bitmap output = Bitmap.createBitmap(1080, 2100, Bitmap.Config.ARGB_8888);
         final RasterDocument document = new RasterDocument();
@@ -154,7 +152,7 @@ public final class RasterRenderingTests {
         Fixture(Instrumentation instrumentation, RenderTuning tuning, RenderMetrics metrics) {
             this.instrumentation = instrumentation;
             this.metrics = metrics;
-            shared = new SpeculativeTileCache(512L * 1024L * 1024L, BufferingPolicy.HIGH,
+            shared = new RenderCoordinator(512L * 1024L * 1024L, BufferingPolicy.HIGH,
                     () -> true, () -> 0L, tuning, metrics);
             renderer = new TileRenderer(instrumentation.getTargetContext(), document,
                     () -> { }, error::set, shared, 32 * 1024);

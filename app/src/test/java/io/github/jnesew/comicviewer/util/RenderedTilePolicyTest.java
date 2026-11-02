@@ -6,6 +6,37 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 public class RenderedTilePolicyTest {
+    @Test public void aSmallNextPageSliceFitsWithoutChangingTheCurrentRasterLevel() {
+        long frameBudget = io.github.jnesew.comicviewer.render.BufferingPolicy.visibleSessionBytes(
+                256L * 1024 * 1024) * 3 / 4;
+        float display = 1080f / 1988;
+        var full = new RenderedTilePolicy.Region(0, 0, 1988, 3056, 1988, 3056, display);
+        var slice = new RenderedTilePolicy.Region(0, 0, 1988, 20, 1988, 3056, display);
+        float[] scales = RenderedTilePolicy.rasterFrameScales(java.util.List.of(full, slice), frameBudget);
+        assertEquals(1f, scales[0], 0f);
+        assertEquals(1f, scales[1], 0f);
+    }
+
+    @Test public void reducedLevelsDoNotOscillateAtTheBudgetBoundary() {
+        var region = new RenderedTilePolicy.Region(0, 0, 1988, 3056, 1988, 3056, 1080f / 1988);
+        var regions = java.util.List.of(region);
+        boolean[] raster = {true};
+        float[] sharper = {1f};
+        RenderedTilePolicy.retainCoarserLevels(regions, raster, sharper, new float[]{.5f}, 24L << 20);
+        assertEquals(.5f, sharper[0], 0f);
+        sharper[0] = 1;
+        RenderedTilePolicy.retainCoarserLevels(regions, raster, sharper, new float[]{.5f}, 40L << 20);
+        assertEquals(1f, sharper[0], 0f);
+    }
+
+    @Test public void mixedDocumentBoundariesShareTheSameFrameBudget() {
+        var region = new RenderedTilePolicy.Region(0, 0, 4000, 4000, 4000, 4000, 1f);
+        var regions = java.util.List.of(region, region);
+        float[] scales = RenderedTilePolicy.mixedFrameScales(regions, new boolean[]{true, false}, 20L << 20);
+        assertTrue(RenderedTilePolicy.rasterTileBytes(region, scales[0]) +
+                RenderedTilePolicy.tileBytes(region, scales[1]) <= 20L << 20);
+    }
+
     @Test
     public void reportedRasterDimensionsChangeSamplingAcrossContinuousViewport() {
         long budget = 24L * 1024 * 1024;
