@@ -15,7 +15,7 @@ public final class LibraryScanResultTest {
     }
 
     @Test
-    public void nonZeroWorkGetsATimedNotice() {
+    public void nonZeroWorkAppearsInFolderDetailsWithoutAWarning() {
         LibraryScanResult result = new LibraryScanResult(2, 0, 30, 1, 0, false);
 
         assertTrue(result.shouldShow());

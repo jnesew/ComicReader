@@ -26,6 +26,11 @@
     <string name="library_cover_size_standard">Standard</string>
     <string name="library_cover_size_compact">Compact</string>
     <string name="library_cover_size_dense">Dense</string>
+    <string name="library_title_display">Title display</string>
+    <string name="library_title_display_current">Title display: %1$s</string>
+    <string name="library_title_display_cover_only">Cover only</string>
+    <string name="library_title_display_one_line">1 line</string>
+    <string name="library_title_display_two_lines">2 lines</string>
     <string name="library_folder_named_status">%1$s · %2$s</string>
     <string name="library_folder_scanning">Scanning…</string>
     <string name="library_scan_added">Added %1$d</string>

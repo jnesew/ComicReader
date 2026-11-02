@@ -4,8 +4,6 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
-import android.os.Handler;
-import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.text.TextUtils;
@@ -28,7 +26,7 @@ import io.github.jnesew.comicviewer.data.LibraryDatabase;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
 import io.github.jnesew.comicviewer.model.SeriesGroup;
 import io.github.jnesew.comicviewer.util.LibraryGridDensity;
-import io.github.jnesew.comicviewer.util.LibraryScanResult;
+import io.github.jnesew.comicviewer.util.LibraryTitleDisplay;
 import io.github.jnesew.comicviewer.util.Ui;
 
 import java.util.Collections;
@@ -53,13 +51,13 @@ public final class HomeView extends FrameLayout {
 
     private static final String VIEW_PREFERENCES = "library_view";
     private static final String GRID_DENSITY_PREFERENCE = "grid_density";
+    private static final String TITLE_DISPLAY_PREFERENCE = "title_display";
     private static final String VIEW_TITLES = "titles";
     private static final String VIEW_SERIES = "series";
 
     private final LibraryQueryController queries;
     private final Listener listener;
     private final SharedPreferences viewPreferences;
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final CoverThumbnailLoader covers;
     private final LibraryGridAdapter adapter;
 
@@ -74,7 +72,6 @@ public final class HomeView extends FrameLayout {
     private final TextView titlesButton;
     private final TextView seriesButton;
     private final TextView folderStatus;
-    private final Runnable hideFolderStatus;
     private final LinearLayout emptyState;
     private final ScrollView emptyContainer;
     private final TextView emptyTitle;
@@ -87,6 +84,7 @@ public final class HomeView extends FrameLayout {
     private String filter;
     private String viewMode;
     private LibraryGridDensity gridDensity;
+    private LibraryTitleDisplay titleDisplay;
     private long selectedSeriesId;
     private String selectedSeriesTitle = "";
     private String parentSearch = "";
@@ -106,10 +104,12 @@ public final class HomeView extends FrameLayout {
         this.viewMode = viewPreferences.getString("mode", VIEW_TITLES);
         this.gridDensity = LibraryGridDensity.fromKey(
                 viewPreferences.getString(GRID_DENSITY_PREFERENCE, null));
+        this.titleDisplay = LibraryTitleDisplay.fromKey(
+                viewPreferences.getString(TITLE_DISPLAY_PREFERENCE, null));
         setBackgroundColor(Ui.background(getContext()));
 
         covers = new CoverThumbnailLoader();
-        adapter = new LibraryGridAdapter(context, listener, this::openSeries, covers, gridDensity);
+        adapter = new LibraryGridAdapter(context, listener, this::openSeries, covers, gridDensity, titleDisplay);
 
         chrome = new LinearLayout(context);
         chrome.setOrientation(LinearLayout.VERTICAL);
@@ -224,9 +224,6 @@ public final class HomeView extends FrameLayout {
         folderStatus.setFocusable(true);
         folderStatus.setVisibility(GONE);
         folderStatus.setOnClickListener(view -> listener.onFoldersRequested());
-        hideFolderStatus = () -> {
-            if (!closed) folderStatus.setVisibility(GONE);
-        };
         LinearLayout.LayoutParams folderParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 36));
         folderParams.leftMargin = Ui.dp(context, 16);
@@ -332,17 +329,11 @@ public final class HomeView extends FrameLayout {
         return true;
     }
 
-    public void setLibraryFolderState(
-            String label, String detail, boolean scanning, boolean persistent) {
-        mainHandler.removeCallbacks(hideFolderStatus);
+    public void setLibraryFolderState(String label, String detail, boolean incomplete) {
+        if (closed) return;
         String folder = label == null ? "" : label.trim();
-        if (folder.isEmpty()) {
-            folderStatus.setVisibility(GONE);
-            return;
-        }
-        String state = scanning ? getResources().getString(R.string.library_folder_scanning)
-                : (detail == null ? "" : detail.trim());
-        if (state.isEmpty()) {
+        String state = detail == null ? "" : detail.trim();
+        if (!incomplete || folder.isEmpty() || state.isEmpty()) {
             folderStatus.setVisibility(GONE);
             return;
         }
@@ -350,9 +341,6 @@ public final class HomeView extends FrameLayout {
                 R.string.library_folder_named_status, folder, state));
         folderStatus.setContentDescription(folderStatus.getText());
         folderStatus.setVisibility(VISIBLE);
-        if (!scanning && !persistent) {
-            mainHandler.postDelayed(hideFolderStatus, LibraryScanResult.DISPLAY_DURATION_MS);
-        }
     }
 
     public String coverSizeMenuLabel() {
@@ -378,6 +366,29 @@ public final class HomeView extends FrameLayout {
                 .show();
     }
 
+    public String titleDisplayMenuLabel() {
+        return getResources().getString(R.string.library_title_display_current,
+                getResources().getString(titleDisplayLabelResource(titleDisplay)));
+    }
+
+    public void showTitleDisplayDialog() {
+        LibraryTitleDisplay[] values = LibraryTitleDisplay.values();
+        String[] labels = new String[values.length];
+        int checked = 0;
+        for (int index = 0; index < values.length; index++) {
+            labels[index] = getResources().getString(titleDisplayLabelResource(values[index]));
+            if (values[index] == titleDisplay) checked = index;
+        }
+        new AlertDialog.Builder(getContext())
+                .setTitle(R.string.library_title_display)
+                .setSingleChoiceItems(labels, checked, (dialog, which) -> {
+                    applyTitleDisplay(values[which]);
+                    dialog.dismiss();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
     public void trimCoverCache() {
         covers.trimMemory();
     }
@@ -387,7 +398,6 @@ public final class HomeView extends FrameLayout {
     public void close() {
         if (closed) return;
         closed = true;
-        mainHandler.removeCallbacks(hideFolderStatus);
         covers.close();
     }
 
@@ -402,6 +412,16 @@ public final class HomeView extends FrameLayout {
         grid.setAdapter(null);
         grid.setAdapter(adapter);
         grid.requestLayout();
+        if (firstVisible >= 0) grid.post(() -> grid.setSelection(firstVisible));
+    }
+
+    private void applyTitleDisplay(LibraryTitleDisplay display) {
+        if (display == null || display == titleDisplay || closed) return;
+        int firstVisible = grid.getFirstVisiblePosition();
+        titleDisplay = display;
+        adapter.setTitleDisplay(display);
+        viewPreferences.edit().putString(TITLE_DISPLAY_PREFERENCE, display.key).apply();
+        adapter.notifyDataSetChanged();
         if (firstVisible >= 0) grid.post(() -> grid.setSelection(firstVisible));
     }
 
@@ -421,6 +441,14 @@ public final class HomeView extends FrameLayout {
             case COMPACT -> R.string.library_cover_size_compact;
             case DENSE -> R.string.library_cover_size_dense;
             default -> R.string.library_cover_size_standard;
+        };
+    }
+
+    private static int titleDisplayLabelResource(LibraryTitleDisplay display) {
+        return switch (display) {
+            case COVER_ONLY -> R.string.library_title_display_cover_only;
+            case ONE_LINE -> R.string.library_title_display_one_line;
+            case TWO_LINES -> R.string.library_title_display_two_lines;
         };
     }
 

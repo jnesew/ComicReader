@@ -15,6 +15,7 @@ import io.github.jnesew.comicviewer.R;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
 import io.github.jnesew.comicviewer.model.SeriesGroup;
 import io.github.jnesew.comicviewer.util.LibraryGridDensity;
+import io.github.jnesew.comicviewer.util.LibraryTitleDisplay;
 import io.github.jnesew.comicviewer.util.Ui;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -32,7 +33,12 @@ public final class LibraryCardTests {
                 for (LibraryGridDensity density : LibraryGridDensity.values()) {
                     AtomicReference<Throwable> failure = new AtomicReference<>();
                     instrumentation.runOnMainSync(() -> {
-                        try { recycledCards(context, density); }
+                        try {
+                            for (LibraryTitleDisplay display : LibraryTitleDisplay.values()) {
+                                recycledCards(context, density, display);
+                            }
+                            changingTitleDisplay(context, density);
+                        }
                         catch (Throwable error) { failure.set(error); }
                     });
                     if (failure.get() != null) throw new AssertionError(
@@ -42,7 +48,7 @@ public final class LibraryCardTests {
         }
     }
 
-    private static void recycledCards(Context context, LibraryGridDensity density) {
+    private static void recycledCards(Context context, LibraryGridDensity density, LibraryTitleDisplay display) {
         ReadingProgress unread = comic("Unread comic", "12");
         ReadingProgress strip = comic("Long strip", "");
         strip.lastOpened = 123; strip.pageCount = 1; strip.scrollRatio = .42f;
@@ -56,7 +62,7 @@ public final class LibraryCardTests {
         atEnd.lastOpened = 123; atEnd.pageCount = 1; atEnd.scrollRatio = 1f;
         CoverThumbnailLoader covers = new CoverThumbnailLoader();
         try {
-            LibraryGridAdapter adapter = new LibraryGridAdapter(context, null, group -> { }, covers, density);
+            LibraryGridAdapter adapter = new LibraryGridAdapter(context, null, group -> { }, covers, density, display);
             FrameLayout parent = new FrameLayout(context);
             View recycled = null;
             int cardHeight = -1;
@@ -71,6 +77,12 @@ public final class LibraryCardTests {
                 layout(recycled, context, density);
                 if (cardHeight < 0) cardHeight = recycled.getMeasuredHeight();
                 check(cardHeight == recycled.getMeasuredHeight(), "Reading status changed card height");
+                check(recycled.getContentDescription().toString().contains(item.title),
+                        "The title is not accessible in " + display);
+                TextView title = describedText(recycled, item.title);
+                check(title != null && title.getVisibility() ==
+                        (display == LibraryTitleDisplay.COVER_ONLY ? View.GONE : View.VISIBLE),
+                        "Title visibility does not match " + display);
                 ProgressBar bar = find(recycled, ProgressBar.class);
                 if (percentages[index] >= 0) {
                     check(bar.getVisibility() == View.VISIBLE, "Started comic has no progress bar");
@@ -108,6 +120,44 @@ public final class LibraryCardTests {
             TextView oldBadge = describedText(recycled, context.getString(R.string.comic_issue_number, atEnd.seriesNumber));
             check(oldBadge == null || oldBadge.getVisibility() == View.GONE, "An issue badge leaked into a grouped series");
             check(!atEnd.read && !strip.read, "Showing progress changed explicit read status");
+        } finally { covers.close(); }
+    }
+
+    private static void changingTitleDisplay(Context context, LibraryGridDensity density) {
+        ReadingProgress item = comic("A very long comic title that needs several lines in every cover size ".repeat(4), "");
+        item.lastOpened = 123; item.pageCount = 5; item.page = 2;
+        CoverThumbnailLoader covers = new CoverThumbnailLoader();
+        try {
+            LibraryGridAdapter adapter = new LibraryGridAdapter(context, null, group -> { }, covers, density,
+                    LibraryTitleDisplay.TWO_LINES);
+            adapter.submit(List.of(item), List.of(), false);
+            FrameLayout parent = new FrameLayout(context);
+            ViewGroup card = (ViewGroup) adapter.getView(0, null, parent);
+            layout(card, context, density);
+            TextView title = describedText(card, item.title);
+            ProgressBar bar = find(card, ProgressBar.class);
+            Rect cover = bounds(card, find(card, ImageView.class));
+            int originalHeight = card.getHeight();
+            int originalProgressTop = bounds(card, bar).top;
+            int originalTitleHeight = title.getHeight();
+            LibraryTitleDisplay[] sequence = {LibraryTitleDisplay.ONE_LINE, LibraryTitleDisplay.COVER_ONLY,
+                    LibraryTitleDisplay.TWO_LINES, LibraryTitleDisplay.COVER_ONLY, LibraryTitleDisplay.ONE_LINE};
+            for (LibraryTitleDisplay display : sequence) {
+                adapter.setTitleDisplay(display);
+                adapter.getView(0, card, parent);
+                layout(card, context, density);
+                int titleHeight = display == LibraryTitleDisplay.COVER_ONLY ? 0 : title.getHeight();
+                check(card.getHeight() == originalHeight - originalTitleHeight + titleHeight,
+                        "Unused title space remains in " + display);
+                check(bounds(card, bar).top == originalProgressTop - originalTitleHeight + titleHeight,
+                        "Progress did not move with title space in " + display);
+                check(cover.equals(bounds(card, find(card, ImageView.class))), "Title display resized the cover");
+                if (display != LibraryTitleDisplay.COVER_ONLY) {
+                    check(title.getLineCount() == display.titleLines, "Title line count does not match " + display);
+                    check(title.getLayout().getEllipsisCount(display.titleLines - 1) > 0,
+                            "A long title was not truncated in " + display);
+                }
+            }
         } finally { covers.close(); }
     }
 

@@ -2,8 +2,6 @@ package io.github.jnesew.comicviewer.util;
 
 /** Pure presentation policy for a completed source-folder scan. */
 public final class LibraryScanResult {
-    public static final long DISPLAY_DURATION_MS = 6_000L;
-
     public final int added;
     public final int updated;
     public final int unchanged;

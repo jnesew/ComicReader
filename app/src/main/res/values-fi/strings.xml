@@ -26,6 +26,11 @@
     <string name="library_cover_size_standard">Normaali</string>
     <string name="library_cover_size_compact">Tiivis</string>
     <string name="library_cover_size_dense">Erittäin tiivis</string>
+    <string name="library_title_display">Nimen näyttö</string>
+    <string name="library_title_display_current">Nimen näyttö: %1$s</string>
+    <string name="library_title_display_cover_only">Vain kansi</string>
+    <string name="library_title_display_one_line">1 rivi</string>
+    <string name="library_title_display_two_lines">2 riviä</string>
     <string name="library_folder_named_status">%1$s · %2$s</string>
     <string name="library_folder_scanning">Tarkistetaan…</string>
     <string name="library_scan_added">Lisättiin %1$d</string>

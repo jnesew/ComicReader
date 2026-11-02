@@ -36,9 +36,9 @@ import java.util.function.BooleanSupplier;
 public final class FolderScanCoordinator implements AutoCloseable {
     public interface Listener {
         void onLibraryChanged();
-        void onScanStatus(String detail, boolean scanning, boolean persistent);
+        void onScanStatus(String detail, boolean scanning, boolean incomplete);
     }
-    public record FolderState(String detail, boolean scanning, boolean unavailable) { }
+    public record FolderState(String detail, boolean scanning, boolean unavailable, String incompleteDetail) { }
     private static final long AUTO_SCAN_COOLDOWN_MS = 5_000L;
     private final Context context;
     private final LibraryDatabase database;
@@ -82,7 +82,7 @@ public final class FolderScanCoordinator implements AutoCloseable {
     public boolean isRunning() { return !jobs.isEmpty() || reconciliationQueued.get(); }
 
     public FolderState folderState(String uri) {
-        return states.getOrDefault(uri, new FolderState("", false, false));
+        return states.getOrDefault(uri, new FolderState("", false, false, ""));
     }
 
     /** The Activity has already persisted the newly selected grant. */
@@ -120,7 +120,7 @@ public final class FolderScanCoordinator implements AutoCloseable {
         states.remove(uri);
         lastStarted.remove(uri);
         requestReconciliation();
-        updateLibraryFolderUi("", false, false);
+        updateLibraryFolderUi();
     }
 
     private void configurationChanged() {
@@ -143,8 +143,17 @@ public final class FolderScanCoordinator implements AutoCloseable {
         }
     }
 
-    private void updateLibraryFolderUi(String detail, boolean scanning, boolean persistent) {
-        if (!destroyed && listener != null) listener.onScanStatus(detail, !jobs.isEmpty(), persistent);
+    private void updateLibraryFolderUi() {
+        if (destroyed || listener == null) return;
+        // A successful sibling scan or reconciliation must not clear another tree's warning.
+        for (LibraryFolder folder : preferences.libraryFolders()) {
+            FolderState state = states.get(folder.uri);
+            if (state != null && !state.incompleteDetail().isEmpty()) {
+                listener.onScanStatus(state.incompleteDetail(), !jobs.isEmpty(), true);
+                return;
+            }
+        }
+        listener.onScanStatus("", !jobs.isEmpty(), false);
     }
 
     private void notifyChanged() {
@@ -181,18 +190,22 @@ public final class FolderScanCoordinator implements AutoCloseable {
             if (!userRequested && now - lastStarted.getOrDefault(folder.uri, 0L) < AUTO_SCAN_COOLDOWN_MS) continue;
             ScanJob job = new ScanJob(folder, nextGeneration.incrementAndGet(), batch);
             if (jobs.putIfAbsent(folder.uri, job) != null) continue;
-            states.put(folder.uri, new FolderState(context.getString(R.string.library_folder_waiting), true, false));
+            states.compute(folder.uri, (uri, previous) -> new FolderState(
+                    context.getString(R.string.library_folder_waiting), true, false,
+                    previous == null ? "" : previous.incompleteDetail()));
             job.future = scanWorker.submit(() -> scan(job));
         }
-        updateLibraryFolderUi("", !jobs.isEmpty(), true);
+        updateLibraryFolderUi();
     }
 
     private void scan(ScanJob job) {
         if (!current(job)) return;
         if (cachedBatch != job.batch) { directoryCache.clear(); cachedBatch = job.batch; }
         lastStarted.put(job.folder.uri, System.currentTimeMillis());
-        states.put(job.folder.uri, new FolderState(context.getString(R.string.library_folder_scanning), true, false));
-        mainHandler.post(() -> updateLibraryFolderUi(job.folder.label, true, true));
+        states.compute(job.folder.uri, (uri, previous) -> new FolderState(
+                context.getString(R.string.library_folder_scanning), true, false,
+                previous == null ? "" : previous.incompleteDetail()));
+        mainHandler.post(this::updateLibraryFolderUi);
         ScanCounts counts = new ScanCounts();
         LibraryFolderScanner.Summary traversal = null;
         long started = System.currentTimeMillis();
@@ -234,9 +247,10 @@ public final class FolderScanCoordinator implements AutoCloseable {
                 }
             } else requireReconciliation();
             jobs.remove(job.folder.uri, job);
-            states.put(job.folder.uri, new FolderState(detail, false, inaccessible));
+            states.put(job.folder.uri, new FolderState(detail, false, inaccessible,
+                    inaccessible || result.shouldPersist() ? detail : ""));
             notifyChanged();
-            updateLibraryFolderUi(detail, false, inaccessible || result.shouldPersist());
+            updateLibraryFolderUi();
             requestReconciliation();
         });
     }
@@ -287,7 +301,7 @@ public final class FolderScanCoordinator implements AutoCloseable {
                     if (revision == sourceRevision.get() && jobs.isEmpty()) needsReconciliation = false;
                 }
                 notifyChanged();
-                updateLibraryFolderUi("", !jobs.isEmpty(), false);
+                updateLibraryFolderUi();
             });
         });
     }

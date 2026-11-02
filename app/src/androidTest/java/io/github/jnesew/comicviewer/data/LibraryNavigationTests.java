@@ -16,9 +16,47 @@ import io.github.jnesew.comicviewer.library.LibraryQueryController;
 import io.github.jnesew.comicviewer.ui.HomeView;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
 import io.github.jnesew.comicviewer.util.Ui;
+import io.github.jnesew.comicviewer.util.LibraryTitleDisplay;
 
 /** Observable navigation behavior across recreation, without relying on child indexes or helper names. */
 final class LibraryNavigationTests {
+    static void scanNotices(Instrumentation instrumentation, LibraryDatabase database) {
+        String file = "library-scan-notice-instrumentation";
+        Context target = instrumentation.getTargetContext();
+        target.deleteSharedPreferences(file);
+        Context context = new ContextThemeWrapper(target, R.style.Theme_ComicViewer) {
+            @Override public SharedPreferences getSharedPreferences(String name, int mode) {
+                return target.getSharedPreferences(file, mode);
+            }
+        };
+        try {
+            instrumentation.runOnMainSync(() -> {
+                HomeView home = new HomeView(context, new LibraryQueryController(database), null);
+                try {
+                    String folder = "3 folders";
+                    String scanning = context.getString(R.string.library_folder_scanning);
+                    String incomplete = context.getString(R.string.library_scan_incomplete_short);
+                    String added = context.getString(R.string.library_scan_added, 2);
+                    home.setLibraryFolderState(folder, scanning, false);
+                    check(clickableDescription(home, folder) == null);
+                    home.setLibraryFolderState(folder, added, false);
+                    check(clickableDescription(home, folder) == null);
+                    home.setLibraryFolderState(folder, incomplete, true);
+                    View warning = clickableDescription(home, folder);
+                    check(warning != null && warning.getVisibility() == View.VISIBLE);
+                    check(warning.getContentDescription().toString().contains(incomplete));
+                    home.setLibraryFolderState(folder, "", false);
+                    check(warning.getVisibility() == View.GONE);
+                    home.setLibraryFolderState(folder,
+                            context.getString(R.string.library_folder_access_unavailable), true);
+                    check(warning.getVisibility() == View.VISIBLE);
+                    home.setLibraryFolderState("", incomplete, true);
+                    check(warning.getVisibility() == View.GONE);
+                } finally { home.close(); }
+            });
+        } finally { target.deleteSharedPreferences(file); }
+    }
+
     static void seriesCoversStayAligned(Instrumentation instrumentation, LibraryDatabase database) {
         String file = "library-grid-alignment-instrumentation";
         Context target = instrumentation.getTargetContext();
@@ -194,35 +232,65 @@ final class LibraryNavigationTests {
         database.applyDetectedSeries("first", "Navigation series", "1", "", "");
         database.applyDetectedSeries("second", "Navigation series", "2", "", "");
         database.toggleSeriesFavorite(database.get("first").seriesId);
-        context.getSharedPreferences(file, 0).edit().putString("mode", "series")
-                .putString("filter", LibraryDatabase.FILTER_FAVORITES).commit();
-        instrumentation.runOnMainSync(() -> {
-            HomeView home = new HomeView(context, new LibraryQueryController(database), null);
-            HomeView restored = null;
-            try {
-                EditText search = find(home, EditText.class);
-                search.setVisibility(View.VISIBLE); search.setText("Navigation");
-                layout(home);
-                View series = clickableDescription(home, "Navigation series");
-                check(series != null); series.performClick(); layout(home);
-                check(find(home, GridView.class).getAdapter().getCount() == 2);
-                check(search.getText().toString().isEmpty());
-                search.setVisibility(View.GONE);
-                Bundle saved = new Bundle(); home.saveState(saved); home.close();
-                Context light = new ContextThemeWrapper(context, R.style.Theme_ComicViewer_Light);
-                restored = new HomeView(light, new LibraryQueryController(database), null);
-                check(Ui.background(light) != Ui.background(context));
-                restored.restoreState(saved); layout(restored);
-                check(find(restored, GridView.class).getAdapter().getCount() == 2);
-                check(restored.handleBack()); layout(restored);
-                EditText restoredSearch = find(restored, EditText.class);
-                check(restoredSearch.getVisibility() == View.VISIBLE);
-                check("Navigation".equals(restoredSearch.getText().toString()));
-                check(find(restored, GridView.class).getAdapter().getCount() == 1);
-                check(selectedText(restored, context.getString(R.string.library_view_series)));
-            } finally { home.close(); if (restored != null) restored.close(); }
-        });
+        for (LibraryTitleDisplay display : LibraryTitleDisplay.values()) {
+            context.getSharedPreferences(file, 0).edit().putString("mode", "series")
+                    .putString("filter", LibraryDatabase.FILTER_FAVORITES)
+                    .putString("title_display", display.key).commit();
+            instrumentation.runOnMainSync(() -> {
+                HomeView home = new HomeView(context, new LibraryQueryController(database), null);
+                HomeView restored = null;
+                try {
+                    EditText search = find(home, EditText.class);
+                    search.setVisibility(View.VISIBLE); search.setText("Navigation");
+                    layout(home);
+                    checkTitleDisplay(home, "Navigation series", display);
+                    View series = clickableDescription(home, "Navigation series");
+                    check(series != null); series.performClick(); layout(home);
+                    check(find(home, GridView.class).getAdapter().getCount() == 2);
+                    check(search.getText().toString().isEmpty());
+                    search.setVisibility(View.GONE);
+                    Bundle saved = new Bundle(); home.saveState(saved); home.close();
+                    Context light = new ContextThemeWrapper(context, R.style.Theme_ComicViewer_Light);
+                    restored = new HomeView(light, new LibraryQueryController(database), null);
+                    check(Ui.background(light) != Ui.background(context));
+                    restored.restoreState(saved); layout(restored);
+                    check(find(restored, GridView.class).getAdapter().getCount() == 2);
+                    checkTitleDisplay(restored, "First issue", display);
+                    check(restored.handleBack()); layout(restored);
+                    EditText restoredSearch = find(restored, EditText.class);
+                    check(restoredSearch.getVisibility() == View.VISIBLE);
+                    check("Navigation".equals(restoredSearch.getText().toString()));
+                    check(find(restored, GridView.class).getAdapter().getCount() == 1);
+                    check(selectedText(restored, context.getString(R.string.library_view_series)));
+                    checkTitleDisplay(restored, "Navigation series", display);
+                } finally { home.close(); if (restored != null) restored.close(); }
+            });
+        }
         target.deleteSharedPreferences(file);
+    }
+
+    private static void checkTitleDisplay(HomeView home, String title, LibraryTitleDisplay display) {
+        GridView grid = find(home, GridView.class);
+        TextView label = textLabel(grid, title);
+        check(label != null);
+        check(label.getVisibility() == (display == LibraryTitleDisplay.COVER_ONLY ? View.GONE : View.VISIBLE));
+        if (display != LibraryTitleDisplay.COVER_ONLY) check(label.getMaxLines() == display.titleLines);
+        int resource = switch (display) {
+            case COVER_ONLY -> R.string.library_title_display_cover_only;
+            case ONE_LINE -> R.string.library_title_display_one_line;
+            case TWO_LINES -> R.string.library_title_display_two_lines;
+        };
+        check(home.titleDisplayMenuLabel().equals(home.getContext().getString(
+                R.string.library_title_display_current, home.getContext().getString(resource))));
+    }
+
+    private static TextView textLabel(View view, String text) {
+        if (view instanceof TextView label && label.getText().toString().contains(text)) return label;
+        if (view instanceof ViewGroup group) for (int index = 0; index < group.getChildCount(); index++) {
+            TextView result = textLabel(group.getChildAt(index), text);
+            if (result != null) return result;
+        }
+        return null;
     }
 
     private static void layout(View view) {

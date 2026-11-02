@@ -17,6 +17,7 @@ import io.github.jnesew.comicviewer.R;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
 import io.github.jnesew.comicviewer.model.SeriesGroup;
 import io.github.jnesew.comicviewer.util.LibraryGridDensity;
+import io.github.jnesew.comicviewer.util.LibraryTitleDisplay;
 import io.github.jnesew.comicviewer.util.Ui;
 import java.util.Collections;
 import java.util.List;
@@ -29,17 +30,19 @@ final class LibraryGridAdapter extends BaseAdapter {
     private final Consumer<SeriesGroup> onSeries;
     private final CoverThumbnailLoader covers;
     private LibraryGridDensity gridDensity;
+    private LibraryTitleDisplay titleDisplay;
     private List<ReadingProgress> rows = Collections.emptyList();
     private List<SeriesGroup> seriesRows = Collections.emptyList();
     private boolean seriesGrid;
 
     LibraryGridAdapter(Context context, HomeView.Listener listener, Consumer<SeriesGroup> onSeries,
-            CoverThumbnailLoader covers, LibraryGridDensity density) {
+            CoverThumbnailLoader covers, LibraryGridDensity density, LibraryTitleDisplay titleDisplay) {
         this.context = context;
         this.listener = listener;
         this.onSeries = onSeries;
         this.covers = covers;
         this.gridDensity = density;
+        this.titleDisplay = titleDisplay;
     }
     void submit(List<ReadingProgress> rows, List<SeriesGroup> seriesRows, boolean seriesGrid) {
         this.rows = rows;
@@ -48,6 +51,7 @@ final class LibraryGridAdapter extends BaseAdapter {
         notifyDataSetChanged();
     }
     void setDensity(LibraryGridDensity density) { gridDensity = density; }
+    void setTitleDisplay(LibraryTitleDisplay display) { titleDisplay = display; }
 
     @Override
     public int getCount() {
@@ -81,6 +85,8 @@ final class LibraryGridAdapter extends BaseAdapter {
         } else {
             holder = (CardHolder) convertView.getTag();
         }
+        holder.title.setLines(Math.max(1, titleDisplay.titleLines));
+        holder.title.setVisibility(titleDisplay == LibraryTitleDisplay.COVER_ONLY ? View.GONE : View.VISIBLE);
         if (seriesGrid) {
             bindSeriesCard(holder, seriesRows.get(position));
             return convertView;

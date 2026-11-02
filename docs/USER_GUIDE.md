@@ -11,6 +11,8 @@ ComicViewer scans them recursively on launch or return to the library, skips unc
 reconciles verified exact copies with earlier imports. The manager shows each folder's location and
 scan status, with actions to rescan or remove a folder. It never requests access to all
 device storage. An existing saved folder is retained automatically when upgrading.
+Routine scanning stays silent on the main library screen. A notice appears there only
+if a scan is incomplete or folder access is unavailable; tap it to open the folder manager.
 
 Use **Rescan all folders** to re-import forgotten comics that are still present in the selected
 folders. Existing entries keep their saved state. Forgotten comics are imported afresh: Forget
@@ -28,6 +30,12 @@ The Titles view supports search, favorites, reading-status filters, cover-size c
 by recent reading, import time, title, or progress. Use the visible **Titles / Series** selector to
 switch views. Opening a title marks it as started and restores
 its saved page and view state.
+
+Use **Title display** in the library menu to choose **Cover only**, **1 line**, or
+**2 lines** (the default). Cover only hides titles and moves progress bars and status
+text directly below the covers. One line reserves one title row; two lines keeps the
+existing two-row title area, even for short titles. Progress and status stay aligned
+across cards in each mode. The choice applies to both Titles and Series and is remembered.
 
 Series view groups titles conservatively using supported embedded metadata or folder structure.
 Standalone titles remain separate. **Edit comic** changes the displayed comic title, chooses an

@@ -162,6 +162,7 @@ final class LibraryFeatureTests {
         final AtomicBoolean busy = new AtomicBoolean();
         LibraryImportCoordinator imports;
         FolderScanCoordinator scans;
+        final java.util.ArrayList<ScanNotice> notices = new java.util.ArrayList<>();
         Scanning() {
             context.deleteSharedPreferences(PREFS); prefs = preferences();
             android.content.Intent grant = new android.content.Intent();
@@ -190,7 +191,9 @@ final class LibraryFeatureTests {
                 scans = new FolderScanCoordinator(context, db, prefs, imports, busy::get,
                         new FolderScanCoordinator.Listener() {
                             @Override public void onLibraryChanged() { }
-                            @Override public void onScanStatus(String detail, boolean scanning, boolean persistent) { }
+                            @Override public void onScanStatus(String detail, boolean scanning, boolean incomplete) {
+                                notices.add(new ScanNotice(detail, incomplete));
+                            }
                         });
             });
         }
@@ -220,6 +223,41 @@ final class LibraryFeatureTests {
             context.deleteSharedPreferences(PREFS);
         }
     }
+    private record ScanNotice(String detail, boolean incomplete) { }
+
+    void incompleteScanNotices() {
+        try (Scanning flow = new Scanning()) {
+            flow.add("a"); flow.add("b");
+            main(() -> check(flow.notices.stream().noneMatch(ScanNotice::incomplete)));
+
+            options("partialA"); flow.rescan();
+            main(() -> {
+                ScanNotice notice = flow.notices.get(flow.notices.size() - 1);
+                check(notice.incomplete());
+                check(notice.detail().contains(context.getString(
+                        io.github.jnesew.comicviewer.R.string.library_scan_incomplete_short)));
+                check(flow.scans.folderState(tree("b").toString()).incompleteDetail().isEmpty());
+                flow.notices.clear();
+            });
+            // Retrying and finishing a healthy sibling must preserve the failed tree's notice.
+            flow.rescan();
+            main(() -> check(flow.notices.stream().allMatch(ScanNotice::incomplete)));
+
+            options(); flow.rescan();
+            main(() -> check(!flow.notices.get(flow.notices.size() - 1).incomplete()));
+
+            options("denyA"); flow.rescan();
+            main(() -> {
+                ScanNotice notice = flow.notices.get(flow.notices.size() - 1);
+                check(notice.incomplete());
+                equal(context.getString(io.github.jnesew.comicviewer.R.string.library_folder_access_unavailable),
+                        notice.detail());
+            });
+            flow.remove("a");
+            main(() -> check(!flow.notices.get(flow.notices.size() - 1).incomplete()));
+        }
+    }
+
     private List<ReadingProgress> all() { return db.library("", LibraryDatabase.SORT_TITLE_ASC, LibraryDatabase.FILTER_ALL); }
 
     void sharedCopies(boolean reverse) {

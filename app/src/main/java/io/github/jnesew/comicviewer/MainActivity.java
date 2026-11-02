@@ -76,8 +76,7 @@ public final class MainActivity extends Activity implements
     private boolean destroyed;
     private boolean lightAppearance;
     private String folderDetail = "";
-    private boolean folderScanning;
-    private boolean folderPersistent;
+    private boolean folderIncomplete;
     private Object platformBackCallback;
     private LibraryFoldersDialog foldersDialog;
     private boolean reopenFoldersAfterPicker;
@@ -107,8 +106,8 @@ public final class MainActivity extends Activity implements
         scans = new FolderScanCoordinator(this, database, preferences, imports,
                 () -> session != null && session.isBusy(), new FolderScanCoordinator.Listener() {
                     @Override public void onLibraryChanged() { home.refresh(); }
-                    @Override public void onScanStatus(String detail, boolean scanning, boolean persistent) {
-                        updateLibraryFolderUi(detail, scanning, persistent);
+                    @Override public void onScanStatus(String detail, boolean scanning, boolean incomplete) {
+                        updateLibraryFolderUi(detail, incomplete);
                     }
                 });
         root = new FrameLayout(this);
@@ -151,7 +150,7 @@ public final class MainActivity extends Activity implements
             platformBackCallback = Api33Back.register(this);
         }
         showSystemBars(true);
-        updateLibraryFolderUi("", false, false);
+        updateLibraryFolderUi("", false);
 
         Intent launchIntent = getIntent();
         if (launchIntent != null && launchIntent.getData() != null &&
@@ -255,7 +254,7 @@ public final class MainActivity extends Activity implements
         home.restoreState(saved);
         root.addView(home, 0, matchParent());
         home.requestApplyInsets();
-        updateLibraryFolderUi(folderDetail, folderScanning, folderPersistent);
+        updateLibraryFolderUi(folderDetail, folderIncomplete);
         if (foldersOpen) showLibraryFolders();
         showSystemBars(true);
     }
@@ -468,6 +467,10 @@ public final class MainActivity extends Activity implements
             home.showCoverSizeDialog();
             return true;
         });
+        menu.getMenu().add(home.titleDisplayMenuLabel()).setOnMenuItemClickListener(item -> {
+            home.showTitleDisplayDialog();
+            return true;
+        });
         menu.getMenu().add(R.string.appearance).setOnMenuItemClickListener(item -> {
             AppearanceDialog.show(this, preferences, this::applyAppearance);
             return true;
@@ -580,17 +583,15 @@ public final class MainActivity extends Activity implements
                 .show();
     }
 
-    private void updateLibraryFolderUi(
-            String detail, boolean scanning, boolean persistent) {
+    private void updateLibraryFolderUi(String detail, boolean incomplete) {
         folderDetail = detail;
-        folderScanning = scanning;
-        folderPersistent = persistent;
+        folderIncomplete = incomplete;
         if (home == null || preferences == null) return;
         List<LibraryFolder> folders = preferences.libraryFolders();
         String label = folders.size() == 1 ? folders.get(0).label : folders.isEmpty() ? ""
                 : getResources().getQuantityString(R.plurals.library_folder_count, folders.size(), folders.size());
         home.setLibraryFolderState(
-                LibraryFolderLabel.compact(label), detail, scanning, persistent);
+                LibraryFolderLabel.compact(label), detail, incomplete);
         if (foldersDialog != null && foldersDialog.isShowing()) {
             foldersDialog.refresh(folders, scans::folderState);
         }
