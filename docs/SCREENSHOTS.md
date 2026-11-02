@@ -1,6 +1,6 @@
 # Screenshot gallery
 
-ComicViewer v1.4.0 on Android 16, using public-domain sample comics.
+ComicViewer v1.5.0 on Android 16, using public-domain sample comics.
 Select an image to view it at full resolution. See [capture details and artwork
 credits](STORE-ASSETS.md) for sources and screenshot specifications.
 
@@ -11,6 +11,20 @@ credits](STORE-ASSETS.md) for sources and screenshot specifications.
     <td align="center"><a href="screenshots/title-library.png"><img src="screenshots/title-library.png" alt="Dark title library with issue badges, progress, and read status" width="240"></a><br><sub>Titles and progress</sub></td>
     <td align="center"><a href="screenshots/light-library.png"><img src="screenshots/light-library.png" alt="The same title library in Light appearance" width="240"></a><br><sub>Light appearance</sub></td>
     <td align="center"><a href="screenshots/series-library.png"><img src="screenshots/series-library.png" alt="Series library with favorites, unread counts, and caught-up status" width="240"></a><br><sub>Series and favorites</sub></td>
+  </tr>
+</table>
+
+## Title display
+
+The same Compact cover grid with each title-display choice. Progress bars and
+status text move up as title rows are removed; only **2 lines**, the default,
+reserves the second title row. Issue dates remain in the cover badges.
+
+<table>
+  <tr>
+    <td align="center"><a href="screenshots/title-cover-only.png"><img src="screenshots/title-cover-only.png" alt="Cover-only library with progress and status directly below the covers" width="240"></a><br><sub>Cover only</sub></td>
+    <td align="center"><a href="screenshots/title-one-line.png"><img src="screenshots/title-one-line.png" alt="Library with one title line followed by aligned progress and status" width="240"></a><br><sub>1 line</sub></td>
+    <td align="center"><a href="screenshots/title-library.png"><img src="screenshots/title-library.png" alt="Library reserving two title lines above aligned progress and status" width="240"></a><br><sub>2 lines (default)</sub></td>
   </tr>
 </table>
 
@@ -44,7 +58,7 @@ credits](STORE-ASSETS.md) for sources and screenshot specifications.
 <table>
   <tr>
     <td align="center"><a href="screenshots/immersive-continuous-reading.png"><img src="screenshots/immersive-continuous-reading.png" alt="Continuous reading with all reader controls hidden" width="240"></a><br><sub>Immersive reading</sub></td>
-    <td align="center"><a href="screenshots/reader-options.png"><img src="screenshots/reader-options.png" alt="Preferences for controls, zoom, layout, direction, and buffering" width="240"></a><br><sub>Reader options</sub></td>
+    <td align="center"><a href="screenshots/reader-options.png"><img src="screenshots/reader-options.png" alt="Preferences for controls, default zoom, page layout, and reading direction" width="240"></a><br><sub>Reader options</sub></td>
   </tr>
 </table>
 

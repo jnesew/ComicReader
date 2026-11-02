@@ -51,8 +51,8 @@ configuration, and upgrade compatibility.
   </tr>
 </table>
 
-[Full screenshot gallery](docs/SCREENSHOTS.md) — series, two-page spreads, folders,
-reader options, and more. [Public-domain artwork credits](docs/STORE-ASSETS.md#artwork-sources).
+[Full screenshot gallery](docs/SCREENSHOTS.md) — title-display comparisons, series,
+two-page spreads, folders, and reader options. [Public-domain artwork credits](docs/STORE-ASSETS.md#artwork-sources).
 
 ## Documentation
 

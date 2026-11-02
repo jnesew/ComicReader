@@ -2,7 +2,17 @@
 
 All notable public changes to ComicViewer for Android are recorded here.
 
-## Unreleased
+## 1.5.0 - 2026-11-02
+
+### Library display
+
+- Choose Cover only, 1 line, or 2 lines for titles below library covers. Progress bars
+  and status text move with the selected title space and stay aligned across cards.
+- Remember the title-display choice across library views, restarts, and appearance changes.
+- Keep routine folder scans silent on the main library screen. Show persistent notices
+  only for incomplete scans or unavailable folder access; retain detailed status in the
+  folder manager and preserve a failed folder's notice when another scan succeeds.
+- Refresh the screenshots with shorter sample titles and comparisons of all title-display modes.
 
 ### Rendering policy
 

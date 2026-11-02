@@ -36,6 +36,7 @@ Use **Title display** in the library menu to choose **Cover only**, **1 line**, 
 text directly below the covers. One line reserves one title row; two lines keeps the
 existing two-row title area, even for short titles. Progress and status stay aligned
 across cards in each mode. The choice applies to both Titles and Series and is remembered.
+See the [title-display comparison](SCREENSHOTS.md#title-display) for all three layouts.
 
 Series view groups titles conservatively using supported embedded metadata or folder structure.
 Standalone titles remain separate. **Edit comic** changes the displayed comic title, chooses an
