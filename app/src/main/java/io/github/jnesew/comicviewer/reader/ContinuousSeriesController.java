@@ -1,6 +1,8 @@
 package io.github.jnesew.comicviewer.reader;
+
 import android.net.Uri;
 import android.widget.Toast;
+import io.github.jnesew.comicviewer.document.ImageFolderDocument;
 import io.github.jnesew.comicviewer.document.ComicDocument;
 import io.github.jnesew.comicviewer.document.ComicDocumentFactory;
 import io.github.jnesew.comicviewer.document.DocumentInfo;
@@ -59,7 +61,7 @@ final class ContinuousSeriesController {
         session.progress().scrollRatio = ratio;
         if (!session.document().isUnavailable()) {
             session.progress().lastOpened = System.currentTimeMillis();
-            session.database.saveReadingProgress(session.progress());
+            session.saves.persistSnapshot(session.active);
         }
         cancelContinuousPrefetch();
         for (DocumentResources resource : new ArrayList<>(continuousResources.values())) {
@@ -81,7 +83,7 @@ final class ContinuousSeriesController {
         if (next == null) return false;
         if (session.progress() != null && session.document() != null && !session.document().isUnavailable()) {
             session.progress().lastOpened = System.currentTimeMillis();
-            session.database.saveReadingProgress(session.progress());
+            session.saves.persistSnapshot(session.active);
         }
         cancelContinuousPrefetch();
         session.active = next;
@@ -90,6 +92,8 @@ final class ContinuousSeriesController {
         session.progress().lastOpened = System.currentTimeMillis();
         session.replacePagePreview(session.document());
         session.reader.setTitle(session.progress().title);
+        session.reader.setIssueDetailsAvailable(io.github.jnesew.comicviewer.ui.PublicationDetails.hasFields(
+                session.document().isUnavailable() ? session.database.publicationMetadata(key) : session.document().metadata()));
         session.reader.updatePosition(session.reader.canvas.page(), session.reader.canvas.pageEnd(), session.document().count());
         session.reader.updateBookmark(session.database.isBookmarked(session.document().key(), session.reader.canvas.page()));
         session.progress().favorite = session.database.get(session.document().key()).favorite;
@@ -216,6 +220,10 @@ final class ContinuousSeriesController {
             opened = ComicDocumentFactory.open(
                     session.context, uri, document, direction > 0 ? 0 : Integer.MAX_VALUE,
                     cachedPages, saved.documentSize, saved.documentModified, null);
+            if (opened instanceof ImageFolderDocument folder) {
+                session.database.reconcileImageFolder(folder);
+            }
+            session.database.storePublicationMetadata(opened.key(), opened.metadata());
             session.database.updateTitle(opened.key(), opened.title());
             ReadingProgress activated = session.database.get(opened.key());
             activated.pageCount = opened.count();

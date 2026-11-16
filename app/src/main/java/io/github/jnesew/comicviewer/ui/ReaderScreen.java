@@ -31,6 +31,7 @@ public final class ReaderScreen extends FrameLayout {
         void onPagePreviewCancelled();
         void onBookmark();
         void onFavorite();
+        default void onIssueDetails() { }
         void onRetryUnavailable();
         void onLayoutMenu(View anchor);
         void onFitMenu(View anchor);
@@ -46,6 +47,8 @@ public final class ReaderScreen extends FrameLayout {
     private final TextView title;
     private final ImageButton bookmark;
     private final ImageButton favorite;
+    private final ImageButton issueInfo;
+    private boolean hasIssueDetails;
     private final TextView pageLabel;
     private final TextView zoomLabel;
     private final TextView modeLabel;
@@ -112,6 +115,10 @@ public final class ReaderScreen extends FrameLayout {
             listener.onFavorite();
         });
         topBar.addView(favorite);
+        issueInfo = Ui.iconButton(context, R.drawable.ic_info, context.getString(R.string.series_issue_details));
+        issueInfo.setVisibility(GONE);
+        issueInfo.setOnClickListener(view -> { keepChromeAwake(); listener.onIssueDetails(); });
+        topBar.addView(issueInfo);
         ImageButton more = Ui.iconButton(context, R.drawable.ic_more, context.getString(R.string.reader_menu));
         more.setOnClickListener(view -> {
             keepChromeAwake();
@@ -346,6 +353,20 @@ public final class ReaderScreen extends FrameLayout {
         favorite.setImageTintList(android.content.res.ColorStateList.valueOf(favorited ? Ui.accent(getContext()) : Ui.text(getContext())));
         favorite.setContentDescription(getResources().getString(favorited
                 ? R.string.title_remove_favorite_named : R.string.title_add_favorite_named, title.getText()));
+    }
+
+    public void setIssueDetailsAvailable(boolean available) {
+        hasIssueDetails = available;
+        requestLayout();
+    }
+
+    public boolean isIssueInfoVisible() { return issueInfo.getVisibility() == VISIBLE; }
+
+    @Override protected void onMeasure(int widthSpec, int heightSpec) {
+        float scale = Math.max(1f, getResources().getConfiguration().fontScale);
+        issueInfo.setVisibility(hasIssueDetails && MeasureSpec.getSize(widthSpec) >= Ui.dp(getContext(), 360 * scale)
+                ? VISIBLE : GONE);
+        super.onMeasure(widthSpec, heightSpec);
     }
 
     public void setUnavailable(boolean value) {

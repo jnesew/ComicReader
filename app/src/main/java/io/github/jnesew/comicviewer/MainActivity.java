@@ -58,6 +58,7 @@ public final class MainActivity extends Activity implements
 
     private static final int REQUEST_IMPORT_COMICS = 4101;
     private static final int REQUEST_LIBRARY_FOLDER = 4102;
+    private static final int REQUEST_IMAGE_FOLDER = 4103;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
@@ -95,7 +96,9 @@ public final class MainActivity extends Activity implements
         migrateLegacyReadingDirection();
 
         imports = new LibraryImportCoordinator(this, database, new LibraryImportCoordinator.Listener() {
-            @Override public void onLibraryChanged() { home.refresh(); }
+            @Override public void onLibraryChanged() {
+                home.refresh(); updateLibraryFolderUi(folderDetail, folderIncomplete);
+            }
             @Override public void onImportFinished(int count) {
                 Toast.makeText(MainActivity.this, count > 0 ? getResources().getQuantityString(
                         R.plurals.comics_added, count, count) : getString(R.string.comics_add_failed),
@@ -105,7 +108,9 @@ public final class MainActivity extends Activity implements
         });
         scans = new FolderScanCoordinator(this, database, preferences, imports,
                 () -> session != null && session.isBusy(), new FolderScanCoordinator.Listener() {
-                    @Override public void onLibraryChanged() { home.refresh(); }
+                    @Override public void onLibraryChanged() {
+                        home.refresh(); updateLibraryFolderUi(folderDetail, folderIncomplete);
+                    }
                     @Override public void onScanStatus(String detail, boolean scanning, boolean incomplete) {
                         updateLibraryFolderUi(detail, incomplete);
                     }
@@ -178,6 +183,18 @@ public final class MainActivity extends Activity implements
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_IMAGE_FOLDER) {
+            boolean reopenFolders = reopenFoldersAfterPicker;
+            reopenFoldersAfterPicker = false;
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                Uri selected = data.getData();
+                persistReadAccess(selected, data.getFlags());
+                session.openComic(selected, true);
+            } else if (reopenFolders) {
+                showLibraryFolders();
+            }
+            return;
+        }
         if (requestCode == REQUEST_LIBRARY_FOLDER) {
             if (resultCode == RESULT_OK && data != null && data.getData() != null) {
                 Uri selected = data.getData();
@@ -437,11 +454,6 @@ public final class MainActivity extends Activity implements
     public void onLibraryMenuRequested(View anchor) {
         PopupMenu menu = new PopupMenu(this, anchor);
         boolean configured = !preferences.libraryFolders().isEmpty();
-        menu.getMenu().add(R.string.library_folders)
-                .setOnMenuItemClickListener(item -> {
-                    showLibraryFolders();
-                    return true;
-                });
         if (configured) {
             menu.getMenu().add(R.string.library_rescan_all_folders)
                     .setEnabled(!scans.isRunning())
@@ -542,6 +554,7 @@ public final class MainActivity extends Activity implements
         for (ReadingProgress entry : entries) {
             if (entry != null && !entry.uri.trim().isEmpty()) uris.add(entry.uri);
         }
+        for (String uri : uris) scans.cancelImageFolder(uri);
         for (String cover : database.forgetAll(uris)) CoverStore.delete(this, cover);
         for (String uri : uris) {
             try {
@@ -550,6 +563,7 @@ public final class MainActivity extends Activity implements
             }
         }
         home.refresh();
+        updateLibraryFolderUi(folderDetail, folderIncomplete);
     }
 
     public void onHome() {
@@ -562,6 +576,15 @@ public final class MainActivity extends Activity implements
         applyKeepScreenOn();
         showSystemBars(true);
         scans.maybeScanLibraryFolder(false);
+    }
+
+    private void chooseImageFolder() {
+        reopenFoldersAfterPicker = true;
+        Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION |
+                Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+        startActivityForResult(picker, REQUEST_IMAGE_FOLDER);
     }
 
     private void chooseLibraryFolder() {
@@ -588,26 +611,30 @@ public final class MainActivity extends Activity implements
         folderIncomplete = incomplete;
         if (home == null || preferences == null) return;
         List<LibraryFolder> folders = preferences.libraryFolders();
-        String label = folders.size() == 1 ? folders.get(0).label : folders.isEmpty() ? ""
-                : getResources().getQuantityString(R.plurals.library_folder_count, folders.size(), folders.size());
+        List<ReadingProgress> images = database.imageFolderComics();
+        int count = folders.size() + images.size();
+        String label = count == 0 ? "" : count == 1 ? (folders.isEmpty() ? images.get(0).title : folders.get(0).label)
+                : getResources().getQuantityString(R.plurals.library_folder_count, count, count);
         home.setLibraryFolderState(
                 LibraryFolderLabel.compact(label), detail, incomplete);
         if (foldersDialog != null && foldersDialog.isShowing()) {
-            foldersDialog.refresh(folders, scans::folderState);
+            foldersDialog.refresh(folders, images, scans::folderState, scans::imageFolderState);
         }
     }
 
     private void showLibraryFolders() {
         if (foldersDialog != null && foldersDialog.isShowing()) {
-            foldersDialog.refresh(preferences.libraryFolders(), scans::folderState);
+            foldersDialog.refresh(preferences.libraryFolders(), database.imageFolderComics(), scans::folderState, scans::imageFolderState);
             return;
         }
         foldersDialog = new LibraryFoldersDialog(this, new LibraryFoldersDialog.Listener() {
             @Override public void onAdd() { chooseLibraryFolder(); }
+            @Override public void onImportImageFolder() { chooseImageFolder(); }
             @Override public void onRescan() { scans.maybeScanLibraryFolder(true); }
             @Override public void onRemove(LibraryFolder folder) { confirmRemoveLibraryFolder(folder); }
+            @Override public void onRemoveImageComic(ReadingProgress comic) { confirmForgetTitle(comic, R.string.forget_message); }
         });
-        foldersDialog.show(preferences.libraryFolders(), scans::folderState);
+        foldersDialog.show(preferences.libraryFolders(), database.imageFolderComics(), scans::folderState, scans::imageFolderState);
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
@@ -696,6 +723,7 @@ public final class MainActivity extends Activity implements
     }
 
     private void releaseReadAccess(Uri uri) {
+        if (uri != null && preferences.libraryFolderUris().contains(uri.toString())) return;
         if (uri == null || !"content".equals(uri.getScheme())) return;
         try {
             getContentResolver().releasePersistableUriPermission(

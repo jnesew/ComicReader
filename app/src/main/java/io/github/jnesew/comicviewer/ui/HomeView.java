@@ -63,6 +63,11 @@ public final class HomeView extends FrameLayout {
 
     private final LinearLayout chrome;
     private final GridView grid;
+    private final SeriesDetailsView seriesDetails;
+    private final LinearLayout controls;
+    private final ImageButton issueInfo;
+    private final ImageButton add;
+    private final ImageButton folders;
     private final EditText searchInput;
     private final ImageButton headerBack;
     private final TextView headerTitle;
@@ -130,16 +135,21 @@ public final class HomeView extends FrameLayout {
         headerTitle.setEllipsize(TextUtils.TruncateAt.END);
         header.addView(headerTitle, new LinearLayout.LayoutParams(0, Ui.dp(context, 58), 1f));
 
+        issueInfo = Ui.iconButton(context, R.drawable.ic_info, context.getString(R.string.series_issue_details));
+        issueInfo.setVisibility(GONE);
+        issueInfo.setOnClickListener(view -> showSeriesDetails());
+        header.addView(issueInfo, toolbarAction(context));
+
         ImageButton search = Ui.iconButton(context, R.drawable.ic_search, context.getString(R.string.library_search));
         search.setOnClickListener(view -> toggleSearch());
         header.addView(search, toolbarAction(context));
 
-        ImageButton add = Ui.iconButton(context, R.drawable.ic_add,
+        add = Ui.iconButton(context, R.drawable.ic_add,
                 context.getString(R.string.library_add_comics_description));
         add.setOnClickListener(view -> listener.onOpenRequested());
         header.addView(add, toolbarAction(context));
 
-        ImageButton folders = Ui.iconButton(context, R.drawable.ic_folder,
+        folders = Ui.iconButton(context, R.drawable.ic_folder,
                 context.getString(R.string.library_folders));
         folders.setOnClickListener(view -> listener.onFoldersRequested());
         header.addView(folders, toolbarAction(context));
@@ -180,7 +190,7 @@ public final class HomeView extends FrameLayout {
         searchParams.bottomMargin = Ui.dp(context, 8);
         chrome.addView(searchInput, searchParams);
 
-        LinearLayout controls = new LinearLayout(context);
+        controls = new LinearLayout(context);
         controls.setGravity(Gravity.CENTER_VERTICAL);
         controls.setPadding(Ui.dp(context, 16), 0, Ui.dp(context, 16), Ui.dp(context, 4));
         sortButton = selectorButton(context);
@@ -248,6 +258,11 @@ public final class HomeView extends FrameLayout {
         body.addView(grid, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
+        seriesDetails = new SeriesDetailsView(context, listener, covers, gridDensity, titleDisplay, this::showFilterMenu);
+        seriesDetails.setVisibility(GONE);
+        body.addView(seriesDetails, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
         emptyState = new LinearLayout(context);
         emptyState.setOrientation(LinearLayout.VERTICAL);
         emptyState.setGravity(Gravity.CENTER);
@@ -288,6 +303,7 @@ public final class HomeView extends FrameLayout {
             chrome.setPadding(0, insets.getSystemWindowInsetTop(), 0, 0);
             grid.setPadding(Ui.dp(context, 16), Ui.dp(context, 4), Ui.dp(context, 16),
                     Ui.dp(context, 12) + insets.getSystemWindowInsetBottom());
+            seriesDetails.setBottomInset(insets.getSystemWindowInsetBottom());
             emptyState.setPadding(Ui.dp(context, 28), Ui.dp(context, 36), Ui.dp(context, 28),
                     Ui.dp(context, 36) + insets.getSystemWindowInsetBottom());
             return insets;
@@ -298,6 +314,10 @@ public final class HomeView extends FrameLayout {
 
     public void refresh() {
         if (closed) return;
+        LibraryQueryController.SeriesOverview overview = selectedSeriesId > 0L
+                ? queries.seriesOverview(selectedSeriesId) : null;
+        if (selectedSeriesId > 0L && overview == null) { leaveSeries(); return; }
+        if (overview != null) selectedSeriesTitle = overview.group().title;
         String query = searchInput == null ? "" : searchInput.getText().toString();
         LibraryQueryController.Snapshot snapshot = queries.query(
                 query, sort, filter, selectedSeriesId, VIEW_SERIES.equals(viewMode));
@@ -305,8 +325,15 @@ public final class HomeView extends FrameLayout {
         seriesRows = snapshot.seriesRows();
         adapter.submit(rows, seriesRows, showingSeriesGrid());
         boolean empty = showingSeriesGrid() ? seriesRows.isEmpty() : rows.isEmpty();
-        emptyContainer.setVisibility(empty ? VISIBLE : GONE);
-        grid.setVisibility(empty ? GONE : VISIBLE);
+        emptyContainer.setVisibility(overview == null && empty ? VISIBLE : GONE);
+        grid.setVisibility(overview == null && !empty ? VISIBLE : GONE);
+        seriesDetails.setVisibility(overview == null ? GONE : VISIBLE);
+        if (overview == null) seriesDetails.hide();
+        else seriesDetails.bind(overview, rows, filterLabelResource());
+        issueInfo.setVisibility(overview != null && seriesDetails.hasDetails() ? VISIBLE : GONE);
+        add.setVisibility(overview == null ? VISIBLE : GONE);
+        folders.setVisibility(overview == null ? VISIBLE : GONE);
+        controls.setVisibility(overview == null ? VISIBLE : GONE);
         emptyActions.setVisibility(query.trim().isEmpty() && LibraryDatabase.FILTER_ALL.equals(filter)
                 && selectedSeriesId <= 0L ? VISIBLE : GONE);
         if (empty && (!query.trim().isEmpty() || !LibraryDatabase.FILTER_ALL.equals(filter))) {
@@ -318,6 +345,7 @@ public final class HomeView extends FrameLayout {
             emptyBody.setVisibility(VISIBLE);
         }
         headerBack.setVisibility(selectedSeriesId > 0L ? VISIBLE : GONE);
+        headerTitle.setTextSize(selectedSeriesId > 0L ? 20 : 24);
         headerTitle.setText(selectedSeriesId > 0L ? selectedSeriesTitle :
                 getResources().getString(R.string.library_title));
         updateSelectorLabels();
@@ -406,6 +434,7 @@ public final class HomeView extends FrameLayout {
         int firstVisible = grid.getFirstVisiblePosition();
         gridDensity = density;
         adapter.setDensity(density);
+        seriesDetails.updatePresentation(density, titleDisplay);
         viewPreferences.edit().putString(GRID_DENSITY_PREFERENCE, density.key).apply();
         grid.setColumnWidth(cardWidth());
         grid.setVerticalSpacing(Ui.dp(getContext(), density.verticalSpacingDp));
@@ -420,6 +449,7 @@ public final class HomeView extends FrameLayout {
         int firstVisible = grid.getFirstVisiblePosition();
         titleDisplay = display;
         adapter.setTitleDisplay(display);
+        seriesDetails.updatePresentation(gridDensity, display);
         viewPreferences.edit().putString(TITLE_DISPLAY_PREFERENCE, display.key).apply();
         adapter.notifyDataSetChanged();
         if (firstVisible >= 0) grid.post(() -> grid.setSelection(firstVisible));
@@ -518,6 +548,18 @@ public final class HomeView extends FrameLayout {
         });
     }
 
+    private void showSeriesDetails() { seriesDetails.toggleDetails(); }
+
+    private int filterLabelResource() {
+        return switch (filter) {
+            case LibraryDatabase.FILTER_NEW -> R.string.filter_new;
+            case LibraryDatabase.FILTER_READING -> R.string.filter_in_progress;
+            case LibraryDatabase.FILTER_COMPLETED -> R.string.filter_completed;
+            case LibraryDatabase.FILTER_FAVORITES -> R.string.filter_favorites;
+            default -> R.string.filter_all;
+        };
+    }
+
     private void updateSelectorLabels() {
         int sortLabel = switch (sort) {
             case LibraryDatabase.SORT_ADDED -> R.string.sort_recently_added;
@@ -526,13 +568,7 @@ public final class HomeView extends FrameLayout {
             case LibraryDatabase.SORT_PROGRESS -> R.string.sort_progress;
             default -> R.string.sort_recently_read;
         };
-        int filterLabel = switch (filter) {
-            case LibraryDatabase.FILTER_NEW -> R.string.filter_new;
-            case LibraryDatabase.FILTER_READING -> R.string.filter_in_progress;
-            case LibraryDatabase.FILTER_COMPLETED -> R.string.filter_completed;
-            case LibraryDatabase.FILTER_FAVORITES -> R.string.filter_favorites;
-            default -> R.string.filter_all;
-        };
+        int filterLabel = filterLabelResource();
         sortButton.setText(sortLabel);
         sortButton.setCompoundDrawablesRelative(null, null,
                 Ui.icon(getContext(), R.drawable.ic_chevron_down, 16, Ui.textMuted(getContext())), null);
@@ -567,6 +603,7 @@ public final class HomeView extends FrameLayout {
         searchInput.setText("");
         refresh();
         grid.setSelection(0);
+        seriesDetails.resetScroll();
     }
 
     private void leaveSeries() {
@@ -580,6 +617,7 @@ public final class HomeView extends FrameLayout {
     }
 
     public void saveState(android.os.Bundle state) {
+        if (selectedSeriesId > 0L) seriesDetails.saveState(state);
         state.putLong("home_series", selectedSeriesId);
         state.putString("home_series_title", selectedSeriesTitle);
         state.putString("home_filter", filter);
@@ -607,7 +645,10 @@ public final class HomeView extends FrameLayout {
         searchInput.setVisibility(state.getBoolean("home_search_visible") ? VISIBLE : GONE);
         searchInput.setText(state.getString("home_search", ""));
         refresh();
-        grid.post(() -> grid.setSelectionFromTop(state.getInt("home_position"), state.getInt("home_offset")));
+        if (selectedSeriesId > 0L) seriesDetails.restoreState(state);
+        else if (state.getLong("home_series") <= 0L) {
+            grid.post(() -> grid.setSelectionFromTop(state.getInt("home_position"), state.getInt("home_offset")));
+        }
     }
 
     private void updateModeButton(TextView button, boolean selected) {

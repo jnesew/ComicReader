@@ -13,8 +13,8 @@ size declarations. Declarations remain useful early-rejection signals.
 |---|---:|
 | Provider/archive/PDF document copy or complete fingerprint | 4 GiB |
 | Expanded image page or extracted cover | 256 MiB |
-| ZIP entries | 50,000 |
-| Comic/EPUB/PDF pages | 20,000 |
+| ZIP entries or listed folder children | 50,000 |
+| Comic/EPUB/PDF/folder pages | 20,000 |
 | Declared aggregate ZIP expansion | 16 GiB |
 | Declared compression ratio (entries at least 1 MiB) | 1,000:1 |
 | XML metadata document | 4 MiB (ComicInfo.xml remains 1 MiB) |
@@ -29,7 +29,9 @@ Streams that exceed their byte budget, repeatedly return no data, or observe thr
 fail with a controlled I/O error. Temporary archive, PDF, page, and cover writes use a sibling
 `.partial` file and remove it on failure or cancellation before any complete cache is replaced.
 Image dimensions are checked before preview/full-bitmap allocation, and PDF/CBZ counts are checked
-before page-sized arrays are allocated.
+before page-sized arrays are allocated. Explicit image-folder imports apply the same page, child-count,
+stream, and image limits, and cap known child-image sizes in aggregate at 4 GiB. Incomplete provider
+listings are rejected before the saved page manifest is reconciled.
 
 Visible and optional tiles, sampled backing images, and admitted tile output share one reader
 session pixel allowance: half the Java heap class, bounded to 48–192 MiB. The allowance reserves

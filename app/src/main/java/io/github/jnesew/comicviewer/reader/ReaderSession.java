@@ -1,9 +1,11 @@
 package io.github.jnesew.comicviewer.reader;
+
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
 import android.widget.Toast;
+import io.github.jnesew.comicviewer.document.ImageFolderDocument;
 import io.github.jnesew.comicviewer.data.CoverStore;
 import io.github.jnesew.comicviewer.data.LibraryDatabase;
 import io.github.jnesew.comicviewer.data.ReaderPreferences;
@@ -187,6 +189,7 @@ public final class ReaderSession implements AutoCloseable {
             OpenPosition openPosition,
             String readingModeOverride) {
         if (uri == null || destroyed) return;
+        saves.saveNow();
         continuous.cancelContinuousPrefetch();
         comicOpening = true;
         int generation = ++openGeneration;
@@ -225,6 +228,11 @@ public final class ReaderSession implements AutoCloseable {
                         database.setLibraryFingerprint(
                                 opened.key(), document.size, sample, saved.contentFingerprint);
                     }
+                }
+                if (opened instanceof ImageFolderDocument folder) {
+                    database.reconcileImageFolder(folder);
+                    // Folder covers may change independently of the directory timestamp.
+                    database.setCover(opened.key(), "", LibraryDatabase.COVER_PENDING);
                 }
                 database.updateTitle(opened.key(), opened.title());
                 imports.applySeriesMetadata(opened, null);
@@ -334,6 +342,8 @@ public final class ReaderSession implements AutoCloseable {
         reader.setUnavailable(opened.isUnavailable());
         reader.canvas.setDocument(renderer(), opened.pages(), progress());
         reader.setTitle(progress().title);
+        reader.setIssueDetailsAvailable(io.github.jnesew.comicviewer.ui.PublicationDetails.hasFields(
+                opened.isUnavailable() ? database.publicationMetadata(opened.key()) : opened.metadata()));
         reader.updatePosition(reader.canvas.page(), reader.canvas.pageEnd(), opened.count());
         reader.updateMode(reader.canvas.readingMode());
         reader.updateZoom(reader.canvas.zoomMode(), reader.canvas.zoom(),

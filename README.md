@@ -11,9 +11,10 @@ Android 8.0–16 · English and Finnish · [MIT License](LICENSE)
 
 ## Features
 
-- CBZ, ZIP, PDF, and image-based EPUB support.
+- CBZ, ZIP, PDF, image-based EPUB, and loose image-folder comics.
 - Single-page, two-page spread, and continuous reading, with zoom and reading-direction controls.
-- Searchable library with multiple folders, series grouping, and favorites.
+- Searchable library with multiple folders, series overviews, Continue, and favorites.
+- ComicInfo descriptions, creator credits, and publication details in the library and reader.
 - Saved reading positions, bookmarks, and read/unread tracking across series.
 - Light, Dark, and System default appearance.
 
@@ -39,6 +40,7 @@ configuration, and upgrade compatibility.
   <tr>
     <td align="center"><a href="docs/screenshots/title-library.png"><img src="docs/screenshots/title-library.png" alt="Dark title library with issue badges, progress, and read status" width="240"></a><br><sub>Titles and progress</sub></td>
     <td align="center"><a href="docs/screenshots/light-library.png"><img src="docs/screenshots/light-library.png" alt="The same title library in Light appearance" width="240"></a><br><sub>Light appearance</sub></td>
+    <td align="center"><a href="docs/screenshots/series-details.png"><img src="docs/screenshots/series-details.png" alt="Series overview with Continue, expanded issue description, and creator credits" width="240"></a><br><sub>Series details</sub></td>
   </tr>
 </table>
 

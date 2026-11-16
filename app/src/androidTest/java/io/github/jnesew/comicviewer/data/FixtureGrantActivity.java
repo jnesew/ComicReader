@@ -21,6 +21,10 @@ public final class FixtureGrantActivity extends Activity {
         grantUriPermission(targetPackage,
                 DocumentsContract.buildDocumentUri(authority, "m-book"),
                 Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        grantUriPermission(targetPackage, DocumentsContract.buildTreeDocumentUri(
+                ImageFolderDocumentsProvider.authority(targetPackage), "images"),
+                Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION |
+                        Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         finish();
     }
 }

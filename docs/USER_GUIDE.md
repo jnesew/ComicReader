@@ -6,7 +6,29 @@ Use the **Add comics** plus icon in the library toolbar to select one or more CB
 system document picker. ComicViewer remembers Android's document grant so a title can normally be
 reopened without selecting it again.
 
-The folder icon opens **Library folders**. Add one or more folders through Android's picker;
+To read loose images as one comic, choose **Folder icon → Import image folder** and select
+its folder. Images directly inside that folder become pages in natural filename order
+(`1`, `2`, `10`); subfolders are excluded. A folder containing several chapter folders must have
+each chapter imported separately. Use embedded ComicInfo series metadata or **Edit comic** to group
+them into a series. Library-folder scans continue to discover comic files rather than image folders.
+
+Image comics appear in **Library folders**, labeled **Image comic**.
+**Rescan all folders** refreshes their pages and ComicInfo metadata, alongside scans for new comics
+in library folders. Refreshes wait while the reader is open; unreadable or incomplete folder listings
+keep the saved pages, metadata, and reading state. Removing an image comic from this list uses the
+same **Forget** confirmation as its library card and never changes source files.
+See the [folder manager example](SCREENSHOTS.md#library-management) for the two folder types.
+
+Reopening an image-folder comic also refreshes its pages. Saved position and bookmarks follow Android's
+image document identities when pages are inserted or reordered. Bookmarks for absent images stay
+hidden until those same identities return. A provider that changes an image's identity on rename
+makes it a new page; ComicViewer does not guess equivalence from its filename. Source images are
+never changed or copied into a permanent imported archive.
+
+The folder icon opens **Library folders**, with **Add folder** and **Import image folder** actions
+side by side. The **?** button beside the heading explains both actions and how their rescans differ.
+Folder rows show the type and location; scan status appears only while scanning or after a failure
+or incomplete scan. **Add folder** selects folders to scan for comic files through Android's picker;
 ComicViewer scans them recursively on launch or return to the library, skips unchanged files, and
 reconciles verified exact copies with earlier imports. The manager shows each folder's location and
 scan status, with actions to rescan or remove a folder. It never requests access to all
@@ -18,7 +40,7 @@ Use **Rescan all folders** to re-import forgotten comics that are still present 
 folders. Existing entries keep their saved state. Forgotten comics are imported afresh: Forget
 permanently removes their progress, bookmarks, favorites, and edits.
 
-Removing a folder stops scanning it and releases its access after the reader has finished using it.
+Removing a **Library folder** stops scanning it and releases its access after the reader has finished using it.
 It never changes source files or erases reading history. If a verified identical copy remains in
 another selected folder, ComicViewer uses it with the same progress, bookmarks, favorites, and edits.
 An independently accessible manual import can also keep a comic readable. Otherwise the entry stays
@@ -43,6 +65,31 @@ Standalone titles remain separate. **Edit comic** changes the displayed comic ti
 existing or new series and issue number, restores automatic grouping, or explicitly keeps the
 comic standalone. **Use original title** restores the detected title. These edits change only
 ComicViewer metadata and never rename or modify the comic file.
+
+While reading, the **information** button beside bookmark and favorite opens the current issue’s
+publication details, with creator credits first and its description below. During continuous series
+reading, the details follow the active issue. On narrow screens or with large text, use
+**Reader menu → Issue details**. Issues without publication details show a short message there.
+Opening details does not change your page, bookmarks, favorite, or read status.
+
+Opening a series shows its cover, issue totals, and a **Continue** action above the issue grid.
+Continue resumes the most recently opened unfinished available issue, or the first unread
+available issue when none is in progress. A completed series can resume its most recently opened
+available issue. The target comes from the entire series, including when search or a filter hides it.
+
+The issue row above Continue shows its number and embedded title when available; an explicit title
+edit takes precedence. Tap the row's chevron to expand that same issue's description, creator
+credits, publisher, language, volume, and publication date. Missing fields leave no empty rows.
+When the Continue target changes, its details update and start collapsed. Descriptions are always
+issue-specific; another issue's synopsis is never substituted. The overview scrolls away as you
+browse comics while the series title and issue filter stay available. The information button in
+the toolbar brings the details back when scrolled away and toggles them open or closed when visible.
+Returning to Series restores the parent search, filter, and scroll position.
+See the [expanded series example](SCREENSHOTS.md#series-details) for the description and credits.
+
+Metadata is cached locally so browsing does not open source comics on the UI thread. After upgrading,
+previous imports refresh their metadata in the background when their document access is available.
+No online descriptions or biographies are fetched.
 
 The Favorites filter in Titles shows favorite comics. In Series it shows favorite series and
 favorite standalone comics. Series favorites are independent: starring a series never stars its
@@ -164,10 +211,23 @@ reading. Unavailable notices cannot receive page bookmarks.
 The reader menu provides jump to page, the bookmark list, **Edit comic**, Auto/LTR/RTL
 reading direction, and Reader options. Reader options contains background colors, volume-key
 navigation, tap zones, screen-awake behavior, and external-keyboard shortcut capture.
+When volume-key navigation is enabled, Volume down moves forward and Volume up moves backward.
+Single-page and spread layouts turn pages; continuous mode scrolls 90% of the reader viewport per
+press, leaving overlap for following text and panels. At the current content boundary, navigation
+can continue into an adjacent series issue. Holding a volume key does not repeat navigation or
+change the system volume while this option is active in the reader.
+
 
 ## Formats and limitations
 
-- CBZ and ZIP pages are ordered naturally by path and filename.
+- CBZ and ZIP pages are ordered naturally by path and filename. Optional `ComicInfo.xml` supplies
+  a title, series, issue number, cover selection, and an Auto reading-direction hint. The same
+  metadata can sit alongside pages in an explicitly imported image folder. User edits and explicit
+  direction settings take precedence. Other supported metadata fields are described in
+  [Format and metadata support](FORMATS.md).
+- Image folders support JPEG, PNG, WebP, GIF, and BMP through Android's image decoders, using the
+  same page and memory limits as raster archive pages. They use the system folder picker and
+  require no broad storage or media permission.
 - EPUB support covers EPUB 3 fixed-layout publications and conservative image-centric spine pages.
   Scripted, encrypted/DRM, remote-resource, unsafe-path, layered, and general reflowable EPUBs are
   rejected.

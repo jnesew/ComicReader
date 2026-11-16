@@ -45,6 +45,18 @@ final class LibraryFeatureTests {
         fixture("options", options);
     }
 
+    void imageFolderAvailability(Uri imageTree) {
+        try (Scanning flow = new Scanning()) {
+            main(() -> flow.scans.selectFolder(imageTree)); flow.waitIdle();
+            check(db.get(imageTree.toString()).available);
+            main(() -> flow.scans.removeFolder(imageTree.toString())); flow.waitIdle();
+            check(db.get(imageTree.toString()).available);
+            check(context.getContentResolver().getPersistedUriPermissions().stream().anyMatch(
+                    grant -> grant.isReadPermission() && grant.getUri().equals(imageTree)));
+            equal("My title", db.get(imageTree.toString()).title);
+        }
+    }
+
     void preferencesMigration() {
         context.deleteSharedPreferences(PREFS);
         try {
@@ -124,7 +136,7 @@ final class LibraryFeatureTests {
             }
             try (LibraryDatabase upgraded = new LibraryDatabase(context, name)) {
                 ReadingProgress progress = upgraded.get("legacy");
-                equal(11, upgraded.getReadableDatabase().getVersion());
+                equal(13, upgraded.getReadableDatabase().getVersion());
                 equal("Edited", progress.title); equal("Series", progress.seriesTitle);
                 equal(1, progress.page); equal(123L, progress.lastOpened);
                 check(progress.favorite && progress.read && !progress.seriesFavorite);

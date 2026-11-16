@@ -12,6 +12,7 @@ import io.github.jnesew.comicviewer.model.ReaderDefaults;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
 import io.github.jnesew.comicviewer.render.ComicCanvasView;
 import io.github.jnesew.comicviewer.ui.dialog.ReaderOptionsDialog;
+import io.github.jnesew.comicviewer.ui.dialog.ComicDetailsDialog;
 import io.github.jnesew.comicviewer.ui.dialog.ReaderNavigationDialogs;
 import io.github.jnesew.comicviewer.ui.ReaderScreen;
 import io.github.jnesew.comicviewer.util.SeriesNavigator;
@@ -37,18 +38,15 @@ public final class ReaderController implements ReaderScreen.Listener, ComicCanva
     }
     @Override public void onHome() { host.onHome(); }
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (session.readerActive && session.document() != null && session.preferences.volumeNavigation() &&
+                (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN || event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_UP)) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                navigateVolume(event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN ? 1 : -1);
+            }
+            return true;
+        }
         if (session.readerActive && session.document() != null && event.getAction() == KeyEvent.ACTION_DOWN &&
                 event.getRepeatCount() == 0) {
-            if (session.preferences.volumeNavigation()) {
-                if (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN) {
-                    navigate(1);
-                    return true;
-                }
-                if (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_UP) {
-                    navigate(-1);
-                    return true;
-                }
-            }
             if (session.preferences.matches("next", event) || session.preferences.matches("next_alt", event)) {
                 navigate(1);
                 return true;
@@ -129,6 +127,18 @@ public final class ReaderController implements ReaderScreen.Listener, ComicCanva
                 added ? context.getString(R.string.reader_bookmarked_page, session.reader.canvas.page() + 1)
                         : context.getString(R.string.reader_removed_bookmark),
                 Toast.LENGTH_SHORT).show();
+    }
+
+    @Override public void onIssueDetails() {
+        var dialog = createIssueDetails();
+        if (dialog != null) dialog.show();
+    }
+
+    android.app.AlertDialog createIssueDetails() {
+        if (session.document() == null || session.progress() == null) return null;
+        var metadata = session.document().isUnavailable()
+                ? session.database.publicationMetadata(session.document().key()) : session.document().metadata();
+        return new ComicDetailsDialog().create(context, session.progress(), metadata);
     }
 
     @Override
@@ -224,6 +234,10 @@ public final class ReaderController implements ReaderScreen.Listener, ComicCanva
             showJumpDialog();
             return true;
         });
+        if (!session.reader.isIssueInfoVisible()) {
+            menu.getMenu().add(R.string.series_issue_details).setEnabled(session.document() != null)
+                    .setOnMenuItemClickListener(item -> { onIssueDetails(); return true; });
+        }
         menu.getMenu().add(R.string.reader_bookmarks)
                 .setEnabled(session.document() != null && !session.document().isUnavailable()).setOnMenuItemClickListener(item -> {
             showBookmarks();
@@ -322,6 +336,21 @@ public final class ReaderController implements ReaderScreen.Listener, ComicCanva
     public void onUnavailableRetry(String key) {
         if (session.comicOpening) return;
         session.openComic(Uri.parse(key), false, ReaderSession.OpenPosition.BEGINNING, session.reader.canvas.readingMode());
+    }
+
+    private void navigateVolume(int direction) {
+        if (session.document() == null || session.comicOpening) return;
+        if (!session.reader.canvas.isContinuous()) {
+            navigate(direction);
+            return;
+        }
+        if (session.reader.canvas.scrollContinuousViewport(direction)) return;
+        boolean boundary = direction > 0 ? session.reader.canvas.isAtDocumentEnd()
+                : session.reader.canvas.isAtDocumentStart();
+        if (boundary && direction > 0) markReadIfAvailable(session.document().key());
+        if (boundary && openAdjacentSeriesIssue(direction)) return;
+        Toast.makeText(context, direction > 0 ? R.string.reader_last_page : R.string.reader_first_page,
+                Toast.LENGTH_SHORT).show();
     }
 
     private void navigate(int delta) {

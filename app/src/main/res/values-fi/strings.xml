@@ -210,7 +210,7 @@
     <string name="reader_ready">Valmis</string>
 
     <string name="option_tap_zones">Reunojen napautus vaihtaa sivua</string>
-    <string name="option_volume_navigation">Äänenvoimakkuusnäppäimet vaihtavat sivua</string>
+    <string name="option_volume_navigation">Navigointi äänenvoimakkuusnäppäimillä</string>
     <string name="option_remember_zoom">Muista zoomaus sarjakuvittain</string>
     <string name="option_default_zoom">Oletuszoomaus</string>
     <string name="option_default_zoom_description">Käytetään, kun sarjakuvalla ei ole muistettua zoomausta tai sarjakuvakohtainen zoomausmuisti on pois käytöstä. Jatkuva vieritys sovitetaan leveyteen.</string>
@@ -284,7 +284,6 @@
     <string name="library_remove_folder_named">Poista kansiovalinta ”%1$s”</string>
     <string name="library_remove_folder_message">Lopetetaanko tämän kansion skannaus? Sarjakuvatiedostoja ei poisteta. Lukuhistoria, kirjanmerkit, suosikit ja muokkaukset säilyvät kirjastossa. Sarjakuvia voi yhä lukea muiden toimivien lähteiden kautta. Muuten ne säilyvät ei-saatavilla-tilassa. Kansion käyttöoikeus vapautetaan, kun lukija ei enää tarvitse sitä.</string>
     <string name="library_folder_waiting">Odottaa skannausta…</string>
-    <string name="library_folder_ready">Valmis skannattavaksi</string>
     <string name="library_folder_access_unavailable">Kansioon ei päästä. Tarkista, että tallennustila on käytettävissä.</string>
     <string name="library_folder_add_failed">Kansion tallentaminen epäonnistui. Valitse se uudelleen järjestelmän kansiovalitsimella.</string>
     <string name="series_add_favorite">Lisää sarja suosikkeihin</string>
@@ -295,4 +294,36 @@
         <item quantity="one">%1$d kansio</item>
         <item quantity="other">%1$d kansiota</item>
     </plurals>
+    <string name="import_image_folder">Tuo kuvakansio</string>
+    <string name="error_image_folder_access">Kuvakansiota ei voitu lukea. Tarkista käyttöoikeus ja yritä uudelleen.</string>
+    <string name="error_image_folder_changed">Kuva muuttui lukemisen aikana. Päivitä sivut avaamalla sarjakuva uudelleen.</string>
+    <string name="series_continue">Jatka</string>
+    <string name="series_continue_issue">Jatka lukemista: %1$s</string>
+    <string name="series_issues">Numerot</string>
+    <string name="series_counts">%1$s · %2$s</string>
+    <string name="series_issue_title">%1$s: %2$s</string>
+    <string name="series_issue_details">Numeron tiedot</string>
+    <string name="series_details_expanded">laajennettu</string>
+    <string name="series_details_collapsed">supistettu</string>
+    <string name="series_details_accessibility">%1$s, %2$s</string>
+    <string name="series_writer">Käsikirjoitus: %1$s</string>
+    <string name="series_penciller">Piirrokset: %1$s</string>
+    <string name="series_inker">Tussaus: %1$s</string>
+    <string name="series_colorist">Värit: %1$s</string>
+    <string name="series_letterer">Tekstaus: %1$s</string>
+    <string name="series_cover_artist">Kansikuva: %1$s</string>
+    <string name="series_editor">Toimitus: %1$s</string>
+    <string name="series_translator">Käännös: %1$s</string>
+    <string name="series_publisher">Kustantaja: %1$s</string>
+    <string name="series_language">Kieli: %1$s</string>
+    <string name="series_volume">Vuosikerta: %1$d</string>
+    <string name="series_publication_date">Julkaistu: %1$s</string>
+    <string name="comic_no_publication_details">Tälle numerolle ei ole julkaisutietoja.</string>
+    <string name="folder_type_library">Kirjastokansio</string>
+    <string name="folder_type_image_comic">Kuvasarjakuva</string>
+    <string name="image_comic_refreshed">Päivitetty · %1$d sivua</string>
+    <string name="image_comic_refresh_failed">Kuvasarjakuvan päivitys epäonnistui. Tallennetut sivut ja lukutila on säilytetty.</string>
+    <string name="image_comic_refresh_deferred">Päivitys odottaa lukemisen tai tuonnin päättymistä</string>
+    <string name="library_folders_help">Kansiotyypit</string>
+    <string name="library_folders_help_message">Lisää kansio\nEtsii sarjakuvatiedostoja kansiosta ja sen alikansioista. Uudelleenskannaus löytää uudet ja muuttuneet sarjakuvat.\n\nTuo kuvakansio\nLukee suoraan kansion sisällä olevat kuvat yhtenä sarjakuvana. Uudelleenskannaus päivittää sen sivut ja ComicInfo-metatiedot.</string>
 </resources>

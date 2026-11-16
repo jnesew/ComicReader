@@ -24,11 +24,21 @@ public final class DatabaseTestRunner extends Instrumentation {
     private LibraryDatabase db;
     private int current;
     private int failed;
-    private static final int TOTAL = 82;
+    private static final int TOTAL = 92;
 
     @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
 
     @Override public void onStart() {
+        run("imageFolderManagementRescansAndRejectsStaleResults", () -> ImageFolderManagementTests.refresh(this, db));
+        run("readerDetailsFollowActiveIssue", () -> io.github.jnesew.comicviewer.reader.ReaderDetailsTests.activeIssue(this, db));
+        run("publicationMetadataRoundTrip", () -> PublicationMetadataTests.roundTrip(db));
+        run("publicationMetadataFollowsReconciledSource", () -> PublicationMetadataTests.reconciliation(db));
+        run("schemaTwelveAddsPublicationCacheWithoutDataLoss", () -> PublicationMetadataTests.upgradeTwelve(this));
+        run("seriesOverviewDescriptionMatchesContinue", () -> io.github.jnesew.comicviewer.ui.SeriesDetailsTests.overviewAndContinue(this, db));
+        run("seriesOverviewScrollAndRestore", () -> io.github.jnesew.comicviewer.ui.SeriesDetailsTests.scrollingAndRestoration(this, db));
+        run("seriesOverviewHandlesMissingMetadataAndFilters", () -> io.github.jnesew.comicviewer.ui.SeriesDetailsTests.missingMetadataAndEmptyFilter(this, db));
+        run("volumeViewportScrolling", () -> ReaderGeometryTests.viewportKeyScrolling(this));
+        run("imageFolderDocumentsAndSavedIdentity", () -> ImageFolderTests.run(this, db));
         run("localizedActualSizeLabels", () -> ReaderGeometryTests.actualSizeLabels(this));
         run("rasterCoverFormatsAndTopCrop", () -> CoverStoreTests.rasterCovers(this));
         run("gifLibraryImportRetainsCover", () -> CoverStoreTests.gifImport(this, db));
@@ -449,7 +459,7 @@ public final class DatabaseTestRunner extends Instrumentation {
         }
         db = new LibraryDatabase(getTargetContext(), NAME);
         ReadingProgress p = db.get("legacy");
-        equal(11, db.getReadableDatabase().getVersion()); equal("Vanha 🦊", p.originalTitle);
+        equal(13, db.getReadableDatabase().getVersion()); equal("Vanha 🦊", p.originalTitle);
         equal(4, p.page); equal(30, p.pageCount); equal(123L, p.addedAt);
         check(p.manualSource && p.available && !p.titleOverride);
         check(p.readingModeOverride && !p.readingDirectionOverride);

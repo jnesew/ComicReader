@@ -14,6 +14,7 @@ import io.github.jnesew.comicviewer.data.LibraryFolderScanner;
 import io.github.jnesew.comicviewer.data.ReaderPreferences;
 import io.github.jnesew.comicviewer.document.ComicDocumentFactory;
 import io.github.jnesew.comicviewer.document.DocumentInfo;
+import io.github.jnesew.comicviewer.document.ImageFolderDocument;
 import io.github.jnesew.comicviewer.model.LibraryFolder;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
 import io.github.jnesew.comicviewer.util.InputLimits;
@@ -47,6 +48,9 @@ public final class FolderScanCoordinator implements AutoCloseable {
     private final BooleanSupplier readerBusy;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ConcurrentHashMap<String, ScanJob> jobs = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, ImageRefreshJob> imageJobs = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, FolderState> imageStates = new ConcurrentHashMap<>();
+    private final Set<String> pendingImageRefreshes = ConcurrentHashMap.newKeySet();
     private final ConcurrentHashMap<String, Long> lastStarted = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, FolderState> states = new ConcurrentHashMap<>();
     private final AtomicInteger nextGeneration = new AtomicInteger();
@@ -79,7 +83,18 @@ public final class FolderScanCoordinator implements AutoCloseable {
         this.reconciler = new LibrarySourceReconciler(this.context, database);
     }
 
-    public boolean isRunning() { return !jobs.isEmpty() || reconciliationQueued.get(); }
+    public boolean isRunning() { return !jobs.isEmpty() || !imageJobs.isEmpty() || reconciliationQueued.get(); }
+
+    public FolderState imageFolderState(String uri) {
+        return imageStates.getOrDefault(uri, new FolderState("", false, false, ""));
+    }
+
+    public void cancelImageFolder(String uri) {
+        pendingImageRefreshes.remove(uri);
+        ImageRefreshJob job = imageJobs.remove(uri);
+        if (job != null && job.future != null) job.future.cancel(true);
+        imageStates.remove(uri);
+    }
 
     public FolderState folderState(String uri) {
         return states.getOrDefault(uri, new FolderState("", false, false, ""));
@@ -149,11 +164,18 @@ public final class FolderScanCoordinator implements AutoCloseable {
         for (LibraryFolder folder : preferences.libraryFolders()) {
             FolderState state = states.get(folder.uri);
             if (state != null && !state.incompleteDetail().isEmpty()) {
-                listener.onScanStatus(state.incompleteDetail(), !jobs.isEmpty(), true);
+                listener.onScanStatus(state.incompleteDetail(), isRunning(), true);
                 return;
             }
         }
-        listener.onScanStatus("", !jobs.isEmpty(), false);
+        for (ReadingProgress comic : database.imageFolderComics()) {
+            FolderState state = imageStates.get(comic.uri);
+            if (state != null && !state.incompleteDetail().isEmpty()) {
+                listener.onScanStatus(state.incompleteDetail(), isRunning(), true);
+                return;
+            }
+        }
+        listener.onScanStatus("", isRunning(), false);
     }
 
     private void notifyChanged() {
@@ -161,6 +183,7 @@ public final class FolderScanCoordinator implements AutoCloseable {
     }
 
     private void releaseReadAccess(Uri uri) {
+        if (database.get(uri.toString()).manualSource) return;
         try {
             context.getContentResolver().releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
         } catch (RuntimeException ignored) {
@@ -171,6 +194,8 @@ public final class FolderScanCoordinator implements AutoCloseable {
     @Override public void close() {
         destroyed = true;
         for (String uri : jobs.keySet()) cancelFolder(uri);
+        for (String uri : imageJobs.keySet()) cancelImageFolder(uri);
+        pendingImageRefreshes.clear();
         listener = null;
         mainHandler.removeCallbacksAndMessages(null);
         scanWorker.shutdownNow();
@@ -195,7 +220,84 @@ public final class FolderScanCoordinator implements AutoCloseable {
                     previous == null ? "" : previous.incompleteDetail()));
             job.future = scanWorker.submit(() -> scan(job));
         }
+        queueImageRefreshes(userRequested);
         updateLibraryFolderUi();
+    }
+
+    private void queueImageRefreshes(boolean userRequested) {
+        List<ReadingProgress> comics = database.imageFolderComics();
+        Set<String> present = new HashSet<>();
+        for (ReadingProgress comic : comics) present.add(comic.uri);
+        pendingImageRefreshes.retainAll(present);
+        for (ReadingProgress comic : comics) {
+            if (userRequested) pendingImageRefreshes.add(comic.uri);
+            if (!pendingImageRefreshes.contains(comic.uri) || imageJobs.containsKey(comic.uri)) continue;
+            if (readerBusy.getAsBoolean()) {
+                imageStates.put(comic.uri, new FolderState(context.getString(R.string.image_comic_refresh_deferred), false, false, ""));
+                continue;
+            }
+            ImageRefreshJob job = new ImageRefreshJob(comic.uri);
+            if (imageJobs.putIfAbsent(comic.uri, job) != null) continue;
+            imageStates.put(comic.uri, new FolderState(context.getString(R.string.library_folder_waiting), true, false, ""));
+            job.future = scanWorker.submit(() -> refreshImageFolder(job));
+        }
+    }
+
+    private boolean current(ImageRefreshJob job) {
+        return !destroyed && !Thread.currentThread().isInterrupted() && imageJobs.get(job.uri) == job;
+    }
+
+    private void refreshImageFolder(ImageRefreshJob job) {
+        if (!current(job)) return;
+        boolean refreshed = false;
+        boolean deferred = false;
+        int pages = 0;
+        boolean claimed = imports.claimJob(job.uri);
+        try {
+            if (!claimed || readerBusy.getAsBoolean()) deferred = true;
+            else {
+                imageStates.put(job.uri, new FolderState(context.getString(R.string.library_folder_scanning), true, false, ""));
+                mainHandler.post(this::updateLibraryFolderUi);
+                Uri uri = Uri.parse(job.uri);
+                var description = ComicDocumentFactory.describe(context, uri);
+                try (ImageFolderDocument opened = ImageFolderDocument.open(context, uri, description, database.get(job.uri).page)) {
+                    refreshed = imports.refreshImageFolder(opened, () -> current(job) && !readerBusy.getAsBoolean());
+                    deferred = !refreshed && readerBusy.getAsBoolean();
+                    pages = opened.count();
+                }
+            }
+        } catch (IOException | RuntimeException error) {
+            // Unreadable or incomplete listings never erase pages, progress, bookmarks, or metadata.
+        } finally {
+            if (claimed) imports.releaseJob(job.uri);
+        }
+        boolean success = refreshed;
+        boolean retry = deferred;
+        int pageCount = pages;
+        mainHandler.post(() -> {
+            if (!current(job)) return;
+            imageJobs.remove(job.uri, job);
+            if (!retry) pendingImageRefreshes.remove(job.uri);
+            if (database.isImageFolder(job.uri)) {
+                String detail = success ? context.getString(R.string.image_comic_refreshed, pageCount)
+                        : context.getString(retry ? R.string.image_comic_refresh_deferred : R.string.image_comic_refresh_failed);
+                imageStates.put(job.uri, new FolderState(detail, false, !success && !retry, !success && !retry ? detail : ""));
+            } else imageStates.remove(job.uri);
+            notifyChanged();
+            updateLibraryFolderUi();
+            requestReconciliation();
+            if (retry && !readerBusy.getAsBoolean()) {
+                mainHandler.postDelayed(() -> {
+                    if (!destroyed) { queueImageRefreshes(false); updateLibraryFolderUi(); }
+                }, 500L);
+            }
+        });
+    }
+
+    private static final class ImageRefreshJob {
+        final String uri;
+        volatile Future<?> future;
+        ImageRefreshJob(String uri) { this.uri = uri; }
     }
 
     private void scan(ScanJob job) {
@@ -261,7 +363,7 @@ public final class FolderScanCoordinator implements AutoCloseable {
     }
 
     private void requestReconciliation() {
-        if (destroyed || !jobs.isEmpty() || readerBusy.getAsBoolean() || !needsReconciliation ||
+        if (destroyed || !jobs.isEmpty() || !imageJobs.isEmpty() || readerBusy.getAsBoolean() || !needsReconciliation ||
                 !reconciliationQueued.compareAndSet(false, true)) return;
         int version = configurationVersion;
         int revision = sourceRevision.get();

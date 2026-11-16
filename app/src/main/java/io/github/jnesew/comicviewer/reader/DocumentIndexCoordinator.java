@@ -107,7 +107,9 @@ final class DocumentIndexCoordinator {
         if (!session.imports.claimJob(key)) return;
         try {
             ReadingProgress item = session.database.get(key);
-            if (CoverStore.exists(item.coverPath) || !current(resource, generation)) return;
+            if (!current(resource, generation)) return;
+            // An older reader may have cached page zero before interpreting FrontCover metadata.
+            if (CoverStore.exists(item.coverPath) && resource.document.metadata().coverPage(resource.document.count()) == 0) return;
             String path = CoverStore.ensureCover(session.context, resource.document);
             synchronized (resource) {
                 if (!current(resource, generation)) return;

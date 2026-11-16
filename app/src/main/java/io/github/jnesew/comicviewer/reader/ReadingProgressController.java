@@ -1,6 +1,9 @@
 package io.github.jnesew.comicviewer.reader;
+
 import android.os.Handler;
 import android.os.Looper;
+
+import io.github.jnesew.comicviewer.document.ImageFolderDocument;
 
 /** Main-thread debounced reading state capture; placeholders are never persisted. */
 final class ReadingProgressController {
@@ -21,6 +24,15 @@ final class ReadingProgressController {
         if (capture(resource.document, resource.progress,
                 new Position(canvas.pageEnd(), canvas.pageRatio(), canvas.zoomMode(), canvas.zoom(),
                         canvas.zoomGesturesLocked(), canvas.readingMode()), System.currentTimeMillis())) {
+            persistSnapshot(resource);
+        }
+    }
+
+    void persistSnapshot(DocumentResources resource) {
+        if (resource.document instanceof ImageFolderDocument) {
+            int page = Math.max(0, Math.min(resource.progress.page, resource.document.count() - 1));
+            session.database.saveImageFolderProgress(resource.progress, resource.document.page(page).name);
+        } else {
             session.database.saveReadingProgress(resource.progress);
         }
     }

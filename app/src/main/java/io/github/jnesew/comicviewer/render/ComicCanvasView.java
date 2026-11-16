@@ -310,6 +310,19 @@ public final class ComicCanvasView extends View {
         showGlobalPage(position.page(), position.ratio());
     }
 
+    /** A hardware-key reading step, in screen pixels, with overlap across page boundaries. */
+    public boolean scrollContinuousViewport(int direction) {
+        if (!continuous || pages.isEmpty() || direction == 0 || getHeight() <= 0) return false;
+        scroller.forceFinished(true);
+        String previousKey = continuousDocumentKey();
+        double previousScroll = documentScroll;
+        documentScroll = clampScroll(documentScroll + Math.signum(direction) * getHeight() * 0.9d);
+        updateContinuousPosition();
+        notifyUserScrolledForward(previousKey, direction > 0 && documentScroll > previousScroll);
+        invalidate();
+        return Math.abs(documentScroll - previousScroll) > 0.01d;
+    }
+
     public boolean moveContinuousPage(int delta) {
         if (!continuous || pages.isEmpty() || delta == 0) return false;
         int issue = issueFor(page);

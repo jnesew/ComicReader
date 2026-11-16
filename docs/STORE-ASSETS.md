@@ -2,16 +2,17 @@
 
 ## Screenshot captures
 
-The [screenshot gallery](SCREENSHOTS.md) and fastlane selection show ComicViewer v1.5.0 on an
-Android 16 (API 36) emulator. Portrait captures are 1080 × 2400 pixels; the landscape
-spread is 2400 × 1080. Libraries use Compact cover size with three columns at
+The [screenshot gallery](SCREENSHOTS.md) and fastlane selection show ComicViewer on an
+Android 16 (API 36) emulator. The expanded series overview and folder manager were captured
+from v1.6.0; the remaining screenshots are retained from v1.5.0. Portrait captures are
+1080 × 2400 pixels; the landscape spread is 2400 × 1080. Libraries use Compact cover size with three columns at
 420 dpi and the default font scale. The title-display comparison uses the same library
 and cover size in Cover only, 1 line, and 2 lines modes. All captures are unedited PNGs from the app,
 with no added device frames or promotional overlays. Android's demo status bar
 sets the clock and system indicators consistently.
 
-The title and series libraries show Dark appearance. The matching title-library
-example and folder manager show Light appearance. Reader controls retain their
+The title and series libraries and the expanded series overview show Dark appearance.
+The matching title-library example and folder manager show Light appearance. Reader controls retain their
 dark palette. Reading states, bookmarks, favorites, and settings were selected
 through the app's normal controls. Sample copies use short display filenames;
 publication dates remain in their structured issue-number fields and cover badges.
@@ -24,13 +25,14 @@ the English captures are Finnish. The 512 px icon is existing project artwork, u
 | 1.png | [series-library.png](screenshots/series-library.png) | Series, favorites, and unread counts |
 | 2.png | [paged-reading.png](screenshots/paged-reading.png) | Single page, bookmark, and comic favorite |
 | 3.png | [continuous-scroll.png](screenshots/continuous-scroll.png) | Continuous reading within a collection |
-| 4.png | [library-folders.png](screenshots/library-folders.png) | Multiple library folders in Light appearance |
+| 4.png | [library-folders.png](screenshots/library-folders.png) | Library folder and image comic in Light appearance |
 | 5.png | [continuous-series.png](screenshots/continuous-series.png) | Continuous reading across issues |
 | 6.png | [light-library.png](screenshots/light-library.png) | Light appearance, issue badges, and hybrid status |
 | 7.png | [title-library.png](screenshots/title-library.png) | Matching Dark title library |
+| 8.png | [series-details.png](screenshots/series-details.png) | Expanded series issue description, credits, and Continue |
 
-The README previews the title library in both appearances, single-page reading,
-and continuous series reading. The full gallery also shows library management,
+The README previews the title library in both appearances, expanded series details,
+single-page reading, and continuous series reading. The full gallery also shows library management,
 immersive reading, reader options, and a landscape spread.
 
 ## Artwork sources
@@ -86,13 +88,23 @@ This local screenshot fixture demonstrates page navigation, bookmarks, continuou
 reading, and two-page spreads. It is separate from the twelve individual issues
 used to demonstrate continuous series reading. The paged capture shows the third
 image (1905-10-29); the spread shows the fourth and fifth (1905-11-05 and 1905-11-12).
+
+For the v1.6.0 folder-manager capture, the unchanged Little Sammy Sneeze images from
+1905-05-28 and 1905-06-04 were placed directly in **Sammy - Collected Pages**, with a small
+ComicInfo sidecar supplying the sample title, creator credit, and a description of the collection.
+The expanded series capture uses the pack’s 1905-10-15 Little Nemo description and creator fields;
+its display title was shortened to **Little Nemo** through Edit comic. These sample metadata
+strings are presentation fixtures, not newly attributed historical story titles or synopses.
+The original pack checksums were verified before these captures. A side-by-side Reader Test
+build supplied the v1.6.0 captures with the same production UI and reader policy.
+
 No source artwork was edited. ComicViewer scales the pages and crops cover thumbnails
 to its cards. Comics are not bundled in the APK or added to the source repository.
 
 ## Listing layout
 
 Localized listing text, icons, screenshots, and version-code changelogs live under
-`fastlane/metadata/android/<locale>/`. Version 1.5.0 uses `changelogs/9.txt`;
-code 8 belongs to v1.4.1, code 7 to v1.4.0, code 6 to v1.3.1, code 5 to v1.3.0, and code 4 to v1.2.0.
-The screenshot gallery and store copies show the 1.5.0 interface. The additional
-title-display comparisons live in the documentation gallery.
+`fastlane/metadata/android/<locale>/`. Version 1.6.0 uses `changelogs/10.txt`;
+code 9 belongs to v1.5.0, code 8 to v1.4.1, code 7 to v1.4.0, code 6 to v1.3.1,
+code 5 to v1.3.0, and code 4 to v1.2.0. Screenshot 4 is refreshed and screenshot 8 is
+added for v1.6.0. The additional title-display comparisons live in the documentation gallery.

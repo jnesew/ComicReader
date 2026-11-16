@@ -210,7 +210,7 @@
     <string name="reader_ready">Ready</string>
 
     <string name="option_tap_zones">Edge tap zones change page</string>
-    <string name="option_volume_navigation">Volume keys change page</string>
+    <string name="option_volume_navigation">Volume key navigation</string>
     <string name="option_remember_zoom">Remember zoom per title</string>
     <string name="option_default_zoom">Default zoom</string>
     <string name="option_default_zoom_description">Used when a title has no remembered zoom or per-title zoom memory is off. Continuous scroll fits width.</string>
@@ -284,7 +284,6 @@
     <string name="library_remove_folder_named">Remove folder “%1$s”</string>
     <string name="library_remove_folder_message">Stop scanning this folder? Comic files are never deleted. Reading history, bookmarks, favorites, and edits stay in the library. Comics remain readable through other usable sources; otherwise they are kept as unavailable. Folder access is released when the reader no longer needs it.</string>
     <string name="library_folder_waiting">Waiting to scan…</string>
-    <string name="library_folder_ready">Ready to scan</string>
     <string name="library_folder_access_unavailable">Folder unavailable. Check that its storage is available.</string>
     <string name="library_folder_add_failed">Could not save this folder. Choose it again using the system folder picker.</string>
     <string name="series_add_favorite">Add series to favorites</string>
@@ -295,4 +294,36 @@
         <item quantity="one">%1$d folder</item>
         <item quantity="other">%1$d folders</item>
     </plurals>
+    <string name="import_image_folder">Import image folder</string>
+    <string name="error_image_folder_access">Could not read the image folder. Check access and try again.</string>
+    <string name="error_image_folder_changed">An image changed while reading. Reopen the comic to refresh its pages.</string>
+    <string name="series_continue">Continue</string>
+    <string name="series_continue_issue">Continue reading %1$s</string>
+    <string name="series_issues">Issues</string>
+    <string name="series_counts">%1$s · %2$s</string>
+    <string name="series_issue_title">%1$s: %2$s</string>
+    <string name="series_issue_details">Issue details</string>
+    <string name="series_details_expanded">expanded</string>
+    <string name="series_details_collapsed">collapsed</string>
+    <string name="series_details_accessibility">%1$s, %2$s</string>
+    <string name="series_writer">Writer: %1$s</string>
+    <string name="series_penciller">Pencils: %1$s</string>
+    <string name="series_inker">Inks: %1$s</string>
+    <string name="series_colorist">Colors: %1$s</string>
+    <string name="series_letterer">Lettering: %1$s</string>
+    <string name="series_cover_artist">Cover: %1$s</string>
+    <string name="series_editor">Editor: %1$s</string>
+    <string name="series_translator">Translation: %1$s</string>
+    <string name="series_publisher">Publisher: %1$s</string>
+    <string name="series_language">Language: %1$s</string>
+    <string name="series_volume">Volume: %1$d</string>
+    <string name="series_publication_date">Published: %1$s</string>
+    <string name="comic_no_publication_details">No publication details are available for this issue.</string>
+    <string name="folder_type_library">Library folder</string>
+    <string name="folder_type_image_comic">Image comic</string>
+    <string name="image_comic_refreshed">Refreshed · %1$d pages</string>
+    <string name="image_comic_refresh_failed">Could not refresh this image comic. Saved pages and reading state have been kept.</string>
+    <string name="image_comic_refresh_deferred">Refresh pending until reading or import finishes</string>
+    <string name="library_folders_help">Folder types</string>
+    <string name="library_folders_help_message">Add folder\nScan a folder and its subfolders for comic files. Rescans find new or changed comics.\n\nImport image folder\nRead the images directly inside a folder as one comic. Rescans refresh its pages and ComicInfo metadata.</string>
 </resources>

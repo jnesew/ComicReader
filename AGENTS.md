@@ -30,6 +30,12 @@ the plugin and project dependency graphs, including the isolated Android test ru
 - Keep commits coherent when committing is part of the task. Push, release publication,
   signing, and distribution submission must follow the authorization in the current task.
   Historical notes do not grant authorization or assign unfinished work.
+- Create coherent unsigned commits on local feature branches as part of feature work. Use
+  `git -c commit.gpgsign=false commit` without changing the maintainer's signing configuration.
+  Keep feature branches local unless a push is explicitly authorized.
+- Build a test APK for maintainer functional verification. Squash-merge to `main` only after
+  explicit approval. The maintainer then reviews, signs, and pushes the final commit; the
+  signature attests that the maintainer has personally seen, reviewed, and verified the code.
 - Record what changed, which checks actually ran, and any verification limits. A successful
   build does not establish device behavior or distribution acceptance.
 
@@ -124,7 +130,7 @@ Preserve these rules when changing the affected paths:
   for targeted updates. Schema changes require an explicit feature need and migration.
 - Database delegate extraction (the historical R5 follow-up) still requires the real
   connected Android baseline before extraction and the identical suite afterward.
-  The current schema is 11; older plans describing schemas 8 or 10 are historical context.
+  The current schema is 13; older plans describing schemas 8, 10, 11, or 12 are historical context.
 - Preserve shared visible-frame budgeting and the common speculative cache ceiling.
   Do not change memory limits, prefetch distance, zoom limits, or decoder concurrency
   incidentally. Keep pressure trimming/cooldown, background suspension, and cached raster

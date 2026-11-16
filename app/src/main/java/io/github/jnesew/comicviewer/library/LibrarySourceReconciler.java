@@ -5,6 +5,7 @@ import android.content.UriPermission;
 import android.net.Uri;
 import android.provider.DocumentsContract;
 
+import io.github.jnesew.comicviewer.document.ImageFolderDocument;
 import io.github.jnesew.comicviewer.data.ContentFingerprint;
 import io.github.jnesew.comicviewer.data.LibraryDatabase;
 import io.github.jnesew.comicviewer.document.ComicDocumentFactory;
@@ -123,8 +124,21 @@ final class LibrarySourceReconciler {
     }
 
     private boolean readable(String uri, long size) {
-        try { return !ContentFingerprint.sample(context, Uri.parse(uri), size).isEmpty(); }
-        catch (IOException | RuntimeException unavailable) { return false; }
+        try {
+            Uri reference = Uri.parse(uri);
+            DocumentInfo description = ComicDocumentFactory.describe(context, reference);
+            if (DocumentsContract.Document.MIME_TYPE_DIR.equals(description.mimeType)) {
+                Uri directory = ImageFolderDocument.directoryUri(reference);
+                Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(reference,
+                        DocumentsContract.getDocumentId(directory));
+                try (android.database.Cursor cursor = context.getContentResolver().query(children,
+                        new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID}, null, null, null)) {
+                    return cursor != null && !cursor.getExtras().getBoolean(DocumentsContract.EXTRA_LOADING, false)
+                            && !cursor.getExtras().containsKey(DocumentsContract.EXTRA_ERROR);
+                }
+            }
+            return !ContentFingerprint.sample(context, reference, size).isEmpty();
+        } catch (IOException | RuntimeException unavailable) { return false; }
     }
 
     private boolean independentManualGrant(String uriString) {

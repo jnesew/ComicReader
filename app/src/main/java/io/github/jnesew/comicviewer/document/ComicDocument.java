@@ -5,6 +5,7 @@ import android.graphics.Bitmap;
 import android.graphics.Rect;
 import android.net.Uri;
 
+import io.github.jnesew.comicviewer.model.ComicMetadata;
 import io.github.jnesew.comicviewer.model.PageInfo;
 import io.github.jnesew.comicviewer.model.SeriesMetadata;
 import io.github.jnesew.comicviewer.util.PreviewSizing;
@@ -46,6 +47,10 @@ public interface ComicDocument extends Closeable {
 
     default SeriesMetadata seriesMetadata() {
         return SeriesMetadata.EMPTY;
+    }
+
+    default ComicMetadata metadata() {
+        return ComicMetadata.EMPTY;
     }
 
     List<PageInfo> pages();

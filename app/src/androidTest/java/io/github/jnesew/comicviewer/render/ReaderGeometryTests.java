@@ -25,6 +25,39 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class ReaderGeometryTests {
     private ReaderGeometryTests() { }
 
+    public static void viewportKeyScrolling(Instrumentation instrumentation) {
+        onMain(instrumentation, () -> {
+            List<PageInfo> pages = List.of(new PageInfo("strip", 800, 6000),
+                    new PageInfo("short", 800, 200), new PageInfo("last", 800, 1000));
+            try (Fixture f = new Fixture(instrumentation, pages)) {
+                check(!f.view.scrollContinuousViewport(1), "Paged reading unexpectedly scrolled");
+                ReadingProgress progress = new ReadingProgress();
+                progress.uri = "test:geometry"; progress.readingMode = ComicCanvasView.CONTINUOUS;
+                f.view.setDocument(f.renderer, pages, progress);
+                f.view.scrollContinuousViewport(-1); // Include the existing issue-header inset in the start boundary.
+                double start = f.view.continuousScrollPosition();
+                check(f.view.scrollContinuousViewport(1), "Forward step did not move");
+                near(540f, (float) (f.view.continuousScrollPosition() - start), .01f, "Viewport overlap changed");
+                check(f.view.page() == 0, "Volume step skipped the tall image");
+                check(f.view.scrollContinuousViewport(-1), "Backward step did not move");
+                near((float) start, (float) f.view.continuousScrollPosition(), .01f, "Backward step was asymmetric");
+                check(!f.view.scrollContinuousViewport(-1), "Scrolled before the beginning");
+                f.view.setRightToLeft(true);
+                f.view.multiplyZoom(1.5f);
+                start = f.view.continuousScrollPosition();
+                f.view.scrollContinuousViewport(1);
+                near(540f, (float) (f.view.continuousScrollPosition() - start), .01f, "Zoom or RTL changed screen step");
+                f.view.layout(0, 0, 800, 800);
+                start = f.view.continuousScrollPosition();
+                f.view.scrollContinuousViewport(1);
+                near(720f, (float) (f.view.continuousScrollPosition() - start), .01f, "Step ignored viewport resize");
+                for (int step = 0; step < 100 && f.view.scrollContinuousViewport(1); step++) { }
+                check(f.view.isAtDocumentEnd(), "Forward scrolling skipped the end boundary");
+                check(!f.view.scrollContinuousViewport(1), "Scrolled beyond the end");
+            }
+        });
+    }
+
     public static void actualSizeLabels(Instrumentation instrumentation) {
         for (java.util.Locale locale : new java.util.Locale[]{java.util.Locale.ENGLISH, java.util.Locale.forLanguageTag("fi")}) {
             android.content.res.Configuration configuration = new android.content.res.Configuration(

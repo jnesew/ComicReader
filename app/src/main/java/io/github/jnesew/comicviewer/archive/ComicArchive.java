@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.ParcelFileDescriptor;
 
+import io.github.jnesew.comicviewer.model.ComicMetadata;
 import io.github.jnesew.comicviewer.R;
 import io.github.jnesew.comicviewer.document.ComicDocument;
 import io.github.jnesew.comicviewer.document.DocumentInfo;
@@ -50,6 +51,7 @@ public final class ComicArchive implements ComicDocument {
     private final String coverName;
     private final boolean rightToLeft;
     private final SeriesMetadata seriesMetadata;
+    private final ComicMetadata metadata;
     private final AtomicReferenceArray<PageInfo> pageInfo;
     private final boolean[] indexed;
     private final List<PageInfo> pagesView;
@@ -68,10 +70,12 @@ public final class ComicArchive implements ComicDocument {
             boolean rightToLeft,
             SeriesMetadata seriesMetadata,
             String parsedTitle,
+            ComicMetadata metadata,
             List<PageInfo> initialPages,
             boolean[] indexed,
             int indexedPages,
             boolean indexComplete) {
+        this.metadata = metadata;
         this.uri = uri;
         this.key = uri.toString();
         this.title = parsedTitle == null || parsedTitle.trim().isEmpty()
@@ -166,6 +170,7 @@ public final class ComicArchive implements ComicDocument {
             String parsedTitle = "";
             boolean rightToLeft = false;
             SeriesMetadata seriesMetadata = SeriesMetadata.EMPTY;
+            ComicMetadata metadata = ComicMetadata.EMPTY;
             boolean isEpub = EpubParser.looksLikeEpub(zipFile);
             if (epubExpected && !isEpub) {
                 throw new IOException(context.getString(R.string.error_invalid_epub));
@@ -184,7 +189,11 @@ public final class ComicArchive implements ComicDocument {
             } else {
                 names = collectPages(zipFile);
                 coverName = names.isEmpty() ? "" : names.get(0);
-                seriesMetadata = ComicInfoParser.parse(zipFile);
+                metadata = ComicInfoParser.parseMetadata(zipFile);
+                seriesMetadata = metadata.series;
+                parsedTitle = metadata.title;
+                rightToLeft = metadata.manga == ComicMetadata.Manga.RIGHT_TO_LEFT;
+                if (!names.isEmpty()) coverName = names.get(metadata.coverPage(names.size()));
             }
             if (names.isEmpty()) throw new IOException(context.getString(R.string.error_no_pages));
 
@@ -211,7 +220,7 @@ public final class ComicArchive implements ComicDocument {
             }
             update(callback, context.getString(R.string.reader_ready));
             return new ComicArchive(uri, document, zipFile, descriptor, cachedArchive,
-                    names, coverName, rightToLeft, seriesMetadata, parsedTitle,
+                    names, coverName, rightToLeft, seriesMetadata, parsedTitle, metadata,
                     initial, indexed, indexedCount, cacheValid);
         } catch (LimitExceededException exception) {
             closeQuietly(zipFile, descriptor);
@@ -312,6 +321,9 @@ public final class ComicArchive implements ComicDocument {
     public boolean suggestedRightToLeft() {
         return rightToLeft;
     }
+
+    @Override
+    public ComicMetadata metadata() { return metadata; }
 
     @Override
     public SeriesMetadata seriesMetadata() {

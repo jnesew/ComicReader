@@ -1,6 +1,7 @@
 # Screenshot gallery
 
-ComicViewer v1.5.0 on Android 16, using public-domain sample comics.
+ComicViewer on Android 16, using public-domain sample comics. The expanded series
+view and folder manager show v1.6.0; the other captures remain from v1.5.0.
 Select an image to view it at full resolution. See [capture details and artwork
 credits](STORE-ASSETS.md) for sources and screenshot specifications.
 
@@ -28,6 +29,15 @@ reserves the second title row. Issue dates remain in the cover badges.
   </tr>
 </table>
 
+## Series details
+
+The expandable description and publication credits belong to the same issue that **Continue**
+opens. The overview scrolls away; the toolbar information button brings it back or collapses it.
+
+<p align="center">
+  <a href="screenshots/series-details.png"><img src="screenshots/series-details.png" alt="Expanded Little Nemo series overview with issue description, creator credits, Continue, and issue covers" width="320"></a>
+</p>
+
 ## Reading
 
 <table>
@@ -48,7 +58,7 @@ reserves the second title row. Issue dates remain in the cover badges.
 
 <table>
   <tr>
-    <td align="center"><a href="screenshots/library-folders.png"><img src="screenshots/library-folders.png" alt="Two library folders with a shared rescan action" width="240"></a><br><sub>Library folders</sub></td>
+    <td align="center"><a href="screenshots/library-folders.png"><img src="screenshots/library-folders.png" alt="Library folder and image comic with type labels, help, and a shared rescan action" width="240"></a><br><sub>Library folders</sub></td>
     <td align="center"><a href="screenshots/edit-comic.png"><img src="screenshots/edit-comic.png" alt="Comic editor with title, grouping, and issue number fields" width="240"></a><br><sub>Comic details</sub></td>
   </tr>
 </table>

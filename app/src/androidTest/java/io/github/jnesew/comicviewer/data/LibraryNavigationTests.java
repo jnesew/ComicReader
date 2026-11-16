@@ -271,7 +271,8 @@ final class LibraryNavigationTests {
 
     private static void checkTitleDisplay(HomeView home, String title, LibraryTitleDisplay display) {
         GridView grid = find(home, GridView.class);
-        TextView label = textLabel(grid, title);
+        android.widget.ListView issues = find(home, android.widget.ListView.class);
+        TextView label = textLabel(issues != null && ((View) issues.getParent()).getVisibility() == View.VISIBLE ? issues : grid, title);
         check(label != null);
         check(label.getVisibility() == (display == LibraryTitleDisplay.COVER_ONLY ? View.GONE : View.VISIBLE));
         if (display != LibraryTitleDisplay.COVER_ONLY) check(label.getMaxLines() == display.titleLines);

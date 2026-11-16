@@ -6,7 +6,10 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
+import io.github.jnesew.comicviewer.util.ImageFolderPageMap;
+import io.github.jnesew.comicviewer.document.ImageFolderDocument;
 import io.github.jnesew.comicviewer.model.PageInfo;
+import io.github.jnesew.comicviewer.model.ComicMetadata;
 import io.github.jnesew.comicviewer.model.ReadingDirection;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
 import io.github.jnesew.comicviewer.util.InputLimits;
@@ -44,7 +47,8 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
     public static final int METADATA_FAILED = -1;
 
     private static final String NAME = "comicviewer.sqlite3";
-    private static final int VERSION = 11;
+    private static final int VERSION = 13;
+    private static final int MAX_PUBLICATION_JSON_CHARS = 128 * 1024;
     private static final String PROGRESS_WITH_SERIES =
             "SELECT p.*, COALESCE(s.name, '') AS series_title, " +
                     "COALESCE(s.favorite, 0) AS series_favorite FROM progress p " +
@@ -107,6 +111,8 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         createPageTable(db);
         createSeriesTables(db);
         createManualSourceTable(db);
+        createImageFolderTables(db);
+        createPublicationTable(db);
         createIndexes(db);
     }
 
@@ -193,6 +199,12 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
             createManualSourceTable(db);
             db.execSQL("INSERT OR IGNORE INTO manual_sources(document_uri,canonical_uri,available) " +
                     "SELECT uri,uri,available FROM progress WHERE manual_source=1");
+        }
+        if (oldVersion < 12) createImageFolderTables(db);
+        if (oldVersion < 13) {
+            createPublicationTable(db);
+            // Refresh legacy publication hints on the existing bounded library worker.
+            db.execSQL("UPDATE progress SET metadata_state=0");
         }
         createIndexes(db);
     }
@@ -361,6 +373,41 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         return result;
     }
 
+    /** Cache only bounded publication fields after a successful open; never recreate a forgotten title. */
+    public void storePublicationMetadata(String uri, ComicMetadata metadata) {
+        String payload = new org.json.JSONObject(metadata.publicationFields()).toString();
+        if (payload == null || payload.length() > MAX_PUBLICATION_JSON_CHARS) return;
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            if (get(uri).uri.isEmpty()) return;
+            ContentValues values = new ContentValues();
+            values.put("uri", uri); values.put("payload", payload);
+            db.insertWithOnConflict("publication_metadata", null, values, SQLiteDatabase.CONFLICT_IGNORE);
+            ContentValues update = new ContentValues(); update.put("payload", payload);
+            db.update("publication_metadata", update, "uri=?", new String[]{uri});
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+    }
+
+    public ComicMetadata publicationMetadata(String uri) {
+        try (Cursor cursor = getReadableDatabase().query("publication_metadata", new String[]{"payload"},
+                "uri=?", new String[]{uri}, null, null, null, "1")) {
+            if (!cursor.moveToFirst()) return ComicMetadata.EMPTY;
+            String payload = cursor.getString(0);
+            if (payload == null || payload.length() > MAX_PUBLICATION_JSON_CHARS) return ComicMetadata.EMPTY;
+            try {
+                org.json.JSONObject json = new org.json.JSONObject(payload);
+                java.util.Map<String, String> fields = new java.util.HashMap<>();
+                java.util.Iterator<String> names = json.keys();
+                while (names.hasNext()) {
+                    String name = names.next(); fields.put(name, json.optString(name, ""));
+                }
+                return new ComicMetadata(fields, Collections.emptyList());
+            } catch (org.json.JSONException invalid) { return ComicMetadata.EMPTY; }
+        }
+    }
+
     public List<ReadingProgress> metadataNeedingBackfill(int limit) {
         ArrayList<ReadingProgress> result = new ArrayList<>();
         try (Cursor cursor = getReadableDatabase().rawQuery(
@@ -452,6 +499,84 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         values.put("document_size", documentSize);
         values.put("document_modified", documentModified);
         getWritableDatabase().update("progress", values, "uri=?", new String[]{uri});
+    }
+
+    public List<ReadingProgress> imageFolderComics() {
+        ArrayList<ReadingProgress> result = new ArrayList<>();
+        try (Cursor cursor = getReadableDatabase().rawQuery(PROGRESS_WITH_SERIES +
+                " WHERE p.uri IN (SELECT uri FROM image_folders) ORDER BY p.title COLLATE NOCASE", null)) {
+            while (cursor.moveToNext()) result.add(fromCursor(cursor));
+        }
+        return result;
+    }
+
+    public boolean isImageFolder(String uri) {
+        try (Cursor cursor = getReadableDatabase().query("image_folders", new String[]{"uri"},
+                "uri=?", new String[]{uri}, null, null, null, "1")) {
+            return cursor.moveToFirst();
+        }
+    }
+
+    /** A successfully opened folder supplies a complete identity manifest, even before dimensions finish. */
+    public void reconcileImageFolder(ImageFolderDocument document) {
+        SQLiteDatabase db = getWritableDatabase();
+        String uri = document.key();
+        db.beginTransaction();
+        try {
+            ReadingProgress saved = get(uri);
+            if (saved.uri.isEmpty()) return;
+            List<PageInfo> oldPages = pageIndex(uri);
+            List<PageInfo> pages = document.snapshotPages();
+            var map = new ImageFolderPageMap(oldPages, pages);
+            if (!oldPages.isEmpty()) {
+                int restored = map.remap(saved.page);
+                ContentValues position = new ContentValues();
+                position.put("page", restored >= 0 ? restored : Math.min(saved.page, pages.size() - 1));
+                if (restored < 0) position.put("scroll_ratio", 0f);
+                db.update("progress", position, "uri=?", new String[]{uri});
+            }
+            ContentValues folder = new ContentValues();
+            folder.put("uri", uri);
+            db.insertWithOnConflict("image_folders", null, folder, SQLiteDatabase.CONFLICT_IGNORE);
+            // Keep identities for absent images so their bookmarks return if the files return.
+            db.execSQL("INSERT OR IGNORE INTO image_folder_bookmarks(uri,page_identity,created) " +
+                    "SELECT b.uri,a.entry_name,b.created FROM bookmarks b JOIN archive_pages a " +
+                    "ON a.uri=b.uri AND a.position=b.page WHERE b.uri=?", new Object[]{uri});
+            db.delete("bookmarks", "uri=?", new String[]{uri});
+            replacePageIndex(uri, pages);
+            db.execSQL("INSERT INTO bookmarks(uri,page,created) " +
+                    "SELECT b.uri,a.position,b.created FROM image_folder_bookmarks b JOIN archive_pages a " +
+                    "ON a.uri=b.uri AND a.entry_name=b.page_identity WHERE b.uri=?", new Object[]{uri});
+            updateArchiveState(uri, pages.size(), document.indexedPages(), document.isIndexComplete(), -1L, -1L);
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+    }
+
+    /** Resolve a still-open folder snapshot against the latest persisted manifest before a delayed save. */
+    public void saveImageFolderProgress(ReadingProgress progress, String pageIdentity) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        int originalPage = progress.page;
+        int originalCount = progress.pageCount;
+        float originalRatio = progress.scrollRatio;
+        try {
+            int mapped = -1;
+            try (Cursor cursor = db.query("archive_pages", new String[]{"position"},
+                    "uri=? AND entry_name=?", new String[]{progress.uri, pageIdentity}, null, null, null, "1")) {
+                if (cursor.moveToFirst()) mapped = cursor.getInt(0);
+            }
+            progress.page = mapped >= 0 ? mapped : 0;
+            try (Cursor cursor = db.rawQuery("SELECT COUNT(*) FROM archive_pages WHERE uri=?",
+                    new String[]{progress.uri})) {
+                progress.pageCount = cursor.moveToFirst() ? cursor.getInt(0) : 0;
+            }
+            if (mapped < 0) progress.scrollRatio = 0f;
+            saveReadingProgress(progress);
+            db.setTransactionSuccessful();
+        } finally {
+            progress.page = originalPage; progress.pageCount = originalCount; progress.scrollRatio = originalRatio;
+            db.endTransaction();
+        }
     }
 
     public void replacePageIndex(String uri, List<PageInfo> pages) {
@@ -777,22 +902,33 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
 
     public boolean toggleBookmark(String uri, int page) {
         SQLiteDatabase db = getWritableDatabase();
-        boolean existing;
-        try (Cursor cursor = db.rawQuery(
-                "SELECT 1 FROM bookmarks WHERE uri=? AND page=?",
-                new String[]{uri, Integer.toString(page)})) {
-            existing = cursor.moveToFirst();
-        }
-        if (existing) {
-            db.delete("bookmarks", "uri=? AND page=?", new String[]{uri, Integer.toString(page)});
-            return false;
-        }
-        ContentValues values = new ContentValues();
-        values.put("uri", uri);
-        values.put("page", page);
-        values.put("created", System.currentTimeMillis());
-        db.insertOrThrow("bookmarks", null, values);
-        return true;
+        db.beginTransaction();
+        try {
+            boolean existing = isBookmarked(uri, page);
+            String identity = null;
+            try (Cursor cursor = db.rawQuery("SELECT a.entry_name FROM archive_pages a " +
+                    "JOIN image_folders f ON f.uri=a.uri WHERE a.uri=? AND a.position=?",
+                    new String[]{uri, Integer.toString(page)})) {
+                if (cursor.moveToFirst()) identity = cursor.getString(0);
+            }
+            if (existing) {
+                db.delete("bookmarks", "uri=? AND page=?", new String[]{uri, Integer.toString(page)});
+                if (identity != null) db.delete("image_folder_bookmarks", "uri=? AND page_identity=?",
+                        new String[]{uri, identity});
+            } else {
+                long created = System.currentTimeMillis();
+                ContentValues values = new ContentValues();
+                values.put("uri", uri); values.put("page", page); values.put("created", created);
+                db.insertOrThrow("bookmarks", null, values);
+                if (identity != null) {
+                    ContentValues bookmark = new ContentValues();
+                    bookmark.put("uri", uri); bookmark.put("page_identity", identity); bookmark.put("created", created);
+                    db.insertOrThrow("image_folder_bookmarks", null, bookmark);
+                }
+            }
+            db.setTransactionSuccessful();
+            return !existing;
+        } finally { db.endTransaction(); }
     }
 
     public boolean isBookmarked(String uri, int page) {
@@ -1152,6 +1288,9 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
             sources.put("canonical_uri", canonicalKey);
             db.update("scanned_files", sources, "canonical_uri=?", new String[]{duplicateKey});
             db.update("manual_sources", sources, "canonical_uri=?", new String[]{duplicateKey});
+            db.execSQL("INSERT OR IGNORE INTO publication_metadata(uri,payload) " +
+                    "SELECT ?,payload FROM publication_metadata WHERE uri=?", new Object[]{canonicalKey, duplicateKey});
+            db.delete("publication_metadata", "uri=?", new String[]{duplicateKey});
             db.delete("progress", "uri=?", new String[]{duplicateKey});
             db.setTransactionSuccessful();
             result.merged = true;
@@ -1335,6 +1474,9 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
             for (String uri : keys) {
                 db.delete("bookmarks", "uri=?", new String[]{uri});
                 db.delete("archive_pages", "uri=?", new String[]{uri});
+                db.delete("image_folder_bookmarks", "uri=?", new String[]{uri});
+                db.delete("image_folders", "uri=?", new String[]{uri});
+                db.delete("publication_metadata", "uri=?", new String[]{uri});
                 db.delete("scanned_files", "canonical_uri=? OR document_uri=?",
                         new String[]{uri, uri});
                 db.delete("manual_sources", "canonical_uri=? OR document_uri=?",
@@ -1376,6 +1518,18 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                     obsoleteCoverPaths.contains(path)) return;
             obsoleteCoverPaths.add(path);
         }
+    }
+
+    private static void createPublicationTable(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS publication_metadata (" +
+                "uri TEXT PRIMARY KEY,payload TEXT NOT NULL)");
+    }
+
+    private static void createImageFolderTables(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS image_folders (uri TEXT PRIMARY KEY)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS image_folder_bookmarks (" +
+                "uri TEXT NOT NULL,page_identity TEXT NOT NULL,created INTEGER NOT NULL," +
+                "PRIMARY KEY(uri,page_identity))");
     }
 
     private static void createPageTable(SQLiteDatabase db) {
@@ -1505,6 +1659,9 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         ContentValues pages = new ContentValues();
         pages.put("uri", newUri);
         db.update("archive_pages", pages, "uri=?", new String[]{oldUri});
+        db.update("image_folders", pages, "uri=?", new String[]{oldUri});
+        db.update("publication_metadata", pages, "uri=?", new String[]{oldUri});
+        db.update("image_folder_bookmarks", pages, "uri=?", new String[]{oldUri});
         ContentValues sources = new ContentValues();
         sources.put("canonical_uri", newUri);
         db.update("scanned_files", sources, "canonical_uri=?", new String[]{oldUri});

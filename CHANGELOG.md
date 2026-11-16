@@ -2,6 +2,40 @@
 
 All notable public changes to ComicViewer for Android are recorded here.
 
+## Unreleased
+
+## 1.6.0 - 2026-11-16
+
+### Series and publication details
+
+- Open a series overview with a compact cover, issue counts, and a Continue action.
+  Expand the Continue issue’s title row for its description, creator credits, publisher,
+  language, volume, and publication date. The target stays consistent when filtering issues.
+- Let the overview scroll away while the title and issue filter stay available. The info
+  button restores offscreen details and toggles visible details; recreation preserves the view.
+- Show the active issue’s publication details from the reader info button, with an overflow
+  fallback on narrow layouts. Credits and descriptions follow continuous issue changes.
+- Read ComicInfo titles, right-to-left and cover hints, publication fields, and page/spread
+  hints. Cache publication details locally; explicit user edits and reader preferences win.
+
+### Image comics and folders
+
+- Import a selected folder of loose images as one comic in natural filename order, with
+  optional ComicInfo.xml beside its pages. Subfolders remain separate from that comic.
+- Preserve reading positions and bookmarks by image identity when pages move or temporarily
+  disappear, including across restarts. Existing libraries migrate without a reset.
+- Put Add folder and Import image folder together in the folder manager. List both source
+  types, explain their behavior through a help button, and show status only during scans
+  or when attention is needed.
+- Rescan image comics for changed pages and metadata. Defer refreshes during reading and
+  reject canceled results; failed or incomplete listings preserve saved state.
+
+### Reader controls
+
+- Move 90% of one viewport with volume keys in continuous mode, retaining overlap.
+  Single-page and spread layouts keep their existing page-turn behavior.
+- Add expanded series and folder-manager screenshots using the existing public-domain samples.
+
 ## 1.5.0 - 2026-11-02
 
 ### Library display

@@ -2,6 +2,7 @@ package io.github.jnesew.comicviewer.document;
 
 import android.content.Context;
 import android.net.Uri;
+import android.provider.DocumentsContract;
 
 import io.github.jnesew.comicviewer.R;
 import io.github.jnesew.comicviewer.archive.ComicArchive;
@@ -21,7 +22,11 @@ public final class ComicDocumentFactory {
     }
 
     public static DocumentInfo describe(Context context, Uri uri) {
-        return DocumentInfo.describe(context.getContentResolver(), uri);
+        Uri described = DocumentsContract.isTreeUri(uri)
+                ? ImageFolderDocument.directoryUri(uri) : uri;
+        DocumentInfo info = DocumentInfo.describe(context.getContentResolver(), described);
+        return DocumentsContract.Document.MIME_TYPE_DIR.equals(info.mimeType)
+                ? new DocumentInfo(info.displayName, -1L, -1L, info.mimeType) : info;
     }
 
     /** Cheap provider hint used while recursively walking a user-selected document tree. */
@@ -43,6 +48,18 @@ public final class ComicDocumentFactory {
             long cachedDocumentSize,
             long cachedDocumentModified,
             ComicDocument.ProgressCallback callback) throws IOException {
+        if (DocumentsContract.Document.MIME_TYPE_DIR.equals(document.mimeType)) {
+            try {
+                return ImageFolderDocument.open(context, uri, document, preferredPage);
+            } catch (InputLimits.LimitExceededException limit) {
+                int message = switch (limit.reason) {
+                    case PAGE_COUNT -> R.string.error_too_many_pages;
+                    case PAGE_BYTES, IMAGE_DIMENSIONS -> R.string.error_page_too_large;
+                    default -> R.string.error_document_too_large;
+                };
+                throw new IOException(context.getString(message), limit);
+            }
+        }
         Kind kind = detect(context, uri, document);
         if (kind == Kind.PDF) {
             return PdfComicDocument.open(context, uri, document, preferredPage, cachedPages,

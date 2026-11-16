@@ -1,7 +1,9 @@
 package io.github.jnesew.comicviewer.library;
+
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import io.github.jnesew.comicviewer.document.ImageFolderDocument;
 import io.github.jnesew.comicviewer.data.CoverStore;
 import io.github.jnesew.comicviewer.data.ContentFingerprint;
 import io.github.jnesew.comicviewer.data.LibraryDatabase;
@@ -182,14 +184,19 @@ public final class LibraryImportCoordinator implements AutoCloseable {
             try (ComicDocument opened = ComicDocumentFactory.open(
                     context, uri, document, item.page, cachedPages,
                     item.documentSize, item.documentModified, null)) {
+                if (manualImport && opened instanceof ImageFolderDocument folder) {
+                    database.reconcileImageFolder(folder);
+                }
                 database.updateTitle(key, opened.title());
                 applySeriesMetadata(opened, sourceEntry);
-                if (!CoverStore.exists(item.coverPath)) {
+                if (!CoverStore.exists(item.coverPath) || opened.metadata().coverPage(opened.count()) != 0) {
                     String cover = CoverStore.ensureCover(context, opened);
                     database.setCover(key, cover, LibraryDatabase.COVER_READY);
                 }
-                database.updateArchiveState(key, opened.count(), opened.indexedPages(),
-                        opened.isIndexComplete(), opened.documentSize(), opened.documentModified());
+                if (manualImport || !(opened instanceof ImageFolderDocument)) {
+                    database.updateArchiveState(key, opened.count(), opened.indexedPages(),
+                            opened.isIndexComplete(), opened.documentSize(), opened.documentModified());
+                }
                 mainHandler.post(() -> {
                     if (!destroyed) notifyChanged();
                 });
@@ -250,6 +257,7 @@ public final class LibraryImportCoordinator implements AutoCloseable {
 
     public void applySeriesMetadata(
             ComicDocument opened, LibraryFolderScanner.Entry sourceEntry) {
+        database.storePublicationMetadata(opened.key(), opened.metadata());
         SeriesMetadata metadata = opened.seriesMetadata();
         String folderKey = sourceEntry == null ? "" : sourceEntry.seriesFolderKey;
         String folderName = sourceEntry == null ? "" : sourceEntry.seriesFolderName;
@@ -262,6 +270,23 @@ public final class LibraryImportCoordinator implements AutoCloseable {
         }
         database.applyDetectedSeries(
                 opened.key(), metadata.name, metadata.number, folderKey, folderName);
+    }
+
+    /** Publish a refresh only after taking the database write lock and rechecking its exact job. */
+    boolean refreshImageFolder(ImageFolderDocument opened, java.util.function.BooleanSupplier current) {
+        var db = database.getWritableDatabase();
+        db.beginTransaction();
+        try {
+            if (!current.getAsBoolean() || !database.isImageFolder(opened.key()) ||
+                    database.get(opened.key()).uri.isEmpty()) return false;
+            database.reconcileImageFolder(opened);
+            database.updateTitle(opened.key(), opened.title());
+            applySeriesMetadata(opened, null);
+            database.setSourceAvailability(opened.key(), true);
+            database.setManualSourceAvailable(opened.key(), opened.key(), true);
+            db.setTransactionSuccessful();
+            return true;
+        } finally { db.endTransaction(); }
     }
 
     public String sampleContent(Uri uri, long documentSize) {

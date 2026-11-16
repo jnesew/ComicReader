@@ -5,14 +5,28 @@ import java.util.Collections;
 import java.util.List;
 import io.github.jnesew.comicviewer.data.LibraryDatabase;
 import io.github.jnesew.comicviewer.model.ReadingProgress;
+import io.github.jnesew.comicviewer.model.ComicMetadata;
+import io.github.jnesew.comicviewer.util.SeriesContinueTarget;
 import io.github.jnesew.comicviewer.model.SeriesGroup;
 import io.github.jnesew.comicviewer.util.SeriesOrganizer;
 
 /** Library filtering and series grouping, independent of view construction. */
 public final class LibraryQueryController {
+    public record SeriesOverview(SeriesGroup group, ReadingProgress target,
+            ComicMetadata metadata) { }
     public record Snapshot(List<ReadingProgress> rows, List<SeriesGroup> seriesRows) { }
     private final LibraryDatabase database;
     public LibraryQueryController(LibraryDatabase database) { this.database = database; }
+    public SeriesOverview seriesOverview(long seriesId) {
+        List<ReadingProgress> issues = database.seriesIssues(seriesId);
+        if (issues.isEmpty()) return null;
+        List<SeriesGroup> groups = SeriesOrganizer.group(issues, issues, LibraryDatabase.SORT_TITLE_ASC);
+        SeriesGroup group = groups.get(0);
+        ReadingProgress target = SeriesContinueTarget.select(group.issues);
+        return new SeriesOverview(group, target, target == null
+                ? ComicMetadata.EMPTY : database.publicationMetadata(target.uri));
+    }
+
     public Snapshot query(String query, String sort, String filter, long selectedSeriesId,
             boolean seriesMode) {
         List<ReadingProgress> rows;

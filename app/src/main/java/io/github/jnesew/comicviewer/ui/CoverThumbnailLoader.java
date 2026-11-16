@@ -141,6 +141,13 @@ public final class CoverThumbnailLoader implements AutoCloseable {
         mainHandler.removeCallbacksAndMessages(null);
         coverCache.evictAll();
     }
+    public void unbindCover(ImageView image) {
+        Binding old = bindings.remove(image);
+        if (old != null && old.request != null) old.request.unsubscribe(image, old);
+        image.setTag(null);
+        image.setImageDrawable(null);
+    }
+
     public void bindCover(ImageView image, ReadingProgress item) {
         File file = item.coverPath == null ? null : new File(item.coverPath);
         String key = item.uri + '\n' + item.coverPath + ':' +
