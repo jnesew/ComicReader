@@ -2,8 +2,6 @@
 
 All notable public changes to ComicViewer for Android are recorded here.
 
-## Unreleased
-
 ## 1.6.0 - 2026-11-16
 
 ### Series and publication details
